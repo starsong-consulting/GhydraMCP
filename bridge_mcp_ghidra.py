@@ -128,6 +128,13 @@ def search_functions_by_name(query: str, offset: int = 0, limit: int = 100) -> l
     return safe_get("searchFunctions", {"query": query, "offset": offset, "limit": limit})
 
 
-if __name__ == "__main__":
-    mcp.run()
+import signal
 
+import os
+
+def handle_sigint(signum, frame):
+    os._exit(0)
+
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, handle_sigint)
+    mcp.run()
