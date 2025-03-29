@@ -28,20 +28,41 @@ This allows AI assistants like Claude to directly:
 GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/) with added multi-instance support and numerous enhancements.
 
 # Features
-MCP Server + Ghidra Plugin
 
-- Full program analysis capabilities:
-  - Decompile functions to C code
-  - Cross-reference analysis
-  - Data type propagation
-- Interactive reverse engineering:
-  - Rename functions, variables, and data
-  - Add comments and labels
-  - Modify data types
-- Program exploration:
-  - List functions, classes, namespaces
-  - View imports, exports, segments
-  - Search by name or pattern
+GhydraMCP combines a Ghidra plugin with an MCP server to provide a comprehensive set of reverse engineering capabilities to AI assistants:
+
+## Program Analysis
+
+- **Decompilation**: Convert binary functions to readable C code
+- **Static Analysis**: 
+  - Cross-reference analysis (find who calls what)
+  - Data flow analysis
+  - Type propagation and reconstruction
+- **Symbol Management**:
+  - View and analyze imports and exports
+  - Identify library functions and dependencies
+
+## Interactive Reverse Engineering
+
+- **Code Understanding**:
+  - Explore function code and relationships
+  - Analyze data structures and types
+- **Annotation**:
+  - Rename functions, variables, and data 
+  - Add comments and documentation
+  - Create and modify data types
+
+## Multi-instance Support
+
+- Run multiple Ghidra instances simultaneously
+- Analyze different binaries in parallel
+- Connect to specific instances using port numbers
+
+## Program Navigation
+
+- List and search functions, classes, and namespaces
+- View memory segments and layout
+- Search by name, pattern, or signature
 
 # Installation
 
@@ -56,7 +77,7 @@ First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/rel
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
 3. Click the `+` button
-4. Select the `GhydraMCP-1-1.zip` (or your chosen version) from the downloaded release
+4. Select the `GhydraMCP-1.1.zip` (or your chosen version) from the downloaded release
 5. Restart Ghidra
 6. Make sure the GhydraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
 
