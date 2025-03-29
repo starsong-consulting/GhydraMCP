@@ -134,8 +134,9 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
 {
   "mcpServers": {
     "ghydra": {
-      "command": "python",
+      "command": "uv",
       "args": [
+        "run",
         "/ABSOLUTE_PATH_TO/bridge_mcp_hydra.py"
       ],
       "env": {
@@ -146,10 +147,12 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
 }
 ```
 
+> **Note:** You can also use `python` instead of `uv run`, but then you'll need to manually install the requirements first with `pip install mcp requests`.
+
 ### 5ire Configuration
 1. Tool Key: ghydra  
 2. Name: GhydraMCP
-3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
+3. Command: `uv run /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
 
 ## Example Session
 
