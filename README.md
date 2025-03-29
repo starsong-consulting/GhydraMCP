@@ -5,14 +5,27 @@
 [![GitHub contributors](https://img.shields.io/github/contributors/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/graphs/contributors)
 [![Build Status](https://github.com/teal-bauer/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/teal-bauer/GhydraMCP/actions/workflows/build.yml)
 
+# GhydraMCP
+
+GhydraMCP is a bridge between [Ghidra](https://ghidra-sre.org/) and AI assistants that enables AI-assisted reverse engineering through the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp). 
+
 ![GhydraMCP logo](https://github.com/user-attachments/assets/86b9b2de-767c-4ed5-b082-510b8109f00f)
 
-# GhydraMCP
-GhydraMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
+## Overview
 
-https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
+GhydraMCP consists of:
 
-GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/).
+1. **Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a REST API
+2. **MCP Bridge**: A Python script that translates MCP requests into API calls
+3. **Multi-instance Support**: Connect multiple Ghidra instances to analyze different binaries simultaneously
+
+This allows AI assistants like Claude to directly:
+- Decompile functions and analyze binary code
+- Understand program structure, function relationships, and data types
+- Perform binary analysis tasks (identify cross-references, data flow, etc.)
+- Make meaningful changes to the analysis (rename functions, add comments, etc.)
+
+GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/) with added multi-instance support and numerous enhancements.
 
 # Features
 MCP Server + Ghidra Plugin
@@ -56,7 +69,7 @@ https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
 
 ## MCP Clients
 
-Theoretically, any MCP client should work with GhydraMCP.  Two examples are given below.
+Theoretically, any MCP client should work with GhydraMCP. Two examples are given below.
 
 ## API Reference
 
