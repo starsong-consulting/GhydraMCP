@@ -1,4 +1,4 @@
-package com.lauriewired;
+package eu.starsong.ghidra;
 
 import junit.framework.Test;
 import junit.framework.TestCase;

@@ -3,12 +3,12 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
   <modelVersion>4.0.0</modelVersion>
-  <groupId>com.lauriewired</groupId>
-    <artifactId>HydraMCP</artifactId>
+  <groupId>eu.starsong.ghidra</groupId>
+    <artifactId>GhydraMCP</artifactId>
   <packaging>jar</packaging>
   <version>1.1</version>
-  <name>HydraMCP</name>
-  <url>https://github.com/LaurieWired/GhidraMCP</url>
+  <name>GhydraMCP</name>
+  <url>https://github.com/teal-bauer/GhydraMCP</url>
 
   <dependencies>
     <!-- Ghidra JARs as system-scoped dependencies -->
@@ -93,7 +93,7 @@
             <manifestFile>src/main/resources/META-INF/MANIFEST.MF</manifestFile>
           </archive>
           <!-- Set a fixed name for the JAR without version -->
-          <finalName>HydraMCP</finalName>
+          <finalName>GhydraMCP</finalName>
           <!-- Exclude the App class -->
           <excludes>
             <exclude>**/App.class</exclude>
@@ -115,7 +115,7 @@
           </descriptors>
           
           <!-- The name of the final zip -->
-          <finalName>HydraMCP-${project.version}</finalName>
+          <finalName>GhydraMCP-${project.version}</finalName>
           
           <!-- Don't append the assembly ID -->
           <appendAssemblyId>false</appendAssemblyId>

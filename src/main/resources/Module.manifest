@@ -1,2 +1,2 @@
-GHIDRA_MODULE_NAME=GhidraMCP
-GHIDRA_MODULE_DESC=An HTTP server plugin for Ghidra
+GHIDRA_MODULE_NAME=GhydraMCP
+GHIDRA_MODULE_DESC=A multi-headed REST interface for Ghidra for use with MCP agents.

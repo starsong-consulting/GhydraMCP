@@ -7,19 +7,28 @@
 
 ![ghidra_MCP_logo](https://github.com/user-attachments/assets/4986d702-be3f-4697-acce-aea55cd79ad3)
 
-
-# ghidraMCP
-ghidraMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
+# GhydraMCP
+GhydraMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
 
 https://github.com/user-attachments/assets/36080514-f227-44bd-af84-78e29ee1d7f9
 
+GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/).
 
 # Features
 MCP Server + Ghidra Plugin
 
-- Decompile and analyze binaries in Ghidra
-- Automatically rename methods and data
-- List methods, classes, imports, and exports
+- Full program analysis capabilities:
+  - Decompile functions to C code
+  - Cross-reference analysis
+  - Data type propagation
+- Interactive reverse engineering:
+  - Rename functions, variables, and data
+  - Add comments and labels
+  - Modify data types
+- Program exploration:
+  - List functions, classes, namespaces
+  - View imports, exports, segments
+  - Search by name or pattern
 
 # Installation
 
@@ -29,14 +38,14 @@ MCP Server + Ghidra Plugin
 - MCP [SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## Ghidra
-First, download the latest [release](https://github.com/LaurieWired/GhidraMCP/releases) from this repository. This contains the Ghidra plugin and Python MCP client. Then, you can directly import the plugin into Ghidra.
+First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/releases) from this repository. This contains the Ghidra plugin and Python MCP client. Then, you can directly import the plugin into Ghidra.
 
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
 3. Click the `+` button
-4. Select the `GhidraMCP-1-0.zip` (or your chosen version) from the downloaded release
+4. Select the `GhydraMCP-1-1.zip` (or your chosen version) from the downloaded release
 5. Restart Ghidra
-6. Make sure the GhidraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
+6. Make sure the GhydraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
 
 Video Installation Guide:
 
@@ -47,35 +56,63 @@ https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
 
 ## MCP Clients
 
-Theoretically, any MCP client should work with ghidraMCP.  Two examples are given below.
+Theoretically, any MCP client should work with GhydraMCP.  Two examples are given below.
 
-## Example 1: Claude Desktop
-To set up Claude Desktop as a Ghidra MCP client, go to `Claude` -> `Settings` -> `Developer` -> `Edit Config` -> `claude_desktop_config.json` and add the following:
+## API Reference
 
+### Available Tools
+
+**Program Analysis**:
+- `list_methods`: List all functions (params: offset, limit)
+- `list_classes`: List all classes/namespaces (params: offset, limit)  
+- `decompile_function`: Get decompiled C code (params: name)
+- `rename_function`: Rename a function (params: old_name, new_name)
+- `rename_data`: Rename data at address (params: address, new_name)
+- `list_segments`: View memory segments (params: offset, limit)
+- `list_imports`: List imported symbols (params: offset, limit)
+- `list_exports`: List exported functions (params: offset, limit)
+- `list_namespaces`: Show namespaces (params: offset, limit)
+- `list_data_items`: View data labels (params: offset, limit)
+- `search_functions_by_name`: Find functions (params: query, offset, limit)
+
+**Instance Management**:
+- `list_instances`: List active Ghidra instances (no params)
+- `register_instance`: Register new instance (params: port, url)
+- `unregister_instance`: Remove instance (params: port)
+
+**Example Usage**:
+```python
+# Program analysis
+client.use_tool("ghydra", "decompile_function", {"name": "main"})
+
+# Instance management  
+client.use_tool("ghydra", "register_instance", {"port": 8192, "url": "http://localhost:8192/"})
+client.use_tool("ghydra", "register_instance", {"port": 8193})
+```
+
+## Client Setup
+
+### Claude Desktop Configuration
 ```json
 {
   "mcpServers": {
-    "ghidra": {
+    "ghydra": {
       "command": "python",
       "args": [
-        "/ABSOLUTE_PATH_TO/bridge_mcp_ghidra.py"
-      ]
+        "/ABSOLUTE_PATH_TO/bridge_mcp_hydra.py"
+      ],
+      "env": {
+        "GHIDRA_HYDRA_HOST": "localhost"  // Optional - defaults to localhost
+      }
     }
   }
 }
 ```
 
-Alternatively, edit this file directly:
-```
-/Users/YOUR_USER/Library/Application Support/Claude/claude_desktop_config.json
-```
-
-## Example 2: 5ire
-Another MCP client that supports multiple models on the backend is [5ire](https://github.com/nanbingxyz/5ire). To set up GhidraMCP, open 5ire and go to `Tools` -> `New` and set the following configurations:
-
-1. Tool Key: ghidra
-2. Name: GhidraMCP
-3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_ghidra.py`
+### 5ire Configuration
+1. Tool Key: ghydra  
+2. Name: GhydraMCP
+3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
 
 # Building from Source
 Build with Maven by running:
@@ -84,6 +121,6 @@ Build with Maven by running:
 
 The generated zip file includes the built Ghidra plugin and its resources. These files are required for Ghidra to recognize the new extension.
 
-- lib/GhidraMCP.jar
+- lib/GhydraMCP.jar
 - extensions.properties
 - Module.manifest

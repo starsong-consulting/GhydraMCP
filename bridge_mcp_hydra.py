@@ -5,6 +5,7 @@
 #     "requests==2.32.3",
 # ]
 # ///
+import os
 import sys
 import requests
 from typing import Dict
@@ -19,11 +20,11 @@ DEFAULT_GHIDRA_HOST = "localhost"
 
 mcp = FastMCP("hydra-mcp")
 
-# Get host from command line or use default
-ghidra_host = DEFAULT_GHIDRA_HOST
+# Get host from environment variable, command line, or use default
+ghidra_host = os.environ.get("GHIDRA_HYDRA_HOST", DEFAULT_GHIDRA_HOST)
 if len(sys.argv) > 1:
     ghidra_host = sys.argv[1]
-    print(f"Using Ghidra host: {ghidra_host}")
+print(f"Using Ghidra host: {ghidra_host}")
 
 def get_instance_url(port: int) -> str:
     """Get URL for a Ghidra instance by port"""
@@ -64,6 +65,26 @@ def safe_get(port: int, endpoint: str, params: dict = None) -> list:
         return ["Error: Failed to connect to Ghidra instance"]
     except Exception as e:
         return [f"Request failed: {str(e)}"]
+
+def safe_put(port: int, endpoint: str, data: dict) -> str:
+    """Perform a PUT request to a specific Ghidra instance"""
+    try:
+        url = f"{get_instance_url(port)}/{endpoint}"
+        response = requests.put(url, data=data, timeout=5)
+        response.encoding = 'utf-8'
+        if response.ok:
+            return response.text.strip()
+        elif response.status_code == 404 and port != DEFAULT_GHIDRA_PORT:
+            # Try falling back to default instance
+            return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
+        else:
+            return f"Error {response.status_code}: {response.text.strip()}"
+    except requests.exceptions.ConnectionError:
+        if port != DEFAULT_GHIDRA_PORT:
+            return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
+        return "Error: Failed to connect to Ghidra instance"
+    except Exception as e:
+        return f"Request failed: {str(e)}"
 
 def safe_post(port: int, endpoint: str, data: dict | str) -> str:
     """Perform a POST request to a specific Ghidra instance"""
@@ -129,25 +150,32 @@ def unregister_instance(port: int) -> str:
         return f"No instance found on port {port}"
 
 # Updated tool implementations with port parameter
+from urllib.parse import quote
+
 @mcp.tool()
-def list_methods(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
-    return safe_get(port, "methods", {"offset": offset, "limit": limit})
+def list_functions(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all functions with pagination"""
+    return safe_get(port, "functions", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_classes(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all classes with pagination"""
     return safe_get(port, "classes", {"offset": offset, "limit": limit})
 
 @mcp.tool()
-def decompile_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "") -> str:
-    return safe_post(port, "decompile", name)
+def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "") -> str:
+    """Get decompiled code for a specific function"""
+    return safe_get(port, f"functions/{quote(name)}", {})
 
 @mcp.tool()
-def rename_function(port: int = DEFAULT_GHIDRA_PORT, old_name: str = "", new_name: str = "") -> str:
-    return safe_post(port, "renameFunction", {"oldName": old_name, "newName": new_name})
+def update_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", new_name: str = "") -> str:
+    """Rename a function"""
+    return safe_put(port, f"functions/{quote(name)}", {"newName": new_name})
 
 @mcp.tool()
-def rename_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: str = "") -> str:
-    return safe_post(port, "renameData", {"address": address, "newName": new_name})
+def update_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: str = "") -> str:
+    """Rename data at specified address"""
+    return safe_put(port, "data", {"address": address, "newName": new_name})
 
 @mcp.tool()
 def list_segments(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
@@ -155,11 +183,11 @@ def list_segments(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int =
 
 @mcp.tool()
 def list_imports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
-    return safe_get(port, "imports", {"offset": offset, "limit": limit})
+    return safe_get(port, "symbols/imports", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_exports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
-    return safe_get(port, "exports", {"offset": offset, "limit": limit})
+    return safe_get(port, "symbols/exports", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_namespaces(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
@@ -173,7 +201,7 @@ def list_data_items(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int
 def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", offset: int = 0, limit: int = 100) -> list:
     if not query:
         return ["Error: query string is required"]
-    return safe_get(port, "searchFunctions", {"query": query, "offset": offset, "limit": limit})
+    return safe_get(port, "functions", {"query": query, "offset": offset, "limit": limit})
 
 # Handle graceful shutdown
 import signal

@@ -17,24 +17,24 @@
     
     <fileSets>
         <!-- 1) Copy extension.properties and Module.manifest into the top level 
-               of a folder named GhidraMCP/ (the actual extension folder). -->
+               of a folder named GhydraMCP/ (the actual extension folder). -->
         <fileSet>
             <directory>src/main/resources</directory>
             <includes>
                 <include>extension.properties</include>
                 <include>Module.manifest</include>
             </includes>
-            <outputDirectory>HydraMCP</outputDirectory>
+            <outputDirectory>GhydraMCP</outputDirectory>
         </fileSet>
         
-        <!-- 2) Copy your built plugin JAR into HydraMCP/lib -->
+        <!-- 2) Copy your built plugin JAR into GhydraMCP/lib -->
         <fileSet>
             <directory>${project.build.directory}</directory>
             <includes>
                 <!-- Use the finalized JAR name from the maven-jar-plugin -->
-                <include>HydraMCP.jar</include>
+                <include>GhydraMCP.jar</include>
             </includes>
-            <outputDirectory>HydraMCP/lib</outputDirectory>
+            <outputDirectory>GhydraMCP/lib</outputDirectory>
         </fileSet>
     </fileSets>
 </assembly>

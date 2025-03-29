@@ -1,7 +1,6 @@
-package com.lauriewired;
+package eu.starsong.ghidra;
 
 import ghidra.framework.plugintool.*;
-import ghidra.framework.plugintool.util.*;
 import ghidra.framework.main.ApplicationLevelPlugin;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.GlobalNamespace;
@@ -38,17 +37,16 @@ import java.util.concurrent.atomic.*;
     shortDescription = "HTTP server plugin",
     description = "Starts an embedded HTTP server to expose program data."
 )
-public class HydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
+public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
-    private static final Map<Integer, HydraMCPPlugin> activeInstances = new ConcurrentHashMap<>();
-    private static final AtomicInteger nextPort = new AtomicInteger(8192);
+    private static final Map<Integer, GhydraMCPPlugin> activeInstances = new ConcurrentHashMap<>();
     private static final Object baseInstanceLock = new Object();
     
     private HttpServer server;
     private int port;
     private boolean isBaseInstance = false;
 
-    public HydraMCPPlugin(PluginTool tool) {
+    public GhydraMCPPlugin(PluginTool tool) {
         super(tool);
         
         // Find available port
@@ -64,8 +62,8 @@ public class HydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
         
             // Log to both console and log file
-            Msg.info(this, "HydraMCPPlugin loaded on port " + port);
-            System.out.println("[HydraMCP] Plugin loaded on port " + port);
+            Msg.info(this, "GhydraMCPPlugin loaded on port " + port);
+            System.out.println("[GhydraMCP] Plugin loaded on port " + port);
 
         try {
             startServer();
@@ -82,85 +80,127 @@ public class HydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         server = HttpServer.create(new InetSocketAddress(port), 0);
 
         // Each listing endpoint uses offset & limit from query params:
-        server.createContext("/methods", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, getAllFunctionNames(offset, limit));
+        // Function resources
+        server.createContext("/functions", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                String query = qparams.get("query");
+                
+                if (query != null && !query.isEmpty()) {
+                    sendResponse(exchange, searchFunctionsByName(query, offset, limit));
+                } else {
+                    sendResponse(exchange, getAllFunctionNames(offset, limit));
+                }
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
+        server.createContext("/functions/", exchange -> {
+            String path = exchange.getRequestURI().getPath();
+            String name = path.substring(path.lastIndexOf('/') + 1);
+            try {
+                name = java.net.URLDecoder.decode(name, StandardCharsets.UTF_8.name());
+            } catch (Exception e) {
+                Msg.error(this, "Failed to decode function name", e);
+                exchange.sendResponseHeaders(400, -1); // Bad Request
+                return;
+            }
+            
+            if ("GET".equals(exchange.getRequestMethod())) {
+                sendResponse(exchange, decompileFunctionByName(name));
+            } else if ("PUT".equals(exchange.getRequestMethod())) {
+                Map<String, String> params = parsePostParams(exchange);
+                String newName = params.get("newName");
+                String response = renameFunction(name, newName)
+                        ? "Renamed successfully" : "Rename failed";
+                sendResponse(exchange, response);
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        });
+
+        // Class resources
         server.createContext("/classes", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, getAllClassNames(offset, limit));
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                sendResponse(exchange, getAllClassNames(offset, limit));
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
-        server.createContext("/decompile", exchange -> {
-            String name = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            sendResponse(exchange, decompileFunctionByName(name));
-        });
-
-        server.createContext("/renameFunction", exchange -> {
-            Map<String, String> params = parsePostParams(exchange);
-            String response = renameFunction(params.get("oldName"), params.get("newName"))
-                    ? "Renamed successfully" : "Rename failed";
-            sendResponse(exchange, response);
-        });
-
-        server.createContext("/renameData", exchange -> {
-            Map<String, String> params = parsePostParams(exchange);
-            renameDataAtAddress(params.get("address"), params.get("newName"));
-            sendResponse(exchange, "Rename data attempted");
-        });
-
+        // Memory segments
         server.createContext("/segments", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, listSegments(offset, limit));
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                sendResponse(exchange, listSegments(offset, limit));
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
-        server.createContext("/imports", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, listImports(offset, limit));
+        // Symbol resources (imports/exports)
+        server.createContext("/symbols/imports", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                sendResponse(exchange, listImports(offset, limit));
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
-        server.createContext("/exports", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, listExports(offset, limit));
+        server.createContext("/symbols/exports", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                sendResponse(exchange, listExports(offset, limit));
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
+        // Namespace resources
         server.createContext("/namespaces", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, listNamespaces(offset, limit));
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                sendResponse(exchange, listNamespaces(offset, limit));
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
+        // Data resources
         server.createContext("/data", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit  = parseIntOrDefault(qparams.get("limit"),  100);
-            sendResponse(exchange, listDefinedData(offset, limit));
-        });
-
-        server.createContext("/searchFunctions", exchange -> {
-            Map<String, String> qparams = parseQueryParams(exchange);
-            String searchTerm = qparams.get("query");
-            int offset = parseIntOrDefault(qparams.get("offset"), 0);
-            int limit = parseIntOrDefault(qparams.get("limit"), 100);
-            sendResponse(exchange, searchFunctionsByName(searchTerm, offset, limit));
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                sendResponse(exchange, listDefinedData(offset, limit));
+            } else if ("PUT".equals(exchange.getRequestMethod())) {
+                Map<String, String> params = parsePostParams(exchange);
+                renameDataAtAddress(params.get("address"), params.get("newName"));
+                sendResponse(exchange, "Rename data attempted");
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
         // Instance management endpoints
         server.createContext("/instances", exchange -> {
             StringBuilder sb = new StringBuilder();
-            for (Map.Entry<Integer, HydraMCPPlugin> entry : activeInstances.entrySet()) {
+            for (Map.Entry<Integer, GhydraMCPPlugin> entry : activeInstances.entrySet()) {
                 sb.append(entry.getKey()).append(": ")
                   .append(entry.getValue().isBaseInstance ? "base" : "secondary")
                   .append("\n");
@@ -192,9 +232,9 @@ public class HydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         server.setExecutor(null);
         new Thread(() -> {
             server.start();
-            Msg.info(this, "HydraMCP HTTP server started on port " + port);
-            System.out.println("[HydraMCP] HTTP server started on port " + port);
-        }, "HydraMCP-HTTP-Server").start();
+            Msg.info(this, "GhydraMCP HTTP server started on port " + port);
+            System.out.println("[GhydraMCP] HTTP server started on port " + port);
+        }, "GhydraMCP-HTTP-Server").start();
     }
 
     // ----------------------------------------------------------------------------------
@@ -542,7 +582,7 @@ public class HydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         if (server != null) {
             server.stop(0);
             Msg.info(this, "HTTP server stopped on port " + port);
-            System.out.println("[HydraMCP] HTTP server stopped on port " + port);
+            System.out.println("[GhydraMCP] HTTP server stopped on port " + port);
         }
         activeInstances.remove(port);
         super.dispose();
