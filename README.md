@@ -1,11 +1,11 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/releases)
-[![GitHub stars](https://img.shields.io/github/stars/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/network/members)
-[![GitHub contributors](https://img.shields.io/github/contributors/LaurieWired/GhidraMCP)](https://github.com/LaurieWired/GhidraMCP/graphs/contributors)
-[![Follow @lauriewired](https://img.shields.io/twitter/follow/lauriewired?style=social)](https://twitter.com/lauriewired)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/releases)
+[![GitHub stars](https://img.shields.io/github/stars/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/network/members)
+[![GitHub contributors](https://img.shields.io/github/contributors/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/graphs/contributors)
+[![Build Status](https://github.com/teal-bauer/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/teal-bauer/GhydraMCP/actions/workflows/build.yml)
 
-![ghidra_MCP_logo](https://github.com/user-attachments/assets/4986d702-be3f-4697-acce-aea55cd79ad3)
+![GhydraMCP logo](https://github.com/user-attachments/assets/86b9b2de-767c-4ed5-b082-510b8109f00f)
 
 # GhydraMCP
 GhydraMCP is an Model Context Protocol server for allowing LLMs to autonomously reverse engineer applications. It exposes numerous tools from core Ghidra functionality to MCP clients.
