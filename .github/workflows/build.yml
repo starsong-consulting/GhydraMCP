@@ -1,0 +1,72 @@
+name: Build Ghidra Plugin
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up JDK 21
+      uses: actions/setup-java@v3
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+    
+    - name: Get version from pom.xml
+      id: get_version
+      run: echo "VERSION=$(grep -m1 '<version>' pom.xml | sed 's/[[:space:]]*<version>\(.*\)<\/version>.*/\1/')" >> $GITHUB_OUTPUT
+    
+    - name: Set build version
+      id: set_version
+      run: |
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          echo "BUILD_VERSION=$VERSION" >> $GITHUB_OUTPUT
+        else
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+          echo "BUILD_VERSION=${{ steps.get_version.outputs.VERSION }}-nightly-$SHORT_SHA" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Update version in files
+      run: |
+        VERSION="${{ steps.set_version.outputs.BUILD_VERSION }}"
+        # Update pom.xml - only update the first version tag which is the project version
+        sed -i '0,/<version>.*<\/version>/{s/<version>.*<\/version>/<version>'"$VERSION"'<\/version>/}' pom.xml
+        # Update MANIFEST.MF
+        sed -i "s/Bundle-Version: .*/Bundle-Version: $VERSION/" src/main/resources/META-INF/MANIFEST.MF
+        # Update extension.properties if it has version
+        if grep -q "^version=" src/main/resources/extension.properties; then
+          sed -i "s/^version=.*/version=$VERSION/" src/main/resources/extension.properties
+        fi
+    
+    - name: Build with Maven
+      run: mvn -B package
+    
+    - name: Upload nightly artifact
+      if: github.ref_type != 'tag'
+      uses: actions/upload-artifact@v4
+      with:
+        name: GhydraMCP-${{ steps.set_version.outputs.BUILD_VERSION }}
+        path: target/GhydraMCP-*.zip
+    
+    - name: Create Release
+      if: github.ref_type == 'tag'
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: Release ${{ github.ref_name }}
+        files: |
+          target/GhydraMCP-*.zip
+        draft: false
+        prerelease: false
