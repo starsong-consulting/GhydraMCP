@@ -60,12 +60,43 @@ jobs:
         name: GhydraMCP-${{ steps.set_version.outputs.BUILD_VERSION }}
         path: target/GhydraMCP-*.zip
     
+    - name: Generate Release Notes
+      if: github.ref_type == 'tag'
+      id: generate_notes
+      run: |
+        # Extract version without v prefix
+        VERSION="${{ github.ref_name }}"
+        VERSION="${VERSION#v}"
+        
+        # Get commit messages since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || echo "")
+        if [ -z "$LAST_TAG" ]; then
+          # If no previous tag exists, get all commits
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges)
+        else
+          # Get commits between last tag and current tag
+          COMMITS=$(git log --pretty=format:"- %s" --no-merges ${LAST_TAG}..HEAD)
+        fi
+        
+        # Create release notes file
+        cat > release_notes.md << EOF
+        # Release v${VERSION}
+        
+        ## What's Changed
+        ${COMMITS}
+        
+        **Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...v${VERSION}
+        EOF
+        
+        echo "RELEASE_NOTES_FILE=release_notes.md" >> $GITHUB_OUTPUT
+
     - name: Create Release
       if: github.ref_type == 'tag'
       id: create_release
       uses: softprops/action-gh-release@v1
       with:
         name: Release ${{ github.ref_name }}
+        body_path: ${{ steps.generate_notes.outputs.RELEASE_NOTES_FILE }}
         files: |
           target/GhydraMCP-*.zip
         draft: false
