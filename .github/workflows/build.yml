@@ -52,16 +52,6 @@ jobs:
     
     - name: Build with Maven
       run: mvn -B package
-    
-    - name: Create Complete Package
-      run: |
-        mkdir -p package
-        cp target/GhydraMCP-*.zip package/
-        cp bridge_mcp_hydra.py package/
-        cd package
-        zip -r GhydraMCP-Complete-${{ steps.set_version.outputs.BUILD_VERSION }}.zip *
-        mv GhydraMCP-Complete-${{ steps.set_version.outputs.BUILD_VERSION }}.zip ..
-        cd ..
         
     - name: Upload nightly artifacts
       if: github.ref_type != 'tag'
@@ -71,7 +61,7 @@ jobs:
         path: |
           target/GhydraMCP-*.zip
           bridge_mcp_hydra.py
-          GhydraMCP-Complete-${{ steps.set_version.outputs.BUILD_VERSION }}.zip
+          target/GhydraMCP-Complete-*.zip
     
     - name: Generate Release Notes
       if: github.ref_type == 'tag'
@@ -113,6 +103,6 @@ jobs:
         files: |
           target/GhydraMCP-*.zip
           bridge_mcp_hydra.py
-          GhydraMCP-Complete-${{ steps.set_version.outputs.BUILD_VERSION }}.zip
+          target/GhydraMCP-Complete-*.zip
         draft: false
         prerelease: false

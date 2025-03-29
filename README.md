@@ -149,12 +149,35 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
 3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
 
 # Building from Source
-Build with Maven by running:
 
-`mvn clean package assembly:single`
+You can build different artifacts with Maven:
 
-The generated zip file includes the built Ghidra plugin and its resources. These files are required for Ghidra to recognize the new extension.
+## Build Everything (Default)
+Build both the Ghidra plugin and the complete package:
 
+```
+mvn clean package
+```
+
+This creates:
+- `target/GhydraMCP-[version].zip` - The Ghidra plugin only
+- `target/GhydraMCP-Complete-[version].zip` - Complete package with plugin and bridge script
+
+## Build Ghidra Plugin Only
+If you only need the Ghidra plugin:
+
+```
+mvn clean package -P plugin-only
+```
+
+## Build Complete Package Only
+If you only need the combined package:
+
+```
+mvn clean package -P complete-only
+```
+
+The Ghidra plugin includes these files required for Ghidra to recognize the extension:
 - lib/GhydraMCP.jar
-- extensions.properties
+- extension.properties
 - Module.manifest
