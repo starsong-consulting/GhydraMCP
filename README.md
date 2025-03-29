@@ -72,7 +72,7 @@ GhydraMCP combines a Ghidra plugin with an MCP server to provide a comprehensive
 - MCP [SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## Ghidra
-First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/releases) from this repository. This contains the Ghidra plugin and Python MCP client. Then, you can directly import the plugin into Ghidra.
+First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/releases) from this repository. The "Complete" artifact contains the zipped Ghidra plugin and the Python MCP bridge. Unpack the outer archive, then, add the plugin to Ghidra:
 
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
@@ -81,12 +81,15 @@ First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/rel
 5. Restart Ghidra
 6. Make sure the GhydraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
 
+> **Note:** By default, the first CodeBrowser opened in Ghidra gets port 8192, the second gets 8193, and so on. You can check which ports are being used by looking at the Console in the Ghidra main (project) window - click the computer icon in the bottom right to "Open Console". Look for log entries like:
+> ```
+> (HydraMCPPlugin) Plugin loaded on port 8193
+> (HydraMCPPlugin) HydraMCP HTTP server started on port 8193
+> ```
+
 Video Installation Guide:
 
-
 https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
-
-
 
 ## MCP Clients
 
@@ -147,6 +150,70 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
 1. Tool Key: ghydra  
 2. Name: GhydraMCP
 3. Command: `python /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
+
+## Example Session
+
+Below is an example of how an AI assistant might interact with multiple Ghidra instances using GhydraMCP:
+
+**User:**
+```
+Register the following instances with the ghydra mcp tool:
+port 8192 = application.exe
+port 8193 = firmware.bin
+```
+
+**Assistant:**
+```
+I'll help you analyze these binaries. Let me register the instances with the ghydra mcp tool as requested.
+
+View result from register_instance from ghydra (local){
+  `port`: 8192
+}
+Registered instance on port 8192 at http://localhost:8192
+
+View result from register_instance from ghydra (local){
+  `port`: 8193
+}
+Registered instance on port 8193 at http://localhost:8193
+
+Now that I've registered both instances, I'm ready to analyze the decompiled code.
+```
+
+**User:**
+```
+List the functions through ghydra for both instances and identify any related functionality.
+```
+
+**Assistant:**
+```
+I'll list the functions from both instances and analyze them.
+
+View result from list_functions from ghydra (local){
+  `port`: 8192
+}
+[Function list for application.exe...]
+
+View result from list_functions from ghydra (local){
+  `port`: 8193
+}
+[Function list for firmware.bin...]
+
+I notice some interesting functions in both binaries. Let me decompile a few to understand their behavior.
+
+View result from get_function from ghydra (local){
+  `port`: 8192,
+  `name`: "process_command"
+}
+[Decompiled code for process_command...]
+
+View result from get_function from ghydra (local){
+  `port`: 8193,
+  `name`: "handle_message"
+}
+[Decompiled code for handle_message...]
+
+Based on this analysis, I can see these binaries communicate using a simple protocol where...
+```
 
 # Building from Source
 
