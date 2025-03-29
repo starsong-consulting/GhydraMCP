@@ -24,17 +24,17 @@
                 <include>extension.properties</include>
                 <include>Module.manifest</include>
             </includes>
-            <outputDirectory>GhidraMCP</outputDirectory>
+            <outputDirectory>HydraMCP</outputDirectory>
         </fileSet>
         
-        <!-- 2) Copy your built plugin JAR into GhidraMCP/lib -->
+        <!-- 2) Copy your built plugin JAR into HydraMCP/lib -->
         <fileSet>
             <directory>${project.build.directory}</directory>
             <includes>
                 <!-- Use the finalized JAR name from the maven-jar-plugin -->
-                <include>GhidraMCP.jar</include>
+                <include>HydraMCP.jar</include>
             </includes>
-            <outputDirectory>GhidraMCP/lib</outputDirectory>
+            <outputDirectory>HydraMCP/lib</outputDirectory>
         </fileSet>
     </fileSets>
 </assembly>
