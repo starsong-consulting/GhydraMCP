@@ -16,8 +16,8 @@
     <ghidra.jar.location>${project.basedir}/lib</ghidra.jar.location>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
-    <revision>dev-SNAPSHOT</revision>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
+    <revision>dev-SNAPSHOT</revision>
   </properties>
 
   <dependencies>
@@ -89,8 +89,24 @@
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
     <plugins>
       <!-- Set Java version -->
+      <!-- Resources plugin to handle filtering -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <configuration>
+          <encoding>UTF-8</encoding>
+        </configuration>
+      </plugin>
+      
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -159,9 +175,17 @@
         <version>3.2.2</version>
         <configuration>
           <archive>
-            <manifestFile>src/main/resources/META-INF/MANIFEST.MF</manifestFile>
+            <manifest>
+              <addDefaultImplementationEntries>false</addDefaultImplementationEntries>
+            </manifest>
             <manifestEntries>
-              <Plugin-Version>${revision}</Plugin-Version>
+              <Implementation-Title>GhydraMCP</Implementation-Title>
+              <Implementation-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Implementation-Version>
+              <Plugin-Class>eu.starsong.ghidra.GhydraMCP</Plugin-Class>
+              <Plugin-Name>GhydraMCP</Plugin-Name>
+              <Plugin-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Plugin-Version>
+              <Plugin-Author>LaurieWired, Teal Bauer</Plugin-Author>
+              <Plugin-Description>Expose multiple Ghidra tools to MCP servers with variable management</Plugin-Description>
             </manifestEntries>
           </archive>
           <finalName>GhydraMCP</finalName>
@@ -189,7 +213,7 @@
               <descriptors>
                 <descriptor>src/assembly/ghidra-extension.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-${project.version}</finalName>
+              <finalName>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
@@ -205,7 +229,7 @@
               <descriptors>
                 <descriptor>src/assembly/complete-package.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-Complete-${project.version}</finalName>
+              <finalName>GhydraMCP-Complete-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
