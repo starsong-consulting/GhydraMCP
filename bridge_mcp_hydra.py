@@ -7,35 +7,38 @@
 # ///
 import os
 import sys
+import time
 import requests
+import threading
 from typing import Dict
 from threading import Lock
 from mcp.server.fastmcp import FastMCP
 
-# Track active Ghidra instances (port -> url)
-active_instances: Dict[int, str] = {}
+# Track active Ghidra instances (port -> info dict)
+active_instances: Dict[int, dict] = {}
 instances_lock = Lock()
 DEFAULT_GHIDRA_PORT = 8192
 DEFAULT_GHIDRA_HOST = "localhost"
+# Port ranges for scanning
+QUICK_DISCOVERY_RANGE = range(8192, 8202)  # Limited range for interactive/triggered discovery (10 ports)
+FULL_DISCOVERY_RANGE = range(8192, 8212)   # Wider range for background discovery (20 ports)
 
 mcp = FastMCP("hydra-mcp")
 
-# Get host from environment variable, command line, or use default
 ghidra_host = os.environ.get("GHIDRA_HYDRA_HOST", DEFAULT_GHIDRA_HOST)
-if len(sys.argv) > 1:
-    ghidra_host = sys.argv[1]
 print(f"Using Ghidra host: {ghidra_host}")
 
 def get_instance_url(port: int) -> str:
     """Get URL for a Ghidra instance by port"""
     with instances_lock:
         if port in active_instances:
-            return active_instances[port]
+            return active_instances[port]["url"]
         
         # Auto-register if not found but port is valid
         if 8192 <= port <= 65535:
             register_instance(port)
-            return active_instances[port]
+            if port in active_instances:
+                return active_instances[port]["url"]
         
         return f"http://{ghidra_host}:{port}"
 
@@ -116,8 +119,13 @@ def list_instances() -> dict:
     with instances_lock:
         return {
             "instances": [
-                {"port": port, "url": url}
-                for port, url in active_instances.items()
+                {
+                    "port": port, 
+                    "url": info["url"],
+                    "project": info.get("project", ""),
+                    "file": info.get("file", "")
+                }
+                for port, info in active_instances.items()
             ]
         }
 
@@ -133,12 +141,41 @@ def register_instance(port: int, url: str = None) -> str:
         response = requests.get(test_url, timeout=2)
         if not response.ok:
             return f"Error: Instance at {url} is not responding properly"
+        
+        # Try to get project info
+        project_info = {"url": url}
+        
+        try:
+            info_url = f"{url}/info"
+            info_response = requests.get(info_url, timeout=2)
+            if info_response.ok:
+                try:
+                    # Parse JSON response
+                    info_data = info_response.json()
+                    
+                    # Extract relevant information
+                    project_info["project"] = info_data.get("project", "Unknown")
+                    
+                    # Handle file information which is nested
+                    file_info = info_data.get("file", {})
+                    if file_info:
+                        project_info["file"] = file_info.get("name", "")
+                        project_info["path"] = file_info.get("path", "")
+                        project_info["architecture"] = file_info.get("architecture", "")
+                        project_info["endian"] = file_info.get("endian", "")
+                except ValueError:
+                    # Not valid JSON
+                    pass
+        except Exception:
+            # Non-critical, continue with registration even if project info fails
+            pass
+        
+        with instances_lock:
+            active_instances[port] = project_info
+            
+        return f"Registered instance on port {port} at {url}"
     except Exception as e:
         return f"Error: Could not connect to instance at {url}: {str(e)}"
-    
-    with instances_lock:
-        active_instances[port] = url
-    return f"Registered instance on port {port} at {url}"
 
 @mcp.tool()
 def unregister_instance(port: int) -> str:
@@ -148,6 +185,40 @@ def unregister_instance(port: int) -> str:
             del active_instances[port]
             return f"Unregistered instance on port {port}"
         return f"No instance found on port {port}"
+
+@mcp.tool()
+def discover_instances(host: str = None) -> dict:
+    """Auto-discover Ghidra instances by scanning ports (quick discovery with limited range)
+    
+    Args:
+        host: Optional host to scan (defaults to configured ghidra_host)
+    """
+    return _discover_instances(QUICK_DISCOVERY_RANGE, host=host, timeout=0.5)
+
+def _discover_instances(port_range, host=None, timeout=0.5) -> dict:
+    """Internal function to discover Ghidra instances by scanning ports"""
+    found_instances = []
+    scan_host = host if host is not None else ghidra_host
+    
+    for port in port_range:
+        if port in active_instances:
+            continue
+            
+        url = f"http://{scan_host}:{port}"
+        try:
+            test_url = f"{url}/instances"
+            response = requests.get(test_url, timeout=timeout)  # Short timeout for scanning
+            if response.ok:
+                result = register_instance(port, url)
+                found_instances.append({"port": port, "url": url, "result": result})
+        except requests.exceptions.RequestException:
+            # Instance not available, just continue
+            continue
+    
+    return {
+        "found": len(found_instances),
+        "instances": found_instances
+    }
 
 # Updated tool implementations with port parameter
 from urllib.parse import quote
@@ -210,9 +281,49 @@ import os
 def handle_sigint(signum, frame):
     os._exit(0)
 
+def periodic_discovery():
+    """Periodically discover new instances"""
+    while True:
+        try:
+            # Use the full discovery range
+            _discover_instances(FULL_DISCOVERY_RANGE, timeout=0.5)
+            
+            # Also check if any existing instances are down
+            with instances_lock:
+                ports_to_remove = []
+                for port, info in active_instances.items():
+                    url = info["url"]
+                    try:
+                        response = requests.get(f"{url}/instances", timeout=1)
+                        if not response.ok:
+                            ports_to_remove.append(port)
+                    except requests.exceptions.RequestException:
+                        ports_to_remove.append(port)
+                
+                # Remove any instances that are down
+                for port in ports_to_remove:
+                    del active_instances[port]
+                    print(f"Removed unreachable instance on port {port}")
+        except Exception as e:
+            print(f"Error in periodic discovery: {e}")
+        
+        # Sleep for 30 seconds before next scan
+        time.sleep(30)
+
 if __name__ == "__main__":
     # Auto-register default instance
     register_instance(DEFAULT_GHIDRA_PORT, f"http://{ghidra_host}:{DEFAULT_GHIDRA_PORT}")
+    
+    # Auto-discover other instances
+    discover_instances()
+    
+    # Start periodic discovery in background thread
+    discovery_thread = threading.Thread(
+        target=periodic_discovery, 
+        daemon=True,
+        name="GhydraMCP-Discovery"
+    )
+    discovery_thread.start()
     
     signal.signal(signal.SIGINT, handle_sigint)
     mcp.run()

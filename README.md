@@ -57,6 +57,8 @@ GhydraMCP combines a Ghidra plugin with an MCP server to provide a comprehensive
 - Run multiple Ghidra instances simultaneously
 - Analyze different binaries in parallel
 - Connect to specific instances using port numbers
+- Auto-discovery of running Ghidra instances
+- Instance metadata with project and file information
 
 ## Program Navigation
 
@@ -86,6 +88,8 @@ First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/rel
 > (HydraMCPPlugin) Plugin loaded on port 8193
 > (HydraMCPPlugin) HydraMCP HTTP server started on port 8193
 > ```
+>
+> GhydraMCP now includes auto-discovery of running Ghidra instances, so manually registering each instance is typically not necessary. The MCP bridge will automatically discover and register instances on startup and periodically check for new ones.
 
 Video Installation Guide:
 
@@ -116,6 +120,7 @@ Theoretically, any MCP client should work with GhydraMCP. Two examples are given
 - `list_instances`: List active Ghidra instances (no params)
 - `register_instance`: Register new instance (params: port, url)
 - `unregister_instance`: Remove instance (params: port)
+- `discover_instances`: Auto-discover running instances (params: host [optional])
 
 **Example Usage**:
 ```python
@@ -125,6 +130,10 @@ client.use_tool("ghydra", "decompile_function", {"name": "main"})
 # Instance management  
 client.use_tool("ghydra", "register_instance", {"port": 8192, "url": "http://localhost:8192/"})
 client.use_tool("ghydra", "register_instance", {"port": 8193})
+
+# Auto-discover instances
+client.use_tool("ghydra", "discover_instances")  # Default host
+client.use_tool("ghydra", "discover_instances", {"host": "192.168.1.10"})  # Custom host
 ```
 
 ## Client Setup
@@ -160,26 +169,53 @@ Below is an example of how an AI assistant might interact with multiple Ghidra i
 
 **User:**
 ```
-Register the following instances with the ghydra mcp tool:
-port 8192 = application.exe
-port 8193 = firmware.bin
+Check which Ghidra instances are currently running.
 ```
 
 **Assistant:**
 ```
-I'll help you analyze these binaries. Let me register the instances with the ghydra mcp tool as requested.
+I'll check which Ghidra instances are currently running by discovering any active instances.
 
-View result from register_instance from ghydra (local){
-  `port`: 8192
+View result from discover_instances from ghydra (local)
+{
+  "found": 2,
+  "instances": [
+    {
+      "port": 8192,
+      "url": "http://localhost:8192",
+      "result": "Registered instance on port 8192 at http://localhost:8192"
+    },
+    {
+      "port": 8193,
+      "url": "http://localhost:8193",
+      "result": "Registered instance on port 8193 at http://localhost:8193"
+    }
+  ]
 }
-Registered instance on port 8192 at http://localhost:8192
 
-View result from register_instance from ghydra (local){
-  `port`: 8193
+View result from list_instances from ghydra (local)
+{
+  "instances": [
+    {
+      "port": 8192,
+      "url": "http://localhost:8192",
+      "project": "TestProject",
+      "file": "application.exe"
+    },
+    {
+      "port": 8193,
+      "url": "http://localhost:8193",
+      "project": "FirmwareAnalysis",
+      "file": "firmware.bin"
+    }
+  ]
 }
-Registered instance on port 8193 at http://localhost:8193
 
-Now that I've registered both instances, I'm ready to analyze the decompiled code.
+I found two active Ghidra instances:
+1. Port 8192: Analyzing "application.exe" in project "TestProject"
+2. Port 8193: Analyzing "firmware.bin" in project "FirmwareAnalysis"
+
+I'm ready to analyze these binaries. What would you like me to examine?
 ```
 
 **User:**
