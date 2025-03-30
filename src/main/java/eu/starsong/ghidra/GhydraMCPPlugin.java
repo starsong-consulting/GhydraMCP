@@ -39,8 +39,8 @@ import org.json.simple.JSONObject;
     status = PluginStatus.RELEASED,
     packageName = ghidra.app.DeveloperPluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
-    shortDescription = "HTTP server plugin",
-    description = "Starts an embedded HTTP server to expose program data."
+    shortDescription = "GhydraMCP Plugin for AI Analysis",
+    description = "Starts an embedded HTTP server to expose program data via REST API for AI-assisted reverse engineering with MCP (Model Context Protocol)."
 )
 public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
