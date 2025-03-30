@@ -159,10 +159,8 @@ def register_instance(port: int, url: str = None) -> str:
                     # Extract basic information from root
                     if "project" in root_data and root_data["project"]:
                         project_info["project"] = root_data["project"]
-                    if "program" in root_data and root_data["program"]:
-                        project_info["file"] = root_data["program"]
-                    if "programID" in root_data and root_data["programID"]:
-                        project_info["program_id"] = root_data["programID"]
+                    if "file" in root_data and root_data["file"]:
+                        project_info["file"] = root_data["file"]
                     
                     print(f"Root data parsed: {project_info}", file=sys.stderr)
                 except Exception as e:
