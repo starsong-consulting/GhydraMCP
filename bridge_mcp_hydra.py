@@ -19,14 +19,13 @@ active_instances: Dict[int, dict] = {}
 instances_lock = Lock()
 DEFAULT_GHIDRA_PORT = 8192
 DEFAULT_GHIDRA_HOST = "localhost"
-DISCOVERY_PORT_RANGE = range(8192, 8300)  # Port range to scan for Ghidra instances
+# Port ranges for scanning
+QUICK_DISCOVERY_RANGE = range(8192, 8202)  # Limited range for interactive/triggered discovery (10 ports)
+FULL_DISCOVERY_RANGE = range(8192, 8212)   # Wider range for background discovery (20 ports)
 
 mcp = FastMCP("hydra-mcp")
 
-# Get host from environment variable, command line, or use default
 ghidra_host = os.environ.get("GHIDRA_HYDRA_HOST", DEFAULT_GHIDRA_HOST)
-if len(sys.argv) > 1:
-    ghidra_host = sys.argv[1]
 print(f"Using Ghidra host: {ghidra_host}")
 
 def get_instance_url(port: int) -> str:
@@ -188,18 +187,27 @@ def unregister_instance(port: int) -> str:
         return f"No instance found on port {port}"
 
 @mcp.tool()
-def discover_instances() -> dict:
-    """Auto-discover Ghidra instances by scanning ports"""
-    found_instances = []
+def discover_instances(host: str = None) -> dict:
+    """Auto-discover Ghidra instances by scanning ports (quick discovery with limited range)
     
-    for port in DISCOVERY_PORT_RANGE:
+    Args:
+        host: Optional host to scan (defaults to configured ghidra_host)
+    """
+    return _discover_instances(QUICK_DISCOVERY_RANGE, host=host, timeout=0.5)
+
+def _discover_instances(port_range, host=None, timeout=0.5) -> dict:
+    """Internal function to discover Ghidra instances by scanning ports"""
+    found_instances = []
+    scan_host = host if host is not None else ghidra_host
+    
+    for port in port_range:
         if port in active_instances:
             continue
             
-        url = f"http://{ghidra_host}:{port}"
+        url = f"http://{scan_host}:{port}"
         try:
             test_url = f"{url}/instances"
-            response = requests.get(test_url, timeout=1)  # Short timeout for scanning
+            response = requests.get(test_url, timeout=timeout)  # Short timeout for scanning
             if response.ok:
                 result = register_instance(port, url)
                 found_instances.append({"port": port, "url": url, "result": result})
@@ -277,7 +285,9 @@ def periodic_discovery():
     """Periodically discover new instances"""
     while True:
         try:
-            discover_instances()
+            # Use the full discovery range
+            _discover_instances(FULL_DISCOVERY_RANGE, timeout=0.5)
+            
             # Also check if any existing instances are down
             with instances_lock:
                 ports_to_remove = []
