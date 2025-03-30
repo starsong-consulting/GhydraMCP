@@ -11,6 +11,8 @@ import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.services.ProgramManager;
+import ghidra.framework.model.Project;
+import ghidra.framework.model.DomainFile;
 import ghidra.framework.plugintool.PluginInfo;
 import ghidra.framework.plugintool.util.PluginStatus;
 import ghidra.util.Msg;
@@ -29,6 +31,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
+
+// For JSON response handling
+import org.json.simple.JSONObject;
 
 @PluginInfo(
     status = PluginStatus.RELEASED,
@@ -206,6 +211,24 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                   .append("\n");
             }
             sendResponse(exchange, sb.toString());
+        });
+        
+        // Info endpoints - both root and /info for flexibility
+        server.createContext("/info", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, getProjectInfo());
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        });
+        
+        // Root endpoint also returns project info
+        server.createContext("/", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                sendJsonResponse(exchange, getProjectInfo());
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
         });
 
         server.createContext("/registerInstance", exchange -> {
@@ -550,10 +573,69 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         ProgramManager pm = tool.getService(ProgramManager.class);
         return pm != null ? pm.getCurrentProgram() : null;
     }
+    
+    /**
+     * Get information about the current project and open file in JSON format
+     */
+    private JSONObject getProjectInfo() {
+        JSONObject info = new JSONObject();
+        Program program = getCurrentProgram();
+        
+        // Get project information if available
+        Project project = tool.getProject();
+        if (project != null) {
+            info.put("project", project.getName());
+        } else {
+            info.put("project", "Unknown");
+        }
+        
+        // Create file information object
+        JSONObject fileInfo = new JSONObject();
+        
+        // Get current file information if available
+        if (program != null) {
+            // Basic info
+            fileInfo.put("name", program.getName());
+            
+            // Try to get more detailed info
+            DomainFile domainFile = program.getDomainFile();
+            if (domainFile != null) {
+                fileInfo.put("path", domainFile.getPathname());
+            }
+            
+            // Add any additional file info we might want
+            fileInfo.put("architecture", program.getLanguage().getProcessor().toString());
+            fileInfo.put("endian", program.getLanguage().isBigEndian() ? "big" : "little");
+            
+            info.put("file", fileInfo);
+        } else {
+            info.put("file", null);
+            info.put("status", "No file open");
+        }
+        
+        // Add server metadata
+        info.put("port", port);
+        info.put("isBaseInstance", isBaseInstance);
+        
+        return info;
+    }
 
     private void sendResponse(HttpExchange exchange, String response) throws IOException {
         byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+    
+    /**
+     * Send a JSON response to the client
+     */
+    private void sendJsonResponse(HttpExchange exchange, JSONObject json) throws IOException {
+        String jsonString = json.toJSONString();
+        byte[] bytes = jsonString.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(200, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
