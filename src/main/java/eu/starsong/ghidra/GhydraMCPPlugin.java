@@ -4,13 +4,24 @@ import ghidra.framework.plugintool.*;
 import ghidra.framework.main.ApplicationLevelPlugin;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.GlobalNamespace;
+import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.mem.MemoryBlock;
+import ghidra.program.model.pcode.HighVariable;
+import ghidra.program.model.pcode.HighSymbol;
+import ghidra.program.model.pcode.VarnodeAST;
+import ghidra.program.model.pcode.HighFunction;
+import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.symbol.*;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.decompiler.ClangNode;
+import ghidra.app.decompiler.ClangTokenGroup;
+import ghidra.app.decompiler.ClangVariableToken;
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.services.ProgramManager;
+import ghidra.app.util.demangler.DemanglerUtil;
 import ghidra.framework.model.Project;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.plugintool.PluginInfo;
@@ -105,25 +116,69 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
         server.createContext("/functions/", exchange -> {
             String path = exchange.getRequestURI().getPath();
-            String name = path.substring(path.lastIndexOf('/') + 1);
+            
+            // Handle sub-paths: /functions/{name}
+            // or /functions/{name}/variables
+            String[] pathParts = path.split("/");
+            
+            if (pathParts.length < 3) {
+                exchange.sendResponseHeaders(400, -1); // Bad Request
+                return;
+            }
+            
+            String functionName = pathParts[2];
             try {
-                name = java.net.URLDecoder.decode(name, StandardCharsets.UTF_8.name());
+                functionName = java.net.URLDecoder.decode(functionName, StandardCharsets.UTF_8.name());
             } catch (Exception e) {
                 Msg.error(this, "Failed to decode function name", e);
                 exchange.sendResponseHeaders(400, -1); // Bad Request
                 return;
             }
             
-            if ("GET".equals(exchange.getRequestMethod())) {
-                sendResponse(exchange, decompileFunctionByName(name));
-            } else if ("PUT".equals(exchange.getRequestMethod())) {
-                Map<String, String> params = parsePostParams(exchange);
-                String newName = params.get("newName");
-                String response = renameFunction(name, newName)
-                        ? "Renamed successfully" : "Rename failed";
-                sendResponse(exchange, response);
+            // Check if we're dealing with a variables request
+            if (pathParts.length > 3 && "variables".equals(pathParts[3])) {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    // List all variables in function
+                    sendResponse(exchange, listVariablesInFunction(functionName));
+                } else if ("PUT".equals(exchange.getRequestMethod()) && pathParts.length > 4) {
+                    // Handle operations on a specific variable
+                    String variableName = pathParts[4];
+                    try {
+                        variableName = java.net.URLDecoder.decode(variableName, StandardCharsets.UTF_8.name());
+                    } catch (Exception e) {
+                        Msg.error(this, "Failed to decode variable name", e);
+                        exchange.sendResponseHeaders(400, -1);
+                        return;
+                    }
+                    
+                    Map<String, String> params = parsePostParams(exchange);
+                    if (params.containsKey("newName")) {
+                        // Rename variable
+                        String result = renameVariable(functionName, variableName, params.get("newName"));
+                        sendResponse(exchange, result);
+                    } else if (params.containsKey("dataType")) {
+                        // Retype variable
+                        String result = retypeVariable(functionName, variableName, params.get("dataType"));
+                        sendResponse(exchange, result);
+                    } else {
+                        sendResponse(exchange, "Missing required parameter: newName or dataType");
+                    }
+                } else {
+                    exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                // Simple function operations
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    sendResponse(exchange, decompileFunctionByName(functionName));
+                } else if ("PUT".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parsePostParams(exchange);
+                    String newName = params.get("newName");
+                    String response = renameFunction(functionName, newName)
+                            ? "Renamed successfully" : "Rename failed";
+                    sendResponse(exchange, response);
+                } else {
+                    exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                }
             }
         });
 
@@ -197,6 +252,24 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 Map<String, String> params = parsePostParams(exchange);
                 renameDataAtAddress(params.get("address"), params.get("newName"));
                 sendResponse(exchange, "Rename data attempted");
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        });
+        
+        // Global variables endpoint
+        server.createContext("/variables", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                String search = qparams.get("search");
+                
+                if (search != null && !search.isEmpty()) {
+                    sendResponse(exchange, searchVariables(search, offset, limit));
+                } else {
+                    sendResponse(exchange, listGlobalVariables(offset, limit));
+                }
             } else {
                 exchange.sendResponseHeaders(405, -1); // Method Not Allowed
             }
@@ -562,6 +635,373 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         catch (InterruptedException | InvocationTargetException e) {
             Msg.error(this, "Failed to execute rename data on Swing thread", e);
         }
+    }
+    
+    // ----------------------------------------------------------------------------------
+    // New variable handling methods
+    // ----------------------------------------------------------------------------------
+    
+    private String listVariablesInFunction(String functionName) {
+        Program program = getCurrentProgram();
+        if (program == null) return "No program loaded";
+
+        DecompInterface decomp = new DecompInterface();
+        try {
+            if (!decomp.openProgram(program)) {
+                return "Failed to initialize decompiler";
+            }
+            
+            Function function = findFunctionByName(program, functionName);
+            if (function == null) {
+                return "Function not found: " + functionName;
+            }
+            
+            DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+            if (results == null || !results.decompileCompleted()) {
+                return "Failed to decompile function: " + functionName;
+            }
+
+            // Get high-level pcode representation for the function
+            HighFunction highFunction = results.getHighFunction();
+            if (highFunction == null) {
+                return "Failed to get high function for: " + functionName;
+            }
+            
+            // Get local variables
+            List<String> variables = new ArrayList<>();
+            Iterator<HighSymbol> symbolIter = highFunction.getLocalSymbolMap().getSymbols();
+            while (symbolIter.hasNext()) {
+                HighSymbol symbol = symbolIter.next();
+                if (symbol.getHighVariable() != null) {
+                    DataType dt = symbol.getDataType();
+                    String dtName = dt != null ? dt.getName() : "unknown";
+                    variables.add(String.format("%s: %s @ %s", 
+                        symbol.getName(), dtName, symbol.getPCAddress()));
+                }
+            }
+            
+            // Get parameters
+            List<String> parameters = new ArrayList<>();
+            // In older Ghidra versions, we need to filter symbols to find parameters
+            symbolIter = highFunction.getLocalSymbolMap().getSymbols();
+            while (symbolIter.hasNext()) {
+                HighSymbol symbol = symbolIter.next();
+                if (symbol.isParameter()) {
+                    DataType dt = symbol.getDataType();
+                    String dtName = dt != null ? dt.getName() : "unknown";
+                    parameters.add(String.format("%s: %s (parameter)", 
+                        symbol.getName(), dtName));
+                }
+            }
+            
+            // Format the response
+            StringBuilder sb = new StringBuilder();
+            sb.append("Function: ").append(functionName).append("\n\n");
+            
+            sb.append("Parameters:\n");
+            if (parameters.isEmpty()) {
+                sb.append("  none\n");
+            } else {
+                for (String param : parameters) {
+                    sb.append("  ").append(param).append("\n");
+                }
+            }
+            
+            sb.append("\nLocal Variables:\n");
+            if (variables.isEmpty()) {
+                sb.append("  none\n");
+            } else {
+                for (String var : variables) {
+                    sb.append("  ").append(var).append("\n");
+                }
+            }
+            
+            return sb.toString();
+        } finally {
+            decomp.dispose();
+        }
+    }
+    
+    private String renameVariable(String functionName, String oldName, String newName) {
+        if (oldName == null || oldName.isEmpty() || newName == null || newName.isEmpty()) {
+            return "Both old and new variable names are required";
+        }
+        
+        Program program = getCurrentProgram();
+        if (program == null) return "No program loaded";
+        
+        AtomicReference<String> result = new AtomicReference<>("Variable rename failed");
+        
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                int tx = program.startTransaction("Rename variable via HTTP");
+                try {
+                    Function function = findFunctionByName(program, functionName);
+                    if (function == null) {
+                        result.set("Function not found: " + functionName);
+                        return;
+                    }
+                    
+                    // Initialize decompiler
+                    DecompInterface decomp = new DecompInterface();
+                    decomp.openProgram(program);
+                    DecompileResults decompRes = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                    
+                    if (decompRes == null || !decompRes.decompileCompleted()) {
+                        result.set("Failed to decompile function: " + functionName);
+                        return;
+                    }
+                    
+                    HighFunction highFunction = decompRes.getHighFunction();
+                    if (highFunction == null) {
+                        result.set("Failed to get high function");
+                        return;
+                    }
+                    
+                    // Find the variable by name
+                    HighSymbol targetSymbol = null;
+                    Iterator<HighSymbol> symbolIter = highFunction.getLocalSymbolMap().getSymbols();
+                    while (symbolIter.hasNext()) {
+                        HighSymbol symbol = symbolIter.next();
+                        if (symbol.getName().equals(oldName)) {
+                            targetSymbol = symbol;
+                            break;
+                        }
+                    }
+                    
+                    if (targetSymbol == null) {
+                        result.set("Variable not found: " + oldName);
+                        return;
+                    }
+                    
+                    // Rename the variable
+                    HighFunctionDBUtil.updateDBVariable(targetSymbol, newName, targetSymbol.getDataType(), 
+                                                      SourceType.USER_DEFINED);
+                    
+                    result.set("Variable renamed from '" + oldName + "' to '" + newName + "'");
+                } catch (Exception e) {
+                    Msg.error(this, "Error renaming variable", e);
+                    result.set("Error: " + e.getMessage());
+                } finally {
+                    program.endTransaction(tx, true);
+                }
+            });
+        } catch (InterruptedException | InvocationTargetException e) {
+            Msg.error(this, "Failed to execute on Swing thread", e);
+            result.set("Error: " + e.getMessage());
+        }
+        
+        return result.get();
+    }
+    
+    private String retypeVariable(String functionName, String varName, String dataTypeName) {
+        if (varName == null || varName.isEmpty() || dataTypeName == null || dataTypeName.isEmpty()) {
+            return "Both variable name and data type are required";
+        }
+        
+        Program program = getCurrentProgram();
+        if (program == null) return "No program loaded";
+        
+        AtomicReference<String> result = new AtomicReference<>("Variable retype failed");
+        
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                int tx = program.startTransaction("Retype variable via HTTP");
+                try {
+                    Function function = findFunctionByName(program, functionName);
+                    if (function == null) {
+                        result.set("Function not found: " + functionName);
+                        return;
+                    }
+                    
+                    // Initialize decompiler
+                    DecompInterface decomp = new DecompInterface();
+                    decomp.openProgram(program);
+                    DecompileResults decompRes = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                    
+                    if (decompRes == null || !decompRes.decompileCompleted()) {
+                        result.set("Failed to decompile function: " + functionName);
+                        return;
+                    }
+                    
+                    HighFunction highFunction = decompRes.getHighFunction();
+                    if (highFunction == null) {
+                        result.set("Failed to get high function");
+                        return;
+                    }
+                    
+                    // Find the variable by name
+                    HighSymbol targetSymbol = null;
+                    Iterator<HighSymbol> symbolIter = highFunction.getLocalSymbolMap().getSymbols();
+                    while (symbolIter.hasNext()) {
+                        HighSymbol symbol = symbolIter.next();
+                        if (symbol.getName().equals(varName)) {
+                            targetSymbol = symbol;
+                            break;
+                        }
+                    }
+                    
+                    if (targetSymbol == null) {
+                        result.set("Variable not found: " + varName);
+                        return;
+                    }
+                    
+                    // Find the data type by name
+                    DataType dataType = findDataType(program, dataTypeName);
+                    if (dataType == null) {
+                        result.set("Data type not found: " + dataTypeName);
+                        return;
+                    }
+                    
+                    // Retype the variable
+                    HighFunctionDBUtil.updateDBVariable(targetSymbol, targetSymbol.getName(), dataType, 
+                                                      SourceType.USER_DEFINED);
+                    
+                    result.set("Variable '" + varName + "' retyped to '" + dataTypeName + "'");
+                } catch (Exception e) {
+                    Msg.error(this, "Error retyping variable", e);
+                    result.set("Error: " + e.getMessage());
+                } finally {
+                    program.endTransaction(tx, true);
+                }
+            });
+        } catch (InterruptedException | InvocationTargetException e) {
+            Msg.error(this, "Failed to execute on Swing thread", e);
+            result.set("Error: " + e.getMessage());
+        }
+        
+        return result.get();
+    }
+    
+    private String listGlobalVariables(int offset, int limit) {
+        Program program = getCurrentProgram();
+        if (program == null) return "No program loaded";
+        
+        List<String> globalVars = new ArrayList<>();
+        SymbolTable symbolTable = program.getSymbolTable();
+        SymbolIterator it = symbolTable.getSymbolIterator();
+        
+        while (it.hasNext()) {
+            Symbol symbol = it.next();
+            // Check for globals - look for symbols that are in global space and not functions
+            if (symbol.isGlobal() && 
+                symbol.getSymbolType() != SymbolType.FUNCTION && 
+                symbol.getSymbolType() != SymbolType.LABEL) {
+                globalVars.add(String.format("%s @ %s", 
+                    symbol.getName(), symbol.getAddress()));
+            }
+        }
+        
+        Collections.sort(globalVars);
+        return paginateList(globalVars, offset, limit);
+    }
+    
+    private String searchVariables(String searchTerm, int offset, int limit) {
+        Program program = getCurrentProgram();
+        if (program == null) return "No program loaded";
+        if (searchTerm == null || searchTerm.isEmpty()) return "Search term is required";
+        
+        List<String> matchedVars = new ArrayList<>();
+        
+        // Search global variables
+        SymbolTable symbolTable = program.getSymbolTable();
+        SymbolIterator it = symbolTable.getSymbolIterator();
+        while (it.hasNext()) {
+            Symbol symbol = it.next();
+            if (symbol.isGlobal() && 
+                symbol.getSymbolType() != SymbolType.FUNCTION && 
+                symbol.getSymbolType() != SymbolType.LABEL && 
+                symbol.getName().toLowerCase().contains(searchTerm.toLowerCase())) {
+                matchedVars.add(String.format("%s @ %s (global)", 
+                    symbol.getName(), symbol.getAddress()));
+            }
+        }
+        
+        // Search local variables in functions
+        DecompInterface decomp = new DecompInterface();
+        try {
+            if (decomp.openProgram(program)) {
+                for (Function function : program.getFunctionManager().getFunctions(true)) {
+                    DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                    if (results != null && results.decompileCompleted()) {
+                        HighFunction highFunc = results.getHighFunction();
+                        if (highFunc != null) {
+                            // Check each local variable and parameter
+                            Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
+                            while (symbolIter.hasNext()) {
+                                HighSymbol symbol = symbolIter.next();
+                                if (symbol.getName().toLowerCase().contains(searchTerm.toLowerCase())) {
+                                    if (symbol.isParameter()) {
+                                        matchedVars.add(String.format("%s in %s (parameter)", 
+                                            symbol.getName(), function.getName()));
+                                    } else {
+                                        matchedVars.add(String.format("%s in %s @ %s (local)", 
+                                            symbol.getName(), function.getName(), symbol.getPCAddress()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } finally {
+            decomp.dispose();
+        }
+        
+        Collections.sort(matchedVars);
+        
+        if (matchedVars.isEmpty()) {
+            return "No variables matching '" + searchTerm + "'";
+        }
+        return paginateList(matchedVars, offset, limit);
+    }
+    
+    // ----------------------------------------------------------------------------------
+    // Helper methods
+    // ----------------------------------------------------------------------------------
+    
+    private Function findFunctionByName(Program program, String name) {
+        if (program == null || name == null || name.isEmpty()) {
+            return null;
+        }
+        
+        for (Function function : program.getFunctionManager().getFunctions(true)) {
+            if (function.getName().equals(name)) {
+                return function;
+            }
+        }
+        return null;
+    }
+    
+    private DataType findDataType(Program program, String name) {
+        if (program == null || name == null || name.isEmpty()) {
+            return null;
+        }
+        
+        DataTypeManager dtm = program.getDataTypeManager();
+        
+        // First try direct lookup
+        DataType dt = dtm.getDataType("/" + name);
+        if (dt != null) {
+            return dt;
+        }
+        
+        // Try built-in types by simple name
+        dt = dtm.findDataType(name);
+        if (dt != null) {
+            return dt;
+        }
+        
+        // Try to find a matching type by name only
+        Iterator<DataType> dtIter = dtm.getAllDataTypes();
+        while (dtIter.hasNext()) {
+            DataType type = dtIter.next();
+            if (type.getName().equals(name)) {
+                return type;
+            }
+        }
+        
+        return null;
     }
 
     // ----------------------------------------------------------------------------------
