@@ -146,26 +146,56 @@ def register_instance(port: int, url: str = None) -> str:
         project_info = {"url": url}
         
         try:
-            info_url = f"{url}/info"
-            info_response = requests.get(info_url, timeout=2)
-            if info_response.ok:
+            # Try the root endpoint first
+            root_url = f"{url}/"
+            print(f"Trying to get root info from {root_url}", file=sys.stderr)
+            root_response = requests.get(root_url, timeout=1.5)  # Short timeout for root
+            
+            if root_response.ok:
                 try:
-                    # Parse JSON response
-                    info_data = info_response.json()
+                    print(f"Got response from root: {root_response.text}", file=sys.stderr)
+                    root_data = root_response.json()
                     
-                    # Extract relevant information
-                    project_info["project"] = info_data.get("project", "Unknown")
+                    # Extract basic information from root
+                    if "project" in root_data and root_data["project"]:
+                        project_info["project"] = root_data["project"]
+                    if "program" in root_data and root_data["program"]:
+                        project_info["file"] = root_data["program"]
+                    if "programID" in root_data and root_data["programID"]:
+                        project_info["program_id"] = root_data["programID"]
                     
-                    # Handle file information which is nested
-                    file_info = info_data.get("file", {})
-                    if file_info:
-                        project_info["file"] = file_info.get("name", "")
-                        project_info["path"] = file_info.get("path", "")
-                        project_info["architecture"] = file_info.get("architecture", "")
-                        project_info["endian"] = file_info.get("endian", "")
-                except ValueError:
-                    # Not valid JSON
-                    pass
+                    print(f"Root data parsed: {project_info}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error parsing root info: {e}", file=sys.stderr)
+            else:
+                print(f"Root endpoint returned {root_response.status_code}", file=sys.stderr)
+                
+            # If we don't have project info yet, try the /info endpoint as a fallback
+            if not project_info.get("project") and not project_info.get("file"):
+                info_url = f"{url}/info"
+                print(f"Trying fallback info from {info_url}", file=sys.stderr)
+                
+                try:
+                    info_response = requests.get(info_url, timeout=2)
+                    if info_response.ok:
+                        try:
+                            info_data = info_response.json()
+                            # Extract relevant information
+                            if "project" in info_data and info_data["project"]:
+                                project_info["project"] = info_data["project"]
+                            
+                            # Handle file information
+                            file_info = info_data.get("file", {})
+                            if isinstance(file_info, dict) and file_info.get("name"):
+                                project_info["file"] = file_info.get("name", "")
+                                project_info["path"] = file_info.get("path", "")
+                                project_info["architecture"] = file_info.get("architecture", "")
+                                project_info["endian"] = file_info.get("endian", "")
+                            print(f"Info data parsed: {project_info}", file=sys.stderr)
+                        except Exception as e:
+                            print(f"Error parsing info endpoint: {e}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error connecting to info endpoint: {e}", file=sys.stderr)
         except Exception:
             # Non-critical, continue with registration even if project info fails
             pass

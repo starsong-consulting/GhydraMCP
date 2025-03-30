@@ -213,21 +213,99 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             sendResponse(exchange, sb.toString());
         });
         
-        // Info endpoints - both root and /info for flexibility
+        // Super simple info endpoint with guaranteed response
         server.createContext("/info", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                sendJsonResponse(exchange, getProjectInfo());
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                String response = "{\n";
+                response += "\"port\": " + port + ",\n";
+                response += "\"isBaseInstance\": " + isBaseInstance + ",\n";
+                
+                // Try to get program info if available
+                Program program = getCurrentProgram();
+                String programName = "\"\"";
+                if (program != null) {
+                    programName = "\"" + program.getName() + "\"";
+                }
+                
+                // Try to get project info if available
+                Project project = tool.getProject();
+                String projectName = "\"\"";
+                if (project != null) {
+                    projectName = "\"" + project.getName() + "\"";
+                }
+                
+                response += "\"project\": " + projectName + ",\n";
+                response += "\"file\": " + programName + "\n";
+                response += "}";
+                
+                Msg.info(this, "Sending /info response: " + response);
+                byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, bytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error serving /info endpoint", e);
+                try {
+                    String error = "{\"error\": \"Internal error\", \"port\": " + port + "}";
+                    byte[] bytes = error.getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(bytes);
+                    }
+                } catch (IOException ioe) {
+                    Msg.error(this, "Failed to send error response", ioe);
+                }
             }
         });
         
-        // Root endpoint also returns project info
+        // Super simple root endpoint - exact same as /info for consistency
         server.createContext("/", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                sendJsonResponse(exchange, getProjectInfo());
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                String response = "{\n";
+                response += "\"port\": " + port + ",\n";
+                response += "\"isBaseInstance\": " + isBaseInstance + ",\n";
+                
+                // Try to get program info if available
+                Program program = getCurrentProgram();
+                String programName = "\"\"";
+                if (program != null) {
+                    programName = "\"" + program.getName() + "\"";
+                }
+                
+                // Try to get project info if available
+                Project project = tool.getProject();
+                String projectName = "\"\"";
+                if (project != null) {
+                    projectName = "\"" + project.getName() + "\"";
+                }
+                
+                response += "\"project\": " + projectName + ",\n";
+                response += "\"file\": " + programName + "\n";
+                response += "}";
+                
+                Msg.info(this, "Sending / response: " + response);
+                byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                exchange.sendResponseHeaders(200, bytes.length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(bytes);
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error serving / endpoint", e);
+                try {
+                    String error = "{\"error\": \"Internal error\", \"port\": " + port + "}";
+                    byte[] bytes = error.getBytes(StandardCharsets.UTF_8);
+                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                    exchange.sendResponseHeaders(200, bytes.length);
+                    try (OutputStream os = exchange.getResponseBody()) {
+                        os.write(bytes);
+                    }
+                } catch (IOException ioe) {
+                    Msg.error(this, "Failed to send error response", ioe);
+                }
             }
         });
 
@@ -569,56 +647,32 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         return sb.toString();
     }
 
-    public Program getCurrentProgram() {
-        ProgramManager pm = tool.getService(ProgramManager.class);
-        return pm != null ? pm.getCurrentProgram() : null;
-    }
-    
     /**
-     * Get information about the current project and open file in JSON format
+     * Get the current program from the tool
      */
-    private JSONObject getProjectInfo() {
-        JSONObject info = new JSONObject();
-        Program program = getCurrentProgram();
-        
-        // Get project information if available
-        Project project = tool.getProject();
-        if (project != null) {
-            info.put("project", project.getName());
-        } else {
-            info.put("project", "Unknown");
+    public Program getCurrentProgram() {
+        if (tool == null) {
+            Msg.debug(this, "Tool is null when trying to get current program");
+            return null;
         }
-        
-        // Create file information object
-        JSONObject fileInfo = new JSONObject();
-        
-        // Get current file information if available
-        if (program != null) {
-            // Basic info
-            fileInfo.put("name", program.getName());
-            
-            // Try to get more detailed info
-            DomainFile domainFile = program.getDomainFile();
-            if (domainFile != null) {
-                fileInfo.put("path", domainFile.getPathname());
+
+        try {
+            ProgramManager pm = tool.getService(ProgramManager.class);
+            if (pm == null) {
+                Msg.debug(this, "ProgramManager service is not available");
+                return null;
             }
             
-            // Add any additional file info we might want
-            fileInfo.put("architecture", program.getLanguage().getProcessor().toString());
-            fileInfo.put("endian", program.getLanguage().isBigEndian() ? "big" : "little");
-            
-            info.put("file", fileInfo);
-        } else {
-            info.put("file", null);
-            info.put("status", "No file open");
+            Program program = pm.getCurrentProgram();
+            Msg.debug(this, "Got current program: " + (program != null ? program.getName() : "null"));
+            return program;
+        } 
+        catch (Exception e) {
+            Msg.error(this, "Error getting current program", e);
+            return null;
         }
-        
-        // Add server metadata
-        info.put("port", port);
-        info.put("isBaseInstance", isBaseInstance);
-        
-        return info;
     }
+    
 
     private void sendResponse(HttpExchange exchange, String response) throws IOException {
         byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
@@ -629,18 +683,6 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
     }
     
-    /**
-     * Send a JSON response to the client
-     */
-    private void sendJsonResponse(HttpExchange exchange, JSONObject json) throws IOException {
-        String jsonString = json.toJSONString();
-        byte[] bytes = jsonString.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.sendResponseHeaders(200, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
-        }
-    }
 
     private int findAvailablePort() {
         int basePort = 8192;
