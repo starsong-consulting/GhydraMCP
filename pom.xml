@@ -6,7 +6,7 @@
   <groupId>eu.starsong.ghidra</groupId>
   <artifactId>GhydraMCP</artifactId>
   <packaging>jar</packaging>
-  <version>1.1</version>
+  <version>${revision}</version>
   <name>GhydraMCP</name>
   <url>https://github.com/teal-bauer/GhydraMCP</url>
   
@@ -16,6 +16,8 @@
     <ghidra.jar.location>${project.basedir}/lib</ghidra.jar.location>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
+    <revision>dev-SNAPSHOT</revision>
+    <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
   </properties>
 
   <dependencies>
@@ -101,6 +103,56 @@
         </configuration>
       </plugin>
       
+      <!-- Git Commit ID plugin to generate version from git -->
+      <plugin>
+        <groupId>io.github.git-commit-id</groupId>
+        <artifactId>git-commit-id-maven-plugin</artifactId>
+        <version>5.0.0</version>
+        <executions>
+          <execution>
+            <id>get-git-info</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>revision</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+          <includeOnlyProperties>
+            <includeOnlyProperty>git.commit.id.abbrev</includeOnlyProperty>
+            <includeOnlyProperty>git.commit.time</includeOnlyProperty>
+            <includeOnlyProperty>git.closest.tag.name</includeOnlyProperty>
+            <includeOnlyProperty>git.build.version</includeOnlyProperty>
+          </includeOnlyProperties>
+          <commitIdGenerationMode>full</commitIdGenerationMode>
+        </configuration>
+      </plugin>
+      
+      <!-- Set revision property from git info -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.4.0</version>
+        <executions>
+          <execution>
+            <id>set-revision-from-git</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>regex-property</goal>
+            </goals>
+            <configuration>
+              <name>revision</name>
+              <value>${git.commit.id.abbrev}-${maven.build.timestamp}</value>
+              <regex>.*</regex>
+              <replacement>$0</replacement>
+              <failIfNoMatch>false</failIfNoMatch>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      
       <!-- Use custom MANIFEST.MF -->
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
@@ -108,6 +160,9 @@
         <configuration>
           <archive>
             <manifestFile>src/main/resources/META-INF/MANIFEST.MF</manifestFile>
+            <manifestEntries>
+              <Plugin-Version>${revision}</Plugin-Version>
+            </manifestEntries>
           </archive>
           <finalName>GhydraMCP</finalName>
           <excludes>

@@ -302,6 +302,43 @@ def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", o
         return ["Error: query string is required"]
     return safe_get(port, "functions", {"query": query, "offset": offset, "limit": limit})
 
+@mcp.tool()
+def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100, search: str = "") -> list:
+    """List global variables with optional search"""
+    params = {"offset": offset, "limit": limit}
+    if search:
+        params["search"] = search
+    return safe_get(port, "variables", params)
+
+@mcp.tool()
+def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "") -> str:
+    """List variables in a specific function"""
+    if not function:
+        return "Error: function name is required"
+    
+    encoded_name = quote(function)
+    return safe_get(port, f"functions/{encoded_name}/variables", {})
+
+@mcp.tool()
+def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", new_name: str = "") -> str:
+    """Rename a variable in a function"""
+    if not function or not name or not new_name:
+        return "Error: function, name, and new_name parameters are required"
+    
+    encoded_function = quote(function)
+    encoded_var = quote(name)
+    return safe_put(port, f"functions/{encoded_function}/variables/{encoded_var}", {"newName": new_name})
+
+@mcp.tool()
+def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", data_type: str = "") -> str:
+    """Change the data type of a variable in a function"""
+    if not function or not name or not data_type:
+        return "Error: function, name, and data_type parameters are required"
+    
+    encoded_function = quote(function)
+    encoded_var = quote(name)
+    return safe_put(port, f"functions/{encoded_function}/variables/{encoded_var}", {"dataType": data_type})
+
 # Handle graceful shutdown
 import signal
 import os
