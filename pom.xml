@@ -6,7 +6,7 @@
   <groupId>eu.starsong.ghidra</groupId>
   <artifactId>GhydraMCP</artifactId>
   <packaging>jar</packaging>
-  <version>1.1</version>
+  <version>11.3.1</version>
   <name>GhydraMCP</name>
   <url>https://github.com/teal-bauer/GhydraMCP</url>
   

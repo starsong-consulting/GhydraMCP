@@ -4,19 +4,14 @@
     xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3 
         http://maven.apache.org/xsd/assembly-1.1.3.xsd">
     
-    <!-- Complete package with Ghidra plugin and bridge Python script -->
     <id>complete-package</id>
-    
-    <!-- We want a .zip file -->
     <formats>
         <format>zip</format>
     </formats>
-    
-    <!-- Don't put everything in an extra top-level directory named after the assembly ID -->
     <includeBaseDirectory>false</includeBaseDirectory>
     
     <fileSets>
-        <!-- 1) Include the bridge Python script in the root -->
+        <!-- Include bridge script, README and LICENSE -->
         <fileSet>
             <directory>${project.basedir}</directory>
             <includes>
@@ -27,23 +22,13 @@
             <outputDirectory></outputDirectory>
         </fileSet>
         
-        <!-- 2) Include the Ghidra plugin files -->
+        <!-- Include pre-built Ghidra plugin zip -->
         <fileSet>
             <directory>${project.build.directory}</directory>
             <includes>
-                <include>GhydraMCP.jar</include>
+                <include>GhydraMCP-${project.version}.zip</include>
             </includes>
-            <outputDirectory>GhydraMCP/lib</outputDirectory>
-        </fileSet>
-        
-        <!-- 3) Include required Ghidra plugin metadata -->
-        <fileSet>
-            <directory>src/main/resources</directory>
-            <includes>
-                <include>extension.properties</include>
-                <include>Module.manifest</include>
-            </includes>
-            <outputDirectory>GhydraMCP</outputDirectory>
+            <outputDirectory></outputDirectory>
         </fileSet>
     </fileSets>
 </assembly>
