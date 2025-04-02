@@ -37,7 +37,7 @@ jobs:
           VERSION="${{ github.ref_name }}"
           VERSION="${VERSION#v}"
           echo "BUILD_VERSION=${VERSION}" >> $GITHUB_OUTPUT
-          echo "::debug::Set BUILD_VERSION to ${VERSION}"
+          echo "Set BUILD_VERSION to ${VERSION}"
         else
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
           TIMESTAMP=$(date +"%Y%m%d-%H%M%S")
@@ -49,7 +49,7 @@ jobs:
           fi
           FULL_VERSION="${BASE_VERSION}-${SHORT_SHA}-${TIMESTAMP}"
           echo "BUILD_VERSION=${FULL_VERSION}" >> $GITHUB_OUTPUT
-          echo "::debug::Set BUILD_VERSION to ${FULL_VERSION}"
+          echo "Set BUILD_VERSION to ${FULL_VERSION}"
         fi
     
     - name: Update version in files
@@ -76,7 +76,7 @@ jobs:
           target/GhydraMCP-*.zip
           bridge_mcp_hydra.py
     
-    - name: Generate Release Notes
+    - name: Generate Release Notes from CHANGELOG
       if: github.ref_type == 'tag'
       id: generate_notes
       run: |
@@ -84,25 +84,13 @@ jobs:
         VERSION="${{ github.ref_name }}"
         VERSION="${VERSION#v}"
         
-        # Get commit messages since last tag
-        LAST_TAG=$(git describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null || echo "")
-        if [ -z "$LAST_TAG" ]; then
-          # If no previous tag exists, get all commits
-          COMMITS=$(git log --pretty=format:"- %s" --no-merges)
-        else
-          # Get commits between last tag and current tag
-          COMMITS=$(git log --pretty=format:"- %s" --no-merges ${LAST_TAG}..HEAD)
-        fi
-        
-        # Create release notes file
-        cat > release_notes.md << EOF
-        # Release v${VERSION}
-        
-        ## What's Changed
-        ${COMMITS}
-        
-        **Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...v${VERSION}
-        EOF
+        # Extract the changelog section for this version
+        awk -v version="$VERSION" '
+          BEGIN { print=0 }
+          /^## \['version'\]/ { print=1; next }
+          /^## \[/ && print { print=0; next }
+          print { print $0 }
+        ' CHANGELOG.md > release_notes.md
         
         echo "RELEASE_NOTES_FILE=release_notes.md" >> $GITHUB_OUTPUT
 
