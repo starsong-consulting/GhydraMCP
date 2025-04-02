@@ -368,85 +368,162 @@ def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", o
 
 @mcp.tool()
 def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> str:
-    """
-    Get a function by its address.
+    """Get function details by its memory address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address of the function (hex string)
+        
+    Returns:
+        Multiline string with function details including name, address, and signature
     """
     return "\n".join(safe_get(port, "get_function_by_address", {"address": address}))
 
 @mcp.tool()
 def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> str:
-    """
-    Get the address currently selected by the user.
+    """Get the address currently selected in Ghidra's UI
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        
+    Returns:
+        String containing the current memory address (hex format)
     """
     return "\n".join(safe_get(port, "get_current_address"))
 
 @mcp.tool()
 def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> str:
-    """
-    Get the function currently selected by the user.
+    """Get the function currently selected in Ghidra's UI
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        
+    Returns:
+        Multiline string with function details including name, address, and signature
     """
     return "\n".join(safe_get(port, "get_current_function"))
 
 @mcp.tool()
 def list_functions(port: int = DEFAULT_GHIDRA_PORT) -> list:
-    """
-    List all functions in the database.
+    """List all functions in the current program
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        
+    Returns:
+        List of strings with function names and addresses
     """
     return safe_get(port, "list_functions")
 
 @mcp.tool()
 def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> str:
-    """
-    Decompile a function at the given address.
+    """Decompile a function at a specific memory address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address of the function (hex string)
+        
+    Returns:
+        Multiline string containing the decompiled pseudocode
     """
     return "\n".join(safe_get(port, "decompile_function", {"address": address}))
 
 @mcp.tool()
 def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> list:
-    """
-    Get assembly code (address: instruction; comment) for a function.
+    """Get disassembly for a function at a specific address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address of the function (hex string)
+        
+    Returns:
+        List of strings showing assembly instructions with addresses and comments
     """
     return safe_get(port, "disassemble_function", {"address": address})
 
 @mcp.tool()
 def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
-    """
-    Set a comment for a given address in the function pseudocode.
+    """Add/edit a comment in the decompiler view at a specific address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address to place comment (hex string)
+        comment: Text of the comment to add
+        
+    Returns:
+        Confirmation message or error if failed
     """
     return safe_post(port, "set_decompiler_comment", {"address": address, "comment": comment})
 
 @mcp.tool()
 def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
-    """
-    Set a comment for a given address in the function disassembly.
+    """Add/edit a comment in the disassembly view at a specific address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address to place comment (hex string)
+        comment: Text of the comment to add
+        
+    Returns:
+        Confirmation message or error if failed
     """
     return safe_post(port, "set_disassembly_comment", {"address": address, "comment": comment})
 
 @mcp.tool()
 def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", old_name: str = "", new_name: str = "") -> str:
-    """
-    Rename a local variable in a function.
+    """Rename a local variable within a function
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function_address: Memory address of the function (hex string)
+        old_name: Current name of the variable
+        new_name: New name for the variable
+        
+    Returns:
+        Confirmation message or error if failed
     """
     return safe_post(port, "rename_local_variable", {"function_address": function_address, "old_name": old_name, "new_name": new_name})
 
 @mcp.tool()
 def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", new_name: str = "") -> str:
-    """
-    Rename a function by its address.
+    """Rename a function at a specific memory address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function_address: Memory address of the function (hex string)
+        new_name: New name for the function
+        
+    Returns:
+        Confirmation message or error if failed
     """
     return safe_post(port, "rename_function_by_address", {"function_address": function_address, "new_name": new_name})
 
 @mcp.tool()
 def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", prototype: str = "") -> str:
-    """
-    Set a function's prototype.
+    """Update a function's signature/prototype
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function_address: Memory address of the function (hex string)
+        prototype: New function prototype string (e.g. "int func(int param1)")
+        
+    Returns:
+        Confirmation message or error if failed
     """
     return safe_post(port, "set_function_prototype", {"function_address": function_address, "prototype": prototype})
 
 @mcp.tool()
 def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", variable_name: str = "", new_type: str = "") -> str:
-    """
-    Set a local variable's type.
+    """Change the data type of a local variable in a function
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function_address: Memory address of the function (hex string)
+        variable_name: Name of the variable to modify
+        new_type: New data type for the variable (e.g. "int", "char*")
+        
+    Returns:
+        Confirmation message or error if failed
     """
     return safe_post(port, "set_local_variable_type", {"function_address": function_address, "variable_name": variable_name, "new_type": new_type})
 
