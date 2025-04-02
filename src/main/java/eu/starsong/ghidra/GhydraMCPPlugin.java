@@ -13,6 +13,8 @@ import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.pcode.VarnodeAST;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
+import ghidra.program.model.pcode.LocalSymbolMap;
+import ghidra.program.model.pcode.HighFunctionDBUtil.ReturnCommitOption;
 import ghidra.program.model.symbol.*;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
@@ -45,6 +47,23 @@ import java.util.concurrent.atomic.*;
 
 // For JSON response handling
 import org.json.simple.JSONObject;
+
+import ghidra.app.services.CodeViewerService;
+import ghidra.app.util.PseudoDisassembler;
+import ghidra.app.cmd.function.SetVariableNameCmd;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.listing.LocalVariableImpl;
+import ghidra.program.model.listing.ParameterImpl;
+import ghidra.util.exception.DuplicateNameException;
+import ghidra.util.exception.InvalidInputException;
+import ghidra.program.util.ProgramLocation;
+import ghidra.util.task.TaskMonitor;
+import ghidra.program.model.pcode.Varnode;
+import ghidra.program.model.data.PointerDataType;
+import ghidra.program.model.data.Undefined1DataType;
+import ghidra.program.model.listing.Variable;
+import ghidra.app.decompiler.component.DecompilerUtils;
+import ghidra.app.decompiler.ClangToken;
 
 @PluginInfo(
     status = PluginStatus.RELEASED,
@@ -421,7 +440,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
         List<String> names = new ArrayList<>();
         for (Function f : program.getFunctionManager().getFunctions(true)) {
-            names.add(f.getName());
+            names.add(f.getName() + " @ " + f.getEntryPoint());
         }
         return paginateList(names, offset, limit);
     }
@@ -723,75 +742,128 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     }
     
     private String renameVariable(String functionName, String oldName, String newName) {
-        if (oldName == null || oldName.isEmpty() || newName == null || newName.isEmpty()) {
-            return "Both old and new variable names are required";
-        }
-        
         Program program = getCurrentProgram();
         if (program == null) return "No program loaded";
-        
-        AtomicReference<String> result = new AtomicReference<>("Variable rename failed");
-        
+
+        DecompInterface decomp = new DecompInterface();
+        decomp.openProgram(program);
+
+        Function func = null;
+        for (Function f : program.getFunctionManager().getFunctions(true)) {
+            if (f.getName().equals(functionName)) {
+                func = f;
+                break;
+            }
+        }
+
+        if (func == null) {
+            return "Function not found";
+        }
+
+        DecompileResults result = decomp.decompileFunction(func, 30, new ConsoleTaskMonitor());
+        if (result == null || !result.decompileCompleted()) {
+            return "Decompilation failed";
+        }
+
+        HighFunction highFunction = result.getHighFunction();
+        if (highFunction == null) {
+            return "Decompilation failed (no high function)";
+        }
+
+        LocalSymbolMap localSymbolMap = highFunction.getLocalSymbolMap();
+        if (localSymbolMap == null) {
+            return "Decompilation failed (no local symbol map)";
+        }
+
+        HighSymbol highSymbol = null;
+        Iterator<HighSymbol> symbols = localSymbolMap.getSymbols();
+        while (symbols.hasNext()) {
+            HighSymbol symbol = symbols.next();
+            String symbolName = symbol.getName();
+            
+            if (symbolName.equals(oldName)) {
+                highSymbol = symbol;
+            }
+            if (symbolName.equals(newName)) {
+                return "Error: A variable with name '" + newName + "' already exists in this function";
+            }
+        }
+
+        if (highSymbol == null) {
+            return "Variable not found";
+        }
+
+        boolean commitRequired = checkFullCommit(highSymbol, highFunction);
+
+        final HighSymbol finalHighSymbol = highSymbol;
+        final Function finalFunction = func;
+        AtomicBoolean successFlag = new AtomicBoolean(false);
+
         try {
-            SwingUtilities.invokeAndWait(() -> {
-                int tx = program.startTransaction("Rename variable via HTTP");
+            SwingUtilities.invokeAndWait(() -> {           
+                int tx = program.startTransaction("Rename variable");
                 try {
-                    Function function = findFunctionByName(program, functionName);
-                    if (function == null) {
-                        result.set("Function not found: " + functionName);
-                        return;
+                    if (commitRequired) {
+                        HighFunctionDBUtil.commitParamsToDatabase(highFunction, false,
+                            ReturnCommitOption.NO_COMMIT, finalFunction.getSignatureSource());
                     }
-                    
-                    // Initialize decompiler
-                    DecompInterface decomp = new DecompInterface();
-                    decomp.openProgram(program);
-                    DecompileResults decompRes = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
-                    
-                    if (decompRes == null || !decompRes.decompileCompleted()) {
-                        result.set("Failed to decompile function: " + functionName);
-                        return;
-                    }
-                    
-                    HighFunction highFunction = decompRes.getHighFunction();
-                    if (highFunction == null) {
-                        result.set("Failed to get high function");
-                        return;
-                    }
-                    
-                    // Find the variable by name
-                    HighSymbol targetSymbol = null;
-                    Iterator<HighSymbol> symbolIter = highFunction.getLocalSymbolMap().getSymbols();
-                    while (symbolIter.hasNext()) {
-                        HighSymbol symbol = symbolIter.next();
-                        if (symbol.getName().equals(oldName)) {
-                            targetSymbol = symbol;
-                            break;
-                        }
-                    }
-                    
-                    if (targetSymbol == null) {
-                        result.set("Variable not found: " + oldName);
-                        return;
-                    }
-                    
-                    // Rename the variable
-                    HighFunctionDBUtil.updateDBVariable(targetSymbol, newName, targetSymbol.getDataType(), 
-                                                      SourceType.USER_DEFINED);
-                    
-                    result.set("Variable renamed from '" + oldName + "' to '" + newName + "'");
-                } catch (Exception e) {
-                    Msg.error(this, "Error renaming variable", e);
-                    result.set("Error: " + e.getMessage());
-                } finally {
+                    HighFunctionDBUtil.updateDBVariable(
+                        finalHighSymbol,
+                        newName,
+                        null,
+                        SourceType.USER_DEFINED
+                    );
+                    successFlag.set(true);
+                }
+                catch (Exception e) {
+                    Msg.error(this, "Failed to rename variable", e);
+                }
+                finally {
                     program.endTransaction(tx, true);
                 }
             });
         } catch (InterruptedException | InvocationTargetException e) {
-            Msg.error(this, "Failed to execute on Swing thread", e);
-            result.set("Error: " + e.getMessage());
+            String errorMsg = "Failed to execute rename on Swing thread: " + e.getMessage();
+            Msg.error(this, errorMsg, e);
+            return errorMsg;
         }
-        
-        return result.get();
+        return successFlag.get() ? "Variable renamed" : "Failed to rename variable";
+    }
+
+    /**
+     * Copied from AbstractDecompilerAction.checkFullCommit, it's protected.
+     * Compare the given HighFunction's idea of the prototype with the Function's idea.
+     * Return true if there is a difference. If a specific symbol is being changed,
+     * it can be passed in to check whether or not the prototype is being affected.
+     * @param highSymbol (if not null) is the symbol being modified
+     * @param hfunction is the given HighFunction
+     * @return true if there is a difference (and a full commit is required)
+     */
+    protected static boolean checkFullCommit(HighSymbol highSymbol, HighFunction hfunction) {
+        if (highSymbol != null && !highSymbol.isParameter()) {
+            return false;
+        }
+        Function function = hfunction.getFunction();
+        Parameter[] parameters = function.getParameters();
+        LocalSymbolMap localSymbolMap = hfunction.getLocalSymbolMap();
+        int numParams = localSymbolMap.getNumParams();
+        if (numParams != parameters.length) {
+            return true;
+        }
+
+        for (int i = 0; i < numParams; i++) {
+            HighSymbol param = localSymbolMap.getParamSymbol(i);
+            if (param.getCategoryIndex() != i) {
+                return true;
+            }
+            VariableStorage storage = param.getStorage();
+            // Don't compare using the equals method so that DynamicVariableStorage can match
+            if (0 != storage.compareTo(parameters[i].getVariableStorage())) {
+                return true;
+            }
+        }
+
+        return false;
     }
     
     private String retypeVariable(String functionName, String varName, String dataTypeName) {
@@ -830,12 +902,13 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                         return;
                     }
                     
-                    // Find the variable by name
+                    // Find the variable by name - must match exactly and be in current scope
                     HighSymbol targetSymbol = null;
                     Iterator<HighSymbol> symbolIter = highFunction.getLocalSymbolMap().getSymbols();
                     while (symbolIter.hasNext()) {
                         HighSymbol symbol = symbolIter.next();
-                        if (symbol.getName().equals(varName)) {
+                        if (symbol.getName().equals(varName) && 
+                            symbol.getPCAddress().equals(function.getEntryPoint())) {
                             targetSymbol = symbol;
                             break;
                         }

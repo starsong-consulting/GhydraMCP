@@ -21,7 +21,14 @@
   </properties>
 
   <dependencies>
-    <!-- Ghidra JARs as system-scoped dependencies for runtime -->
+    <!-- JSON handling -->
+    <dependency>
+      <groupId>com.googlecode.json-simple</groupId>
+      <artifactId>json-simple</artifactId>
+      <version>1.1.1</version>
+    </dependency>
+
+    <!-- Ghidra JARs as system-scoped dependencies -->
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Generic</artifactId>
@@ -72,13 +79,6 @@
       <systemPath>${ghidra.jar.location}/Base.jar</systemPath>
     </dependency>
     
-    <!-- JSON Simple for JSON handling -->
-    <dependency>
-      <groupId>com.googlecode.json-simple</groupId>
-      <artifactId>json-simple</artifactId>
-      <version>1.1.1</version>
-    </dependency>
-
     <!-- Test dependencies -->
     <dependency>
       <groupId>junit</groupId>
@@ -265,7 +265,14 @@
             <configuration>
               <failOnWarning>false</failOnWarning>
               <ignoredUnusedDeclaredDependencies>
+                <ignoredUnusedDeclaredDependency>ghidra:Generic</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:SoftwareModeling</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Project</ignoredUnusedDeclaredDependency>
                 <ignoredUnusedDeclaredDependency>ghidra:Docking</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Decompiler</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Utility</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Base</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>junit:junit</ignoredUnusedDeclaredDependency>
               </ignoredUnusedDeclaredDependencies>
               <ignoredSystemDependencies>
                 <ignoredSystemDependency>ghidra:*</ignoredSystemDependency>

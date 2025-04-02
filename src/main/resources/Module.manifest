@@ -1,2 +1,3 @@
-GHIDRA_MODULE_NAME=GhydraMCP
-GHIDRA_MODULE_DESC=A multi-headed REST interface for Ghidra for use with MCP agents.
+Manifest-Version: 1.0
+GHIDRA_MODULE_NAME: GhydraMCP
+GHIDRA_MODULE_DESC: A multi-headed REST interface for Ghidra for use with MCP agents.
