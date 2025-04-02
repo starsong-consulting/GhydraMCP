@@ -6,7 +6,7 @@
   <groupId>eu.starsong.ghidra</groupId>
   <artifactId>GhydraMCP</artifactId>
   <packaging>jar</packaging>
-  <version>11.3.1</version>
+  <version>${revision}</version>
   <name>GhydraMCP</name>
   <url>https://github.com/teal-bauer/GhydraMCP</url>
   
@@ -16,10 +16,19 @@
     <ghidra.jar.location>${project.basedir}/lib</ghidra.jar.location>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
+    <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
+    <revision>dev-SNAPSHOT</revision>
   </properties>
 
   <dependencies>
-    <!-- Ghidra JARs as system-scoped dependencies for runtime -->
+    <!-- JSON handling -->
+    <dependency>
+      <groupId>com.googlecode.json-simple</groupId>
+      <artifactId>json-simple</artifactId>
+      <version>1.1.1</version>
+    </dependency>
+
+    <!-- Ghidra JARs as system-scoped dependencies -->
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Generic</artifactId>
@@ -70,13 +79,6 @@
       <systemPath>${ghidra.jar.location}/Base.jar</systemPath>
     </dependency>
     
-    <!-- JSON Simple for JSON handling -->
-    <dependency>
-      <groupId>com.googlecode.json-simple</groupId>
-      <artifactId>json-simple</artifactId>
-      <version>1.1.1</version>
-    </dependency>
-
     <!-- Test dependencies -->
     <dependency>
       <groupId>junit</groupId>
@@ -87,8 +89,24 @@
   </dependencies>
 
   <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
     <plugins>
       <!-- Set Java version -->
+      <!-- Resources plugin to handle filtering -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <configuration>
+          <encoding>UTF-8</encoding>
+        </configuration>
+      </plugin>
+      
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
@@ -101,13 +119,74 @@
         </configuration>
       </plugin>
       
+      <!-- Git Commit ID plugin to generate version from git -->
+      <plugin>
+        <groupId>io.github.git-commit-id</groupId>
+        <artifactId>git-commit-id-maven-plugin</artifactId>
+        <version>5.0.0</version>
+        <executions>
+          <execution>
+            <id>get-git-info</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>revision</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <generateGitPropertiesFile>true</generateGitPropertiesFile>
+          <generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
+          <includeOnlyProperties>
+            <includeOnlyProperty>git.commit.id.abbrev</includeOnlyProperty>
+            <includeOnlyProperty>git.commit.time</includeOnlyProperty>
+            <includeOnlyProperty>git.closest.tag.name</includeOnlyProperty>
+            <includeOnlyProperty>git.build.version</includeOnlyProperty>
+          </includeOnlyProperties>
+          <commitIdGenerationMode>full</commitIdGenerationMode>
+        </configuration>
+      </plugin>
+      
+      <!-- Set revision property from git info -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <version>3.4.0</version>
+        <executions>
+          <execution>
+            <id>set-revision-from-git</id>
+            <phase>initialize</phase>
+            <goals>
+              <goal>regex-property</goal>
+            </goals>
+            <configuration>
+              <name>revision</name>
+              <value>${git.commit.id.abbrev}-${maven.build.timestamp}</value>
+              <regex>.*</regex>
+              <replacement>$0</replacement>
+              <failIfNoMatch>false</failIfNoMatch>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      
       <!-- Use custom MANIFEST.MF -->
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
         <version>3.2.2</version>
         <configuration>
           <archive>
-            <manifestFile>src/main/resources/META-INF/MANIFEST.MF</manifestFile>
+            <manifest>
+              <addDefaultImplementationEntries>false</addDefaultImplementationEntries>
+            </manifest>
+            <manifestEntries>
+              <Implementation-Title>GhydraMCP</Implementation-Title>
+              <Implementation-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Implementation-Version>
+              <Plugin-Class>eu.starsong.ghidra.GhydraMCP</Plugin-Class>
+              <Plugin-Name>GhydraMCP</Plugin-Name>
+              <Plugin-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Plugin-Version>
+              <Plugin-Author>LaurieWired, Teal Bauer</Plugin-Author>
+              <Plugin-Description>Expose multiple Ghidra tools to MCP servers with variable management</Plugin-Description>
+            </manifestEntries>
           </archive>
           <finalName>GhydraMCP</finalName>
           <excludes>
@@ -134,7 +213,7 @@
               <descriptors>
                 <descriptor>src/assembly/ghidra-extension.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-${project.version}</finalName>
+              <finalName>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
@@ -150,7 +229,7 @@
               <descriptors>
                 <descriptor>src/assembly/complete-package.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-Complete-${project.version}</finalName>
+              <finalName>GhydraMCP-Complete-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
@@ -186,7 +265,14 @@
             <configuration>
               <failOnWarning>false</failOnWarning>
               <ignoredUnusedDeclaredDependencies>
+                <ignoredUnusedDeclaredDependency>ghidra:Generic</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:SoftwareModeling</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Project</ignoredUnusedDeclaredDependency>
                 <ignoredUnusedDeclaredDependency>ghidra:Docking</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Decompiler</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Utility</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>ghidra:Base</ignoredUnusedDeclaredDependency>
+                <ignoredUnusedDeclaredDependency>junit:junit</ignoredUnusedDeclaredDependency>
               </ignoredUnusedDeclaredDependencies>
               <ignoredSystemDependencies>
                 <ignoredSystemDependency>ghidra:*</ignoredSystemDependency>

@@ -6,12 +6,14 @@
 # ]
 # ///
 import os
+import signal
 import sys
-import time
-import requests
 import threading
-from typing import Dict
+import time
 from threading import Lock
+from typing import Dict
+
+import requests
 from mcp.server.fastmcp import FastMCP
 
 # Track active Ghidra instances (port -> info dict)
@@ -146,26 +148,54 @@ def register_instance(port: int, url: str = None) -> str:
         project_info = {"url": url}
         
         try:
-            info_url = f"{url}/info"
-            info_response = requests.get(info_url, timeout=2)
-            if info_response.ok:
+            # Try the root endpoint first
+            root_url = f"{url}/"
+            print(f"Trying to get root info from {root_url}", file=sys.stderr)
+            root_response = requests.get(root_url, timeout=1.5)  # Short timeout for root
+            
+            if root_response.ok:
                 try:
-                    # Parse JSON response
-                    info_data = info_response.json()
+                    print(f"Got response from root: {root_response.text}", file=sys.stderr)
+                    root_data = root_response.json()
                     
-                    # Extract relevant information
-                    project_info["project"] = info_data.get("project", "Unknown")
+                    # Extract basic information from root
+                    if "project" in root_data and root_data["project"]:
+                        project_info["project"] = root_data["project"]
+                    if "file" in root_data and root_data["file"]:
+                        project_info["file"] = root_data["file"]
                     
-                    # Handle file information which is nested
-                    file_info = info_data.get("file", {})
-                    if file_info:
-                        project_info["file"] = file_info.get("name", "")
-                        project_info["path"] = file_info.get("path", "")
-                        project_info["architecture"] = file_info.get("architecture", "")
-                        project_info["endian"] = file_info.get("endian", "")
-                except ValueError:
-                    # Not valid JSON
-                    pass
+                    print(f"Root data parsed: {project_info}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error parsing root info: {e}", file=sys.stderr)
+            else:
+                print(f"Root endpoint returned {root_response.status_code}", file=sys.stderr)
+                
+            # If we don't have project info yet, try the /info endpoint as a fallback
+            if not project_info.get("project") and not project_info.get("file"):
+                info_url = f"{url}/info"
+                print(f"Trying fallback info from {info_url}", file=sys.stderr)
+                
+                try:
+                    info_response = requests.get(info_url, timeout=2)
+                    if info_response.ok:
+                        try:
+                            info_data = info_response.json()
+                            # Extract relevant information
+                            if "project" in info_data and info_data["project"]:
+                                project_info["project"] = info_data["project"]
+                            
+                            # Handle file information
+                            file_info = info_data.get("file", {})
+                            if isinstance(file_info, dict) and file_info.get("name"):
+                                project_info["file"] = file_info.get("name", "")
+                                project_info["path"] = file_info.get("path", "")
+                                project_info["architecture"] = file_info.get("architecture", "")
+                                project_info["endian"] = file_info.get("endian", "")
+                            print(f"Info data parsed: {project_info}", file=sys.stderr)
+                        except Exception as e:
+                            print(f"Error parsing info endpoint: {e}", file=sys.stderr)
+                except Exception as e:
+                    print(f"Error connecting to info endpoint: {e}", file=sys.stderr)
         except Exception:
             # Non-critical, continue with registration even if project info fails
             pass
@@ -223,6 +253,7 @@ def _discover_instances(port_range, host=None, timeout=0.5) -> dict:
 # Updated tool implementations with port parameter
 from urllib.parse import quote
 
+
 @mcp.tool()
 def list_functions(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
     """List all functions with pagination"""
@@ -250,33 +281,211 @@ def update_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: st
 
 @mcp.tool()
 def list_segments(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all memory segments in the current program with pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of segments to return (default: 100)
+        
+    Returns:
+        List of segment information strings
+    """
     return safe_get(port, "segments", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_imports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all imported symbols with pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of imports to return (default: 100)
+        
+    Returns:
+        List of import information strings
+    """
     return safe_get(port, "symbols/imports", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_exports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all exported symbols with pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of exports to return (default: 100)
+        
+    Returns:
+        List of export information strings
+    """
     return safe_get(port, "symbols/exports", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_namespaces(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all namespaces in the current program with pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of namespaces to return (default: 100)
+        
+    Returns:
+        List of namespace information strings
+    """
     return safe_get(port, "namespaces", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def list_data_items(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+    """List all defined data items with pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of data items to return (default: 100)
+        
+    Returns:
+        List of data item information strings
+    """
     return safe_get(port, "data", {"offset": offset, "limit": limit})
 
 @mcp.tool()
 def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", offset: int = 0, limit: int = 100) -> list:
+    """Search for functions by name with pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        query: Search string to match against function names
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of functions to return (default: 100)
+        
+    Returns:
+        List of matching function information strings or error message if query is empty
+    """
     if not query:
         return ["Error: query string is required"]
     return safe_get(port, "functions", {"query": query, "offset": offset, "limit": limit})
 
-# Handle graceful shutdown
-import signal
-import os
+@mcp.tool()
+def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> str:
+    """
+    Get a function by its address.
+    """
+    return "\n".join(safe_get(port, "get_function_by_address", {"address": address}))
+
+@mcp.tool()
+def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> str:
+    """
+    Get the address currently selected by the user.
+    """
+    return "\n".join(safe_get(port, "get_current_address"))
+
+@mcp.tool()
+def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> str:
+    """
+    Get the function currently selected by the user.
+    """
+    return "\n".join(safe_get(port, "get_current_function"))
+
+@mcp.tool()
+def list_functions(port: int = DEFAULT_GHIDRA_PORT) -> list:
+    """
+    List all functions in the database.
+    """
+    return safe_get(port, "list_functions")
+
+@mcp.tool()
+def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> str:
+    """
+    Decompile a function at the given address.
+    """
+    return "\n".join(safe_get(port, "decompile_function", {"address": address}))
+
+@mcp.tool()
+def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> list:
+    """
+    Get assembly code (address: instruction; comment) for a function.
+    """
+    return safe_get(port, "disassemble_function", {"address": address})
+
+@mcp.tool()
+def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
+    """
+    Set a comment for a given address in the function pseudocode.
+    """
+    return safe_post(port, "set_decompiler_comment", {"address": address, "comment": comment})
+
+@mcp.tool()
+def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
+    """
+    Set a comment for a given address in the function disassembly.
+    """
+    return safe_post(port, "set_disassembly_comment", {"address": address, "comment": comment})
+
+@mcp.tool()
+def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", old_name: str = "", new_name: str = "") -> str:
+    """
+    Rename a local variable in a function.
+    """
+    return safe_post(port, "rename_local_variable", {"function_address": function_address, "old_name": old_name, "new_name": new_name})
+
+@mcp.tool()
+def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", new_name: str = "") -> str:
+    """
+    Rename a function by its address.
+    """
+    return safe_post(port, "rename_function_by_address", {"function_address": function_address, "new_name": new_name})
+
+@mcp.tool()
+def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", prototype: str = "") -> str:
+    """
+    Set a function's prototype.
+    """
+    return safe_post(port, "set_function_prototype", {"function_address": function_address, "prototype": prototype})
+
+@mcp.tool()
+def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", variable_name: str = "", new_type: str = "") -> str:
+    """
+    Set a local variable's type.
+    """
+    return safe_post(port, "set_local_variable_type", {"function_address": function_address, "variable_name": variable_name, "new_type": new_type})
+
+@mcp.tool()
+def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100, search: str = "") -> list:
+    """List global variables with optional search"""
+    params = {"offset": offset, "limit": limit}
+    if search:
+        params["search"] = search
+    return safe_get(port, "variables", params)
+
+@mcp.tool()
+def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "") -> str:
+    """List variables in a specific function"""
+    if not function:
+        return "Error: function name is required"
+    
+    encoded_name = quote(function)
+    return safe_get(port, f"functions/{encoded_name}/variables", {})
+
+@mcp.tool()
+def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", new_name: str = "") -> str:
+    """Rename a variable in a function"""
+    if not function or not name or not new_name:
+        return "Error: function, name, and new_name parameters are required"
+    
+    encoded_function = quote(function)
+    encoded_var = quote(name)
+    return safe_put(port, f"functions/{encoded_function}/variables/{encoded_var}", {"newName": new_name})
+
+@mcp.tool()
+def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", data_type: str = "") -> str:
+    """Change the data type of a variable in a function"""
+    if not function or not name or not data_type:
+        return "Error: function, name, and data_type parameters are required"
+    
+    encoded_function = quote(function)
+    encoded_var = quote(name)
+    return safe_put(port, f"functions/{encoded_function}/variables/{encoded_var}", {"dataType": data_type})
 
 def handle_sigint(signum, frame):
     os._exit(0)
