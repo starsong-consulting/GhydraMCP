@@ -86,10 +86,10 @@ jobs:
         
         # Extract the changelog section for this version
         awk -v version="$VERSION" '
-          BEGIN { print=0 }
-          /^## \['version'\]/ { print=1; next }
-          /^## \[/ && print { print=0; next }
-          print { print $0 }
+          BEGIN { print_section=0; }
+          $0 ~ "^## \\[" version "\\]" { print_section=1; next }
+          $0 ~ "^## \\[" && print_section { print_section=0; next }
+          print_section
         ' CHANGELOG.md > release_notes.md
         
         echo "RELEASE_NOTES_FILE=release_notes.md" >> $GITHUB_OUTPUT
