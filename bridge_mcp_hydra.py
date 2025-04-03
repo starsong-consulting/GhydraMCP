@@ -44,75 +44,194 @@ def get_instance_url(port: int) -> str:
         
         return f"http://{ghidra_host}:{port}"
 
-def safe_get(port: int, endpoint: str, params: dict = None) -> list:
-    """Perform a GET request to a specific Ghidra instance"""
+def safe_get(port: int, endpoint: str, params: dict = None) -> dict:
+    """Perform a GET request to a specific Ghidra instance and return JSON response"""
     if params is None:
         params = {}
 
     url = f"{get_instance_url(port)}/{endpoint}"
 
     try:
-        response = requests.get(url, params=params, timeout=5)
-        response.encoding = 'utf-8'
+        response = requests.get(
+            url, 
+            params=params,
+            headers={'Accept': 'application/json'},
+            timeout=5
+        )
+        
         if response.ok:
-            return response.text.splitlines()
-        elif response.status_code == 404:
-            # Try falling back to default instance if this was a secondary instance
-            if port != DEFAULT_GHIDRA_PORT:
-                return safe_get(DEFAULT_GHIDRA_PORT, endpoint, params)
-            return [f"Error {response.status_code}: {response.text.strip()}"]
+            try:
+                # Always expect JSON response
+                json_data = response.json()
+                
+                # If the response has a 'result' field that's a string, extract it
+                if isinstance(json_data, dict) and 'result' in json_data:
+                    return json_data
+                
+                # Otherwise, wrap the response in a standard format
+                return {
+                    "success": True,
+                    "data": json_data,
+                    "timestamp": int(time.time() * 1000)
+                }
+            except ValueError:
+                # If not JSON, wrap the text in our standard format
+                return {
+                    "success": False,
+                    "error": "Invalid JSON response",
+                    "response": response.text,
+                    "timestamp": int(time.time() * 1000)
+                }
         else:
-            return [f"Error {response.status_code}: {response.text.strip()}"]
+            # Try falling back to default instance if this was a secondary instance
+            if port != DEFAULT_GHIDRA_PORT and response.status_code == 404:
+                return safe_get(DEFAULT_GHIDRA_PORT, endpoint, params)
+                
+            try:
+                error_data = response.json()
+                return {
+                    "success": False,
+                    "error": error_data.get("error", f"HTTP {response.status_code}"),
+                    "status_code": response.status_code,
+                    "timestamp": int(time.time() * 1000)
+                }
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": response.text.strip(),
+                    "status_code": response.status_code,
+                    "timestamp": int(time.time() * 1000)
+                }
     except requests.exceptions.ConnectionError:
         # Instance may be down - try default instance if this was secondary
         if port != DEFAULT_GHIDRA_PORT:
             return safe_get(DEFAULT_GHIDRA_PORT, endpoint, params)
-        return ["Error: Failed to connect to Ghidra instance"]
+        return {
+            "success": False,
+            "error": "Failed to connect to Ghidra instance",
+            "status_code": 503,
+            "timestamp": int(time.time() * 1000)
+        }
     except Exception as e:
-        return [f"Request failed: {str(e)}"]
+        return {
+            "success": False,
+            "error": str(e),
+            "exception": e.__class__.__name__,
+            "timestamp": int(time.time() * 1000)
+        }
 
-def safe_put(port: int, endpoint: str, data: dict) -> str:
-    """Perform a PUT request to a specific Ghidra instance"""
+def safe_put(port: int, endpoint: str, data: dict) -> dict:
+    """Perform a PUT request to a specific Ghidra instance with JSON payload"""
     try:
         url = f"{get_instance_url(port)}/{endpoint}"
-        response = requests.put(url, data=data, timeout=5)
-        response.encoding = 'utf-8'
+        response = requests.put(
+            url,
+            json=data,
+            headers={'Content-Type': 'application/json'},
+            timeout=5
+        )
+        
         if response.ok:
-            return response.text.strip()
-        elif response.status_code == 404 and port != DEFAULT_GHIDRA_PORT:
-            # Try falling back to default instance
-            return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
+            try:
+                return response.json()
+            except ValueError:
+                return {
+                    "success": True,
+                    "result": response.text.strip()
+                }
         else:
-            return f"Error {response.status_code}: {response.text.strip()}"
+            # Try falling back to default instance if this was a secondary instance
+            if port != DEFAULT_GHIDRA_PORT and response.status_code == 404:
+                return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
+                
+            try:
+                error_data = response.json()
+                return {
+                    "success": False,
+                    "error": error_data.get("error", f"HTTP {response.status_code}"),
+                    "status_code": response.status_code
+                }
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": response.text.strip(),
+                    "status_code": response.status_code
+                }
     except requests.exceptions.ConnectionError:
         if port != DEFAULT_GHIDRA_PORT:
             return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
-        return "Error: Failed to connect to Ghidra instance"
+        return {
+            "success": False,
+            "error": "Failed to connect to Ghidra instance",
+            "status_code": 503
+        }
     except Exception as e:
-        return f"Request failed: {str(e)}"
+        return {
+            "success": False,
+            "error": str(e),
+            "exception": e.__class__.__name__
+        }
 
-def safe_post(port: int, endpoint: str, data: dict | str) -> str:
-    """Perform a POST request to a specific Ghidra instance"""
+def safe_post(port: int, endpoint: str, data: dict | str) -> dict:
+    """Perform a POST request to a specific Ghidra instance with JSON payload"""
     try:
         url = f"{get_instance_url(port)}/{endpoint}"
+        
         if isinstance(data, dict):
-            response = requests.post(url, data=data, timeout=5)
+            response = requests.post(
+                url,
+                json=data,
+                headers={'Content-Type': 'application/json'},
+                timeout=5
+            )
         else:
-            response = requests.post(url, data=data.encode("utf-8"), timeout=5)
-        response.encoding = 'utf-8'
+            response = requests.post(
+                url,
+                data=data,
+                headers={'Content-Type': 'text/plain'},
+                timeout=5
+            )
+        
         if response.ok:
-            return response.text.strip()
-        elif response.status_code == 404 and port != DEFAULT_GHIDRA_PORT:
-            # Try falling back to default instance
-            return safe_post(DEFAULT_GHIDRA_PORT, endpoint, data)
+            try:
+                return response.json()
+            except ValueError:
+                return {
+                    "success": True,
+                    "result": response.text.strip()
+                }
         else:
-            return f"Error {response.status_code}: {response.text.strip()}"
+            # Try falling back to default instance if this was a secondary instance
+            if port != DEFAULT_GHIDRA_PORT and response.status_code == 404:
+                return safe_post(DEFAULT_GHIDRA_PORT, endpoint, data)
+                
+            try:
+                error_data = response.json()
+                return {
+                    "success": False,
+                    "error": error_data.get("error", f"HTTP {response.status_code}"),
+                    "status_code": response.status_code
+                }
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": response.text.strip(),
+                    "status_code": response.status_code
+                }
     except requests.exceptions.ConnectionError:
         if port != DEFAULT_GHIDRA_PORT:
             return safe_post(DEFAULT_GHIDRA_PORT, endpoint, data)
-        return "Error: Failed to connect to Ghidra instance"
+        return {
+            "success": False,
+            "error": "Failed to connect to Ghidra instance",
+            "status_code": 503
+        }
     except Exception as e:
-        return f"Request failed: {str(e)}"
+        return {
+            "success": False,
+            "error": str(e),
+            "exception": e.__class__.__name__
+        }
 
 # Instance management tools
 @mcp.tool()

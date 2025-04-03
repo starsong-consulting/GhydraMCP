@@ -1100,18 +1100,59 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     }
 
     /**
-     * Parse post body form params, e.g. oldName=foo&newName=bar
+     * Parse post body params from form data or simple JSON
      */
     private Map<String, String> parsePostParams(HttpExchange exchange) throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
         Map<String, String> params = new HashMap<>();
+        
+        // Check if it looks like JSON
+        if (bodyStr.trim().startsWith("{")) {
+            try {
+                // Manual simple JSON parsing for key-value pairs
+                // This avoids using the JSONParser which might be causing issues
+                String jsonContent = bodyStr.trim();
+                // Remove the outer braces
+                jsonContent = jsonContent.substring(1, jsonContent.length() - 1).trim();
+                
+                // Split by commas not inside quotes
+                String[] pairs = jsonContent.split(",(?=([^\"]*\"[^\"]*\")*[^\"]*$)");
+                
+                for (String pair : pairs) {
+                    String[] keyValue = pair.split(":", 2);
+                    if (keyValue.length == 2) {
+                        String key = keyValue[0].trim();
+                        String value = keyValue[1].trim();
+                        
+                        // Remove quotes if present
+                        if (key.startsWith("\"") && key.endsWith("\"")) {
+                            key = key.substring(1, key.length() - 1);
+                        }
+                        
+                        if (value.startsWith("\"") && value.endsWith("\"")) {
+                            value = value.substring(1, value.length() - 1);
+                        }
+                        
+                        params.put(key, value);
+                    }
+                }
+                
+                return params;
+            } catch (Exception e) {
+                Msg.error(this, "Failed to parse JSON request body: " + e.getMessage(), e);
+                // Fall through to form data parsing
+            }
+        }
+        
+        // If JSON parsing fails or it's not JSON, try form data
         for (String pair : bodyStr.split("&")) {
             String[] kv = pair.split("=");
             if (kv.length == 2) {
                 params.put(kv[0], kv[1]);
             }
         }
+        
         return params;
     }
 
@@ -1187,10 +1228,42 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     }
     
 
-    private void sendResponse(HttpExchange exchange, String response) throws IOException {
-        byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+    private void sendResponse(HttpExchange exchange, Object response) throws IOException {
+        JSONObject json = new JSONObject();
+        json.put("success", true);
+        if (response instanceof String) {
+            json.put("result", response);
+        } else {
+            json.put("data", response);
+        }
+        json.put("timestamp", System.currentTimeMillis());
+        json.put("port", this.port);
+        if (this.isBaseInstance) {
+            json.put("instanceType", "base");
+        } else {
+            json.put("instanceType", "secondary");
+        }
+        sendJsonResponse(exchange, json);
+    }
+
+    private void sendJsonResponse(HttpExchange exchange, JSONObject jsonObj) throws IOException {
+        String json = jsonObj.toJSONString();
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
+    private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
+        JSONObject error = new JSONObject();
+        error.put("error", message);
+        error.put("status", statusCode);
+        error.put("success", false);
+        byte[] bytes = error.toJSONString().getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+        exchange.sendResponseHeaders(statusCode, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
