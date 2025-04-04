@@ -254,6 +254,57 @@ View result from get_function from ghydra (local){
 Based on this analysis, I can see these binaries communicate using a simple protocol where...
 ```
 
+# JSON Communication
+
+GhydraMCP uses structured JSON for all communication between the Python bridge and Java plugin. This ensures consistent and reliable data exchange.
+
+## Response Format
+
+All responses follow a standard format:
+
+```json
+{
+  "success": true,
+  "result": "...",
+  "timestamp": 1712159482123,
+  "port": 8192,
+  "instanceType": "base"
+}
+```
+
+Error responses include additional information:
+
+```json
+{
+  "success": false,
+  "error": "Error message",
+  "status_code": 404,
+  "timestamp": 1712159482123
+}
+```
+
+This structured approach makes the communication more reliable and easier to debug.
+
+# Testing
+
+GhydraMCP includes comprehensive test suites for both the HTTP API and MCP bridge. See [TESTING.md](TESTING.md) for details on running the tests.
+
+## HTTP API Tests
+
+Tests the HTTP endpoints exposed by the Java plugin:
+- Response format and structure
+- JSON structure consistency
+- Required fields in responses
+- Error handling
+
+## MCP Bridge Tests
+
+Tests the MCP bridge functionality:
+- MCP protocol communication
+- Tool availability and structure
+- Response format and structure
+- JSON structure consistency
+
 # Building from Source
 
 You can build different artifacts with Maven:
