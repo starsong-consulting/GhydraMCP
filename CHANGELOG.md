@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Structured JSON communication between Python bridge and Java plugin
+- Consistent response format with metadata (timestamp, port, instance type)
+- Comprehensive test suites for HTTP API and MCP bridge
+- Test runner script for easy test execution
+- Detailed testing documentation in TESTING.md
+
+### Changed
+- Improved error handling in API responses
+- Enhanced JSON parsing in the Java plugin
+- Updated documentation with JSON communication details
+
 ## [1.3.0] - 2025-04-02
 
 ### Added

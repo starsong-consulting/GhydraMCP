@@ -46,7 +46,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
 // For JSON response handling
-import org.json.simple.JSONObject;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 
 import ghidra.app.services.CodeViewerService;
 import ghidra.app.util.PseudoDisassembler;
@@ -95,10 +96,12 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 Msg.info(this, "Starting as base instance on port " + port);
             }
         }
+
+        Msg.info(this, "Marker");
         
-            // Log to both console and log file
-            Msg.info(this, "GhydraMCPPlugin loaded on port " + port);
-            System.out.println("[GhydraMCP] Plugin loaded on port " + port);
+        // Log to both console and log file
+        Msg.info(this, "GhydraMCPPlugin loaded on port " + port);
+        System.out.println("[GhydraMCP] Plugin loaded on port " + port);
 
         try {
             startServer();
@@ -201,15 +204,52 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        // Class resources
+        // Class resources with detailed logging
         server.createContext("/classes", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                sendResponse(exchange, getAllClassNames(offset, limit));
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    try {
+                        Map<String, String> qparams = parseQueryParams(exchange);
+                        int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                        int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                        
+                        String result = getAllClassNames(offset, limit);
+                        
+                        JsonObject json = new JsonObject();
+                        json.addProperty("success", true);
+                        json.addProperty("result", result);
+                        json.addProperty("timestamp", System.currentTimeMillis());
+                        json.addProperty("port", this.port);
+                        
+                        Gson gson = new Gson();
+                        String jsonStr = gson.toJson(json);
+                        
+                        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                        
+                        byte[] bytes = jsonStr.getBytes(StandardCharsets.UTF_8);
+                        exchange.sendResponseHeaders(200, bytes.length);
+                        
+                        OutputStream os = exchange.getResponseBody();
+                        
+                        os.write(bytes);
+                        
+                        os.flush();
+                        
+                        os.close();
+                        
+                    } catch (Exception e) {
+                        Msg.error(this, "/classes: Error in request processing: " + e.getMessage(), e);
+                        try {
+                            sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+                        } catch (IOException ioe) {
+                            Msg.error(this, "/classes: Failed to send error response: " + ioe.getMessage(), ioe);
+                        }
+                    }
+                } else {
+                    exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                }
+            } catch (Exception e) {
+                Msg.error(this, "/classes: Unhandled error: " + e.getMessage(), e);
             }
         });
 
@@ -353,8 +393,16 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
         
-        // Super simple root endpoint - exact same as /info for consistency
+        // Root endpoint - only handle exact "/" path
         server.createContext("/", exchange -> {
+            // Only handle exact root path
+            if (!exchange.getRequestURI().getPath().equals("/")) {
+                // Return 404 for any other path that reaches this handler
+                Msg.info(this, "Received request for unknown path: " + exchange.getRequestURI().getPath());
+                sendErrorResponse(exchange, 404, "Endpoint not found");
+                return;
+            }
+            
             try {
                 String response = "{\n";
                 response += "\"port\": " + port + ",\n";
@@ -1229,39 +1277,64 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     
 
     private void sendResponse(HttpExchange exchange, Object response) throws IOException {
-        JSONObject json = new JSONObject();
-        json.put("success", true);
+        JsonObject json = new JsonObject();
+        json.addProperty("success", true);
         if (response instanceof String) {
-            json.put("result", response);
+            json.addProperty("result", (String)response);
         } else {
-            json.put("data", response);
+            json.addProperty("data", response.toString());
         }
-        json.put("timestamp", System.currentTimeMillis());
-        json.put("port", this.port);
+        json.addProperty("timestamp", System.currentTimeMillis());
+        json.addProperty("port", this.port);
         if (this.isBaseInstance) {
-            json.put("instanceType", "base");
+            json.addProperty("instanceType", "base");
         } else {
-            json.put("instanceType", "secondary");
+            json.addProperty("instanceType", "secondary");
         }
         sendJsonResponse(exchange, json);
     }
 
-    private void sendJsonResponse(HttpExchange exchange, JSONObject jsonObj) throws IOException {
-        String json = jsonObj.toJSONString();
-        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.sendResponseHeaders(200, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
+    private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj) throws IOException {
+        try {
+            Gson gson = new Gson();
+            String json = gson.toJson(jsonObj);
+            Msg.debug(this, "Sending JSON response: " + json);
+            
+            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(200, bytes.length);
+            
+            OutputStream os = null;
+            try {
+                os = exchange.getResponseBody();
+                os.write(bytes);
+                os.flush();
+            } catch (IOException e) {
+                Msg.error(this, "Error writing response body: " + e.getMessage(), e);
+                throw e;
+            } finally {
+                if (os != null) {
+                    try {
+                        os.close();
+                    } catch (IOException e) {
+                        Msg.error(this, "Error closing output stream: " + e.getMessage(), e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error in sendJsonResponse: " + e.getMessage(), e);
+            throw new IOException("Failed to send JSON response", e);
         }
     }
 
     private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
-        JSONObject error = new JSONObject();
-        error.put("error", message);
-        error.put("status", statusCode);
-        error.put("success", false);
-        byte[] bytes = error.toJSONString().getBytes(StandardCharsets.UTF_8);
+        JsonObject error = new JsonObject();
+        error.addProperty("error", message);
+        error.addProperty("status", statusCode);
+        error.addProperty("success", false);
+        
+        Gson gson = new Gson();
+        byte[] bytes = gson.toJson(error).getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
         exchange.sendResponseHeaders(statusCode, bytes.length);
         try (OutputStream os = exchange.getResponseBody()) {
