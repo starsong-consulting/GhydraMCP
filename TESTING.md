@@ -81,6 +81,9 @@ The test script will:
 - Required fields in responses
 - Proper initialization of the MCP session
 - Ability to call tools and receive responses
+- Mutating operations (tested by changing and reverting):
+  - Function renaming
+  - Comment addition/removal
 
 ## Troubleshooting
 
