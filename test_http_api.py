@@ -84,8 +84,13 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("timestamp", data)
         self.assertIn("port", data)
         
-        # Check that we have either result or data
-        self.assertTrue("result" in data or "data" in data)
+        # Check result is an array of function objects
+        self.assertIn("result", data)
+        self.assertIsInstance(data["result"], list)
+        if data["result"]:  # If there are functions
+            func = data["result"][0]
+            self.assertIn("name", func)
+            self.assertIn("address", func)
 
     def test_functions_with_pagination(self):
         """Test the /functions endpoint with pagination"""
@@ -100,10 +105,19 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertIn("timestamp", data)
         self.assertIn("port", data)
+        
+        # Check result is an array of max 5 function objects
+        self.assertIn("result", data)
+        self.assertIsInstance(data["result"], list)
+        self.assertLessEqual(len(data["result"]), 5)
+        if data["result"]:  # If there are functions
+            func = data["result"][0]
+            self.assertIn("name", func)
+            self.assertIn("address", func)
 
     def test_classes_endpoint(self):
         """Test the /classes endpoint"""
-        response = requests.get(f"{BASE_URL}/classes")
+        response = requests.get(f"{BASE_URL}/classes?offset=0&limit=10")
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
@@ -114,10 +128,16 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertIn("timestamp", data)
         self.assertIn("port", data)
+        
+        # Check result is an array of class names
+        self.assertIn("result", data)
+        self.assertIsInstance(data["result"], list)
+        if data["result"]:  # If there are classes
+            self.assertIsInstance(data["result"][0], str)
 
     def test_segments_endpoint(self):
         """Test the /segments endpoint"""
-        response = requests.get(f"{BASE_URL}/segments")
+        response = requests.get(f"{BASE_URL}/segments?offset=0&limit=10")
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
@@ -128,6 +148,15 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertIn("timestamp", data)
         self.assertIn("port", data)
+        
+        # Check result is an array of segment objects
+        self.assertIn("result", data)
+        self.assertIsInstance(data["result"], list)
+        if data["result"]:  # If there are segments
+            seg = data["result"][0]
+            self.assertIn("name", seg)
+            self.assertIn("start", seg)
+            self.assertIn("end", seg)
 
     def test_variables_endpoint(self):
         """Test the /variables endpoint"""
