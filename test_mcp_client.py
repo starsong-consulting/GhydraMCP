@@ -84,61 +84,28 @@ async def test_bridge():
                     if not func_list:
                         logger.warning("No functions in result - skipping mutating tests")
                         return
-                    
-                    # Get first function's name
-                    func_name = func_list[0].get("name", "")
-                    if not func_name:
-                        logger.warning("No function name found - skipping mutating tests")
-                        return
-                    
-                    # Get full function details
-                    func_details = await session.call_tool(
-                        "get_function",
-                        arguments={"port": 8192, "name": func_name}
-                    )
-                    
-                    if not func_details.content or not func_details.content[0].text:
-                        logger.warning("Could not get function details - skipping mutating tests")
-                        return
-                    
-                    # Parse function details - response is the decompiled code text
-                    func_text = func_details.content[0].text
-                    if not func_text:
-                        logger.warning("Empty function details - skipping mutating tests")
-                        return
-                    
-                    # First line contains name and address
-                    first_line = func_text.split('\n')[0]
-                    if not first_line:
-                        logger.warning("Invalid function format - skipping mutating tests")
-                        return
-                    
-                    # Extract name and address from first line
-                    parts = first_line.split()
-                    if len(parts) < 2:
-                        logger.warning("Could not parse function details - skipping mutating tests")
-                        return
-                    
-                    func_name = parts[1]  # Second part is function name
-                    func_address = parts[0]  # First part is address
-                    
+
+                    # Get first function's name and address directly from list_functions result
+                    first_func = func_list[0]
+                    func_name = first_func.get("name", "")
+                    func_address = first_func.get("address", "") # Get address directly
+
                     if not func_name or not func_address:
-                        logger.warning("Could not get valid function name/address - skipping mutating tests")
+                        logger.warning("No function name/address found in list_functions result - skipping mutating tests")
                         return
-                        
+
                 except json.JSONDecodeError as e:
-                    logger.warning(f"Error parsing function data: {e} - skipping mutating tests")
+                    logger.warning(f"Error parsing list_functions data: {e} - skipping mutating tests")
                     return
 
                 # Test function renaming
                 original_name = func_name
                 test_name = f"{func_name}_test"
-                
+
                 # Test successful rename operations
-                rename_result = await session.call_tool(
-                    "update_function",
-                    arguments={"port": 8192, "name": original_name, "new_name": test_name}
-                )
+                rename_args = {"port": 8192, "name": original_name, "new_name": test_name}
+                logger.info(f"Calling update_function with args: {rename_args}")
+                rename_result = await session.call_tool("update_function", arguments=rename_args)
                 rename_data = json.loads(rename_result.content[0].text)
                 assert rename_data.get("success") is True, f"Rename failed: {rename_data}"
                 logger.info(f"Rename result: {rename_result}")
@@ -153,10 +120,9 @@ async def test_bridge():
                 logger.info(f"Renamed function result: {renamed_func}")
                 
                 # Rename back to original
-                revert_result = await session.call_tool(
-                    "update_function",
-                    arguments={"port": 8192, "name": test_name, "new_name": original_name}
-                )
+                revert_args = {"port": 8192, "name": test_name, "new_name": original_name}
+                logger.info(f"Calling update_function with args: {revert_args}")
+                revert_result = await session.call_tool("update_function", arguments=revert_args)
                 revert_data = json.loads(revert_result.content[0].text)
                 assert revert_data.get("success") is True, f"Revert rename failed: {revert_data}"
                 logger.info(f"Revert rename result: {revert_result}")
@@ -172,57 +138,43 @@ async def test_bridge():
                 
                 # Test successful comment operations
                 test_comment = "Test comment from MCP client"
-                comment_result = await session.call_tool(
-                    "set_decompiler_comment",
-                    arguments={
-                        "port": 8192,
-                        "address": func_address,
-                        "comment": test_comment
-                    }
-                )
+                comment_args = {"port": 8192, "address": func_address, "comment": test_comment}
+                logger.info(f"Calling set_decompiler_comment with args: {comment_args}")
+                comment_result = await session.call_tool("set_decompiler_comment", arguments=comment_args)
                 comment_data = json.loads(comment_result.content[0].text)
                 assert comment_data.get("success") is True, f"Add comment failed: {comment_data}"
                 logger.info(f"Add comment result: {comment_result}")
                 
                 # Remove comment
-                remove_comment_result = await session.call_tool(
-                    "set_decompiler_comment", 
-                    arguments={
-                        "port": 8192,
-                        "address": func_address,
-                        "comment": ""
-                    }
-                )
+                remove_comment_args = {"port": 8192, "address": func_address, "comment": ""}
+                logger.info(f"Calling set_decompiler_comment with args: {remove_comment_args}")
+                remove_comment_result = await session.call_tool("set_decompiler_comment", arguments=remove_comment_args)
                 remove_data = json.loads(remove_comment_result.content[0].text)
                 assert remove_data.get("success") is True, f"Remove comment failed: {remove_data}"
                 logger.info(f"Remove comment result: {remove_comment_result}")
                 
                 # Test expected failure cases
                 # Try to rename non-existent function
-                bad_rename_result = await session.call_tool(
-                    "update_function",
-                    arguments={"port": 8192, "name": "nonexistent_function", "new_name": "should_fail"}
-                )
+                bad_rename_args = {"port": 8192, "name": "nonexistent_function", "new_name": "should_fail"}
+                logger.info(f"Calling update_function with args: {bad_rename_args}")
+                bad_rename_result = await session.call_tool("update_function", arguments=bad_rename_args)
+                logger.info(f"Bad rename result: {bad_rename_result}") # Log the response
                 bad_rename_data = json.loads(bad_rename_result.content[0].text)
-                assert bad_rename_data.get("success") is False, "Renaming non-existent function should fail"
-                
+                assert bad_rename_data.get("success") is False, f"Renaming non-existent function should fail, but got: {bad_rename_data}"
+
                 # Try to get non-existent function
                 bad_get_result = await session.call_tool(
                     "get_function",
                     arguments={"port": 8192, "name": "nonexistent_function"}
                 )
+                logger.info(f"Bad get result: {bad_get_result}") # Log the response
                 bad_get_data = json.loads(bad_get_result.content[0].text)
-                assert bad_get_data.get("success") is False, "Getting non-existent function should fail"
-                
+                assert bad_get_data.get("success") is False, f"Getting non-existent function should fail, but got: {bad_get_data}"
+
                 # Try to comment on invalid address
-                bad_comment_result = await session.call_tool(
-                    "set_decompiler_comment",
-                    arguments={
-                        "port": 8192,
-                        "address": "0xinvalid",
-                        "comment": "should fail"
-                    }
-                )
+                bad_comment_args = {"port": 8192, "address": "0xinvalid", "comment": "should fail"}
+                logger.info(f"Calling set_decompiler_comment with args: {bad_comment_args}")
+                bad_comment_result = await session.call_tool("set_decompiler_comment", arguments=bad_comment_args)
                 bad_comment_data = json.loads(bad_comment_result.content[0].text)
                 assert bad_comment_data.get("success") is False, "Commenting on invalid address should fail"
                 

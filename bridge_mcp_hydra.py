@@ -103,14 +103,26 @@ def safe_get(port: int, endpoint: str, params: dict = None) -> dict:
 
                 # If the response has a 'result' field that's a string, extract it
                 if isinstance(json_data, dict) and 'result' in json_data:
-                    return json_data
+                    # Check if the nested data indicates failure
+                    if isinstance(json_data.get("data"), dict) and json_data["data"].get("success") is False:
+                         # Propagate the nested failure
+                        return {
+                            "success": False,
+                            "error": json_data["data"].get("error", "Nested operation failed"),
+                            "status_code": response.status_code, # Keep original status code if possible
+                            "timestamp": int(time.time() * 1000)
+                        }
+                    return json_data # Return as is if it has 'result' or doesn't indicate nested failure
 
-                # Otherwise, wrap the response in a standard format
-                return {
-                    "success": True,
-                    "data": json_data,
-                    "timestamp": int(time.time() * 1000)
-                }
+                # Otherwise, wrap the response in a standard format if it's not already structured
+                if not isinstance(json_data, dict) or ('success' not in json_data and 'result' not in json_data):
+                    return {
+                        "success": True,
+                        "data": json_data,
+                        "timestamp": int(time.time() * 1000)
+                    }
+                return json_data # Return already structured JSON as is
+
             except ValueError:
                 # If not JSON, wrap the text in our standard format
                 return {
@@ -443,13 +455,13 @@ def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "") -> str:
 
 @mcp.tool()
 def update_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", new_name: str = "") -> str:
-    """Rename a function"""
-    return safe_put(port, f"functions/{quote(name)}", {"newName": new_name})
+    """Rename a function (Modify -> POST)"""
+    return safe_post(port, f"functions/{quote(name)}", {"newName": new_name})
 
 @mcp.tool()
 def update_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: str = "") -> str:
-    """Rename data at specified address"""
-    return safe_put(port, "data", {"address": address, "newName": new_name})
+    """Rename data at specified address (Modify -> POST)"""
+    return safe_post(port, "data", {"address": address, "newName": new_name})
 
 @mcp.tool()
 def list_segments(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
@@ -642,7 +654,7 @@ def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str
     Returns:
         Confirmation message or error if failed
     """
-    return safe_post(port, "rename_local_variable", {"function_address": function_address, "old_name": old_name, "new_name": new_name})
+    return safe_post(port, "rename_local_variable", {"functionAddress": function_address, "oldName": old_name, "newName": new_name})
 
 @mcp.tool()
 def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", new_name: str = "") -> str:
@@ -656,7 +668,7 @@ def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address
     Returns:
         Confirmation message or error if failed
     """
-    return safe_post(port, "rename_function_by_address", {"function_address": function_address, "new_name": new_name})
+    return safe_post(port, "rename_function_by_address", {"functionAddress": function_address, "newName": new_name})
 
 @mcp.tool()
 def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", prototype: str = "") -> str:
@@ -670,7 +682,7 @@ def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: st
     Returns:
         Confirmation message or error if failed
     """
-    return safe_post(port, "set_function_prototype", {"function_address": function_address, "prototype": prototype})
+    return safe_post(port, "set_function_prototype", {"functionAddress": function_address, "prototype": prototype})
 
 @mcp.tool()
 def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", variable_name: str = "", new_type: str = "") -> str:
@@ -685,7 +697,7 @@ def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: s
     Returns:
         Confirmation message or error if failed
     """
-    return safe_post(port, "set_local_variable_type", {"function_address": function_address, "variable_name": variable_name, "new_type": new_type})
+    return safe_post(port, "set_local_variable_type", {"functionAddress": function_address, "variableName": variable_name, "newType": new_type})
 
 @mcp.tool()
 def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100, search: str = "") -> list:
@@ -712,7 +724,7 @@ def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: s
 
     encoded_function = quote(function)
     encoded_var = quote(name)
-    return safe_put(port, f"functions/{encoded_function}/variables/{encoded_var}", {"newName": new_name})
+    return safe_post(port, f"functions/{encoded_function}/variables/{encoded_var}", {"newName": new_name})
 
 @mcp.tool()
 def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", data_type: str = "") -> str:
@@ -722,7 +734,7 @@ def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: s
 
     encoded_function = quote(function)
     encoded_var = quote(name)
-    return safe_put(port, f"functions/{encoded_function}/variables/{encoded_var}", {"dataType": data_type})
+    return safe_post(port, f"functions/{encoded_function}/variables/{encoded_var}", {"dataType": data_type})
 
 def handle_sigint(signum, frame):
     os._exit(0)
@@ -757,19 +769,19 @@ def periodic_discovery():
         time.sleep(30)
 
 if __name__ == "__main__":
-    # # Auto-register default instance
-    # register_instance(DEFAULT_GHIDRA_PORT, f"http://{ghidra_host}:{DEFAULT_GHIDRA_PORT}")
+    # Auto-register default instance
+    register_instance(DEFAULT_GHIDRA_PORT, f"http://{ghidra_host}:{DEFAULT_GHIDRA_PORT}")
 
-    # # Auto-discover other instances
-    # discover_instances()
+    # Auto-discover other instances
+    discover_instances()
 
-    # # Start periodic discovery in background thread
-    # discovery_thread = threading.Thread(
-    #     target=periodic_discovery,
-    #     daemon=True,
-    #     name="GhydraMCP-Discovery"
-    # )
-    # discovery_thread.start()
+    # Start periodic discovery in background thread
+    discovery_thread = threading.Thread(
+        target=periodic_discovery,
+        daemon=True,
+        name="GhydraMCP-Discovery"
+    )
+    discovery_thread.start()
 
-    # signal.signal(signal.SIGINT, handle_sigint)
+    signal.signal(signal.SIGINT, handle_sigint)
     mcp.run(transport="stdio")
