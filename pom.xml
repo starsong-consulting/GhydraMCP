@@ -17,9 +17,7 @@
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
-    <revision>dev-SNAPSHOT</revision> <!-- Base version, overridden below -->
-    <!-- Default identifier: commit hash + timestamp -->
-    <build.identifier>${git.commit.id.abbrev}-${maven.build.timestamp}</build.identifier>
+    <revision>dev-SNAPSHOT</revision>
   </properties>
 
   <dependencies>
@@ -154,24 +152,6 @@
         <artifactId>build-helper-maven-plugin</artifactId>
         <version>3.4.0</version>
         <executions>
-          <!-- Execution to potentially override build.identifier with tag name -->
-          <execution>
-            <id>set-identifier-from-tag</id>
-            <phase>initialize</phase>
-            <goals>
-              <goal>regex-property</goal>
-            </goals>
-            <configuration>
-              <name>build.identifier</name>
-              <value>${git.closest.tag.name}</value> <!-- Use tag if available -->
-              <regex>^v?(.+)$</regex> <!-- Match tag, optionally strip leading 'v' -->
-              <replacement>$1</replacement>
-              <failIfNoMatch>false</failIfNoMatch> <!-- Don't fail if no tag, keeps default -->
-            </configuration>
-          </execution>
-          <!-- Original execution to set revision property (might still be needed elsewhere?) -->
-          <!-- Let's comment this out for now as build.identifier should be sufficient -->
-          <!--
           <execution>
             <id>set-revision-from-git</id>
             <phase>initialize</phase>
@@ -180,13 +160,12 @@
             </goals>
             <configuration>
               <name>revision</name>
-              <value>${build.identifier}</value>  <!-\- Set revision based on final identifier -\->
+              <value>${git.commit.id.abbrev}-${maven.build.timestamp}</value>
               <regex>.*</regex>
               <replacement>$0</replacement>
               <failIfNoMatch>false</failIfNoMatch>
             </configuration>
           </execution>
-          -->
         </executions>
       </plugin>
       
@@ -201,10 +180,10 @@
             </manifest>
             <manifestEntries>
               <Implementation-Title>GhydraMCP</Implementation-Title>
-              <Implementation-Version>${build.identifier}</Implementation-Version>
+              <Implementation-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Implementation-Version>
               <Plugin-Class>eu.starsong.ghidra.GhydraMCP</Plugin-Class>
               <Plugin-Name>GhydraMCP</Plugin-Name>
-              <Plugin-Version>${build.identifier}</Plugin-Version>
+              <Plugin-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Plugin-Version>
               <Plugin-Author>LaurieWired, Teal Bauer</Plugin-Author>
               <Plugin-Description>Expose multiple Ghidra tools to MCP servers with variable management</Plugin-Description>
             </manifestEntries>
@@ -234,7 +213,7 @@
               <descriptors>
                 <descriptor>src/assembly/ghidra-extension.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-${build.identifier}</finalName>
+              <finalName>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
@@ -250,7 +229,7 @@
               <descriptors>
                 <descriptor>src/assembly/complete-package.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-Complete-${build.identifier}</finalName>
+              <finalName>GhydraMCP-Complete-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>

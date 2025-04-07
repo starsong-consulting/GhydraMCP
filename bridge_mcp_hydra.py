@@ -72,232 +72,116 @@ def validate_origin(headers: dict) -> bool:
     
     return origin_base in ALLOWED_ORIGINS
 
-def safe_get(port: int, endpoint: str, params: dict = None) -> dict:
-    """Perform a GET request to a specific Ghidra instance and return JSON response"""
-    if params is None:
-        params = {}
-
+def _make_request(method: str, port: int, endpoint: str, params: dict = None, json_data: dict = None, data: str = None, headers: dict = None) -> dict:
+    """Internal helper to make HTTP requests and handle common errors."""
     url = f"{get_instance_url(port)}/{endpoint}"
-    
-    # Check origin if this is a state-changing request
-    if endpoint not in ["instances", "info"] and not validate_origin(params.get("headers", {})):
-        return {
-            "success": False,
-            "error": "Origin not allowed",
-            "status_code": 403,
-            "timestamp": int(time.time() * 1000)
-        }
+    request_headers = {'Accept': 'application/json'}
+    if headers:
+        request_headers.update(headers)
+
+    # Origin validation for state-changing requests
+    is_state_changing = method.upper() in ["POST", "PUT", "DELETE"] # Add other methods if needed
+    if is_state_changing:
+        # Extract headers from json_data if present, otherwise use provided headers
+        check_headers = json_data.get("headers", {}) if isinstance(json_data, dict) else (headers or {})
+        if not validate_origin(check_headers):
+            return {
+                "success": False,
+                "error": "Origin not allowed",
+                "status_code": 403,
+                "timestamp": int(time.time() * 1000)
+            }
+        # Set Content-Type for POST/PUT if sending JSON
+        if json_data is not None:
+             request_headers['Content-Type'] = 'application/json'
+        elif data is not None:
+             request_headers['Content-Type'] = 'text/plain' # Or appropriate type
 
     try:
-        response = requests.get(
+        response = requests.request(
+            method,
             url,
             params=params,
-            headers={'Accept': 'application/json'},
-            timeout=5
+            json=json_data,
+            data=data,
+            headers=request_headers,
+            timeout=10 # Increased timeout slightly
         )
 
-        if response.ok:
-            try:
-                # Always expect JSON response
-                json_data = response.json()
+        # Attempt to parse JSON regardless of status code, as errors might be JSON
+        try:
+            parsed_json = response.json()
+            # Add timestamp if not present in the response from Ghidra
+            if isinstance(parsed_json, dict) and "timestamp" not in parsed_json:
+                 parsed_json["timestamp"] = int(time.time() * 1000)
+            return parsed_json
+        except ValueError:
+            # Handle non-JSON responses (e.g., unexpected errors, successful plain text)
+            if response.ok:
+                 # Success, but not JSON - wrap it? Or assume plugin *always* returns JSON?
+                 # For now, treat unexpected non-JSON success as an error from the plugin side.
+                 return {
+                     "success": False,
+                     "error": "Received non-JSON success response from Ghidra plugin",
+                     "status_code": response.status_code,
+                     "response_text": response.text[:500], # Limit text length
+                     "timestamp": int(time.time() * 1000)
+                 }
+            else:
+                 # Error response was not JSON
+                 return {
+                     "success": False,
+                     "error": f"HTTP {response.status_code} - Non-JSON error response",
+                     "status_code": response.status_code,
+                     "response_text": response.text[:500], # Limit text length
+                     "timestamp": int(time.time() * 1000)
+                 }
 
-                # If the response has a 'result' field that's a string, extract it
-                if isinstance(json_data, dict) and 'result' in json_data:
-                    # Check if the nested data indicates failure
-                    if isinstance(json_data.get("data"), dict) and json_data["data"].get("success") is False:
-                         # Propagate the nested failure
-                        return {
-                            "success": False,
-                            "error": json_data["data"].get("error", "Nested operation failed"),
-                            "status_code": response.status_code, # Keep original status code if possible
-                            "timestamp": int(time.time() * 1000)
-                        }
-                    return json_data # Return as is if it has 'result' or doesn't indicate nested failure
-
-                # Otherwise, wrap the response in a standard format if it's not already structured
-                if not isinstance(json_data, dict) or ('success' not in json_data and 'result' not in json_data):
-                    return {
-                        "success": True,
-                        "data": json_data,
-                        "timestamp": int(time.time() * 1000)
-                    }
-                return json_data # Return already structured JSON as is
-
-            except ValueError:
-                # If not JSON, wrap the text in our standard format
-                return {
-                    "success": False,
-                    "error": "Invalid JSON response",
-                    "response": response.text,
-                    "timestamp": int(time.time() * 1000)
-                }
-        else:
-            # Try falling back to default instance if this was a secondary instance
-            if port != DEFAULT_GHIDRA_PORT and response.status_code == 404:
-                return safe_get(DEFAULT_GHIDRA_PORT, endpoint, params)
-
-            try:
-                error_data = response.json()
-                return {
-                    "success": False,
-                    "error": error_data.get("error", f"HTTP {response.status_code}"),
-                    "status_code": response.status_code,
-                    "timestamp": int(time.time() * 1000)
-                }
-            except ValueError:
-                return {
-                    "success": False,
-                    "error": response.text.strip(),
-                    "status_code": response.status_code,
-                    "timestamp": int(time.time() * 1000)
-                }
-    except requests.exceptions.ConnectionError:
-        # Instance may be down - try default instance if this was secondary
-        if port != DEFAULT_GHIDRA_PORT:
-            return safe_get(DEFAULT_GHIDRA_PORT, endpoint, params)
+    except requests.exceptions.Timeout:
         return {
             "success": False,
-            "error": "Failed to connect to Ghidra instance",
-            "status_code": 503,
+            "error": "Request timed out",
+            "status_code": 408, # Request Timeout
+            "timestamp": int(time.time() * 1000)
+        }
+    except requests.exceptions.ConnectionError:
+        return {
+            "success": False,
+            "error": f"Failed to connect to Ghidra instance at {url}",
+            "status_code": 503, # Service Unavailable
             "timestamp": int(time.time() * 1000)
         }
     except Exception as e:
         return {
             "success": False,
-            "error": str(e),
+            "error": f"An unexpected error occurred: {str(e)}",
             "exception": e.__class__.__name__,
             "timestamp": int(time.time() * 1000)
         }
 
+def safe_get(port: int, endpoint: str, params: dict = None) -> dict:
+    """Perform a GET request to a specific Ghidra instance and return JSON response"""
+    return _make_request("GET", port, endpoint, params=params)
+
 def safe_put(port: int, endpoint: str, data: dict) -> dict:
     """Perform a PUT request to a specific Ghidra instance with JSON payload"""
-    try:
-        url = f"{get_instance_url(port)}/{endpoint}"
-        
-        # Always validate origin for PUT requests
-        if not validate_origin(data.get("headers", {})):
-            return {
-                "success": False,
-                "error": "Origin not allowed",
-                "status_code": 403
-            }
-        response = requests.put(
-            url,
-            json=data,
-            headers={'Content-Type': 'application/json'},
-            timeout=5
-        )
-
-        if response.ok:
-            try:
-                return response.json()
-            except ValueError:
-                return {
-                    "success": True,
-                    "result": response.text.strip()
-                }
-        else:
-            # Try falling back to default instance if this was a secondary instance
-            if port != DEFAULT_GHIDRA_PORT and response.status_code == 404:
-                return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
-
-            try:
-                error_data = response.json()
-                return {
-                    "success": False,
-                    "error": error_data.get("error", f"HTTP {response.status_code}"),
-                    "status_code": response.status_code
-                }
-            except ValueError:
-                return {
-                    "success": False,
-                    "error": response.text.strip(),
-                    "status_code": response.status_code
-                }
-    except requests.exceptions.ConnectionError:
-        if port != DEFAULT_GHIDRA_PORT:
-            return safe_put(DEFAULT_GHIDRA_PORT, endpoint, data)
-        return {
-            "success": False,
-            "error": "Failed to connect to Ghidra instance",
-            "status_code": 503
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "exception": e.__class__.__name__
-        }
+    # Pass headers if they exist within the data dict
+    headers = data.pop("headers", None) if isinstance(data, dict) else None
+    return _make_request("PUT", port, endpoint, json_data=data, headers=headers)
 
 def safe_post(port: int, endpoint: str, data: dict | str) -> dict:
-    """Perform a POST request to a specific Ghidra instance with JSON payload"""
-    try:
-        url = f"{get_instance_url(port)}/{endpoint}"
-        
-        # Always validate origin for POST requests
-        headers = data.get("headers", {}) if isinstance(data, dict) else {}
-        if not validate_origin(headers):
-            return {
-                "success": False,
-                "error": "Origin not allowed", 
-                "status_code": 403
-            }
+    """Perform a POST request to a specific Ghidra instance with JSON or text payload"""
+    headers = None
+    json_payload = None
+    text_payload = None
 
-        if isinstance(data, dict):
-            response = requests.post(
-                url,
-                json=data,
-                headers={'Content-Type': 'application/json'},
-                timeout=5
-            )
-        else:
-            response = requests.post(
-                url,
-                data=data,
-                headers={'Content-Type': 'text/plain'},
-                timeout=5
-            )
+    if isinstance(data, dict):
+        headers = data.pop("headers", None)
+        json_payload = data
+    else:
+        text_payload = data # Assume string data is text/plain
 
-        if response.ok:
-            try:
-                return response.json()
-            except ValueError:
-                return {
-                    "success": True,
-                    "result": response.text.strip()
-                }
-        else:
-            # # Try falling back to default instance if this was a secondary instance
-            # if port != DEFAULT_GHIDRA_PORT and response.status_code == 404:
-            #     return safe_post(DEFAULT_GHIDRA_PORT, endpoint, data)
-
-            try:
-                error_data = response.json()
-                return {
-                    "success": False,
-                    "error": error_data.get("error", f"HTTP {response.status_code}"),
-                    "status_code": response.status_code
-                }
-            except ValueError:
-                return {
-                    "success": False,
-                    "error": response.text.strip(),
-                    "status_code": response.status_code
-                }
-    except requests.exceptions.ConnectionError:
-        if port != DEFAULT_GHIDRA_PORT:
-            return safe_post(DEFAULT_GHIDRA_PORT, endpoint, data)
-        return {
-            "success": False,
-            "error": "Failed to connect to Ghidra instance",
-            "status_code": 503
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e),
-            "exception": e.__class__.__name__
-        }
+    return _make_request("POST", port, endpoint, json_data=json_payload, data=text_payload, headers=headers)
 
 # Instance management tools
 @mcp.tool()
@@ -449,9 +333,35 @@ def list_classes(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 
     return safe_get(port, "classes", {"offset": offset, "limit": limit})
 
 @mcp.tool()
-def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "") -> str:
+def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "") -> dict:
     """Get decompiled code for a specific function"""
-    return safe_get(port, f"functions/{quote(name)}", {})
+    response = safe_get(port, f"functions/{quote(name)}", {})
+    
+    # Check if the response is a string (old format) or already a dict with proper structure
+    if isinstance(response, dict) and "success" in response:
+        # If it's already a properly structured response, return it
+        return response
+    elif isinstance(response, str):
+        # If it's a string (old format), wrap it in a proper structure
+        return {
+            "success": True,
+            "result": {
+                "name": name,
+                "address": "",  # We don't have the address here
+                "signature": "",  # We don't have the signature here
+                "decompilation": response
+            },
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
+    else:
+        # Unexpected format, return an error
+        return {
+            "success": False,
+            "error": "Unexpected response format from Ghidra plugin",
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
 
 @mcp.tool()
 def update_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", new_name: str = "") -> str:
@@ -551,7 +461,7 @@ def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", o
     return safe_get(port, "functions", {"query": query, "offset": offset, "limit": limit})
 
 @mcp.tool()
-def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> str:
+def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> dict:
     """Get function details by its memory address
 
     Args:
@@ -559,36 +469,62 @@ def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") 
         address: Memory address of the function (hex string)
 
     Returns:
-        Multiline string with function details including name, address, and signature
+        Dict containing function details including name, address, signature, and decompilation
     """
-    return "\n".join(safe_get(port, "get_function_by_address", {"address": address}))
+    response = safe_get(port, "get_function_by_address", {"address": address})
+    
+    # Check if the response is a string (old format) or already a dict with proper structure
+    if isinstance(response, dict) and "success" in response:
+        # If it's already a properly structured response, return it
+        return response
+    elif isinstance(response, str):
+        # If it's a string (old format), wrap it in a proper structure
+        return {
+            "success": True,
+            "result": {
+                "decompilation": response,
+                "address": address
+            },
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
+    else:
+        # Unexpected format, return an error
+        return {
+            "success": False,
+            "error": "Unexpected response format from Ghidra plugin",
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
 
 @mcp.tool()
-def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> str:
+def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> dict: # Return dict
     """Get the address currently selected in Ghidra's UI
 
     Args:
         port: Ghidra instance port (default: 8192)
 
     Returns:
-        String containing the current memory address (hex format)
+        Dict containing the current memory address (hex format)
     """
-    return "\n".join(safe_get(port, "get_current_address"))
+    # Directly return the dictionary from safe_get
+    return safe_get(port, "get_current_address")
 
 @mcp.tool()
-def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> str:
+def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict: # Return dict
     """Get the function currently selected in Ghidra's UI
 
     Args:
         port: Ghidra instance port (default: 8192)
 
     Returns:
-        Multiline string with function details including name, address, and signature
+        Dict containing function details including name, address, and signature
     """
-    return "\n".join(safe_get(port, "get_current_function"))
+    # Directly return the dictionary from safe_get
+    return safe_get(port, "get_current_function")
 
 @mcp.tool()
-def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> str:
+def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> dict:
     """Decompile a function at a specific memory address
 
     Args:
@@ -596,12 +532,35 @@ def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str 
         address: Memory address of the function (hex string)
 
     Returns:
-        Multiline string containing the decompiled pseudocode
+        Dict containing the decompiled pseudocode in the 'result.decompilation' field
     """
-    return "\n".join(safe_get(port, "decompile_function", {"address": address}))
+    response = safe_get(port, "decompile_function", {"address": address})
+    
+    # Check if the response is a string (old format) or already a dict with proper structure
+    if isinstance(response, dict) and "success" in response:
+        # If it's already a properly structured response, return it
+        return response
+    elif isinstance(response, str):
+        # If it's a string (old format), wrap it in a proper structure
+        return {
+            "success": True,
+            "result": {
+                "decompilation": response
+            },
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
+    else:
+        # Unexpected format, return an error
+        return {
+            "success": False,
+            "error": "Unexpected response format from Ghidra plugin",
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
 
 @mcp.tool()
-def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> list:
+def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> dict: # Return dict
     """Get disassembly for a function at a specific address
 
     Args:
@@ -700,37 +659,198 @@ def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: s
     return safe_post(port, "set_local_variable_type", {"functionAddress": function_address, "variableName": variable_name, "newType": new_type})
 
 @mcp.tool()
-def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100, search: str = "") -> list:
-    """List global variables with optional search"""
+def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100, search: str = "") -> dict:
+    """List global variables with optional search
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of variables to return (default: 100)
+        search: Optional search string to filter variables by name
+        
+    Returns:
+        Dict containing the list of variables in the 'result' field
+    """
     params = {"offset": offset, "limit": limit}
     if search:
         params["search"] = search
-    return safe_get(port, "variables", params)
+    
+    response = safe_get(port, "variables", params)
+    
+    # Check if the response is a string (old format) or already a dict with proper structure
+    if isinstance(response, dict) and "success" in response:
+        # If it's already a properly structured response, return it
+        return response
+    elif isinstance(response, str):
+        # If it's a string (old format), parse it and wrap it in a proper structure
+        # For empty response, return empty list
+        if not response.strip():
+            return {
+                "success": True,
+                "result": [],
+                "timestamp": int(time.time() * 1000),
+                "port": port
+            }
+        
+        # Parse the string to extract variables
+        variables = []
+        lines = response.strip().split('\n')
+        
+        for line in lines:
+            line = line.strip()
+            if line:
+                # Try to parse variable line
+                parts = line.split(':')
+                if len(parts) >= 2:
+                    var_name = parts[0].strip()
+                    var_type = ':'.join(parts[1:]).strip()
+                    
+                    # Extract address if present
+                    address = ""
+                    if '@' in var_type:
+                        type_parts = var_type.split('@')
+                        var_type = type_parts[0].strip()
+                        address = type_parts[1].strip()
+                    
+                    variables.append({
+                        "name": var_name,
+                        "dataType": var_type,
+                        "address": address
+                    })
+        
+        # Return structured response
+        return {
+            "success": True,
+            "result": variables,
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
+    else:
+        # Unexpected format, return an error
+        return {
+            "success": False,
+            "error": "Unexpected response format from Ghidra plugin",
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
 
 @mcp.tool()
-def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "") -> str:
-    """List variables in a specific function"""
+def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "") -> dict:
+    """List variables in a specific function
+
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function: Name of the function to list variables for
+
+    Returns:
+        Dict containing the function variables in the 'result.variables' field
+    """
     if not function:
-        return "Error: function name is required"
+        return {"success": False, "error": "Function name is required"}
 
     encoded_name = quote(function)
-    return safe_get(port, f"functions/{encoded_name}/variables", {})
+    response = safe_get(port, f"functions/{encoded_name}/variables", {})
+    
+    # Check if the response is a string (old format) or already a dict with proper structure
+    if isinstance(response, dict) and "success" in response:
+        # If it's already a properly structured response, return it
+        return response
+    elif isinstance(response, str):
+        # If it's a string (old format), parse it and wrap it in a proper structure
+        # Example string format: "Function: init_peripherals\n\nParameters:\n  none\n\nLocal Variables:\n  powArrThree: undefined * @ 08000230\n  pvartwo: undefined * @ 08000212\n  pvarEins: undefined * @ 08000206\n"
+        
+        # Parse the string to extract variables
+        variables = []
+        lines = response.strip().split('\n')
+        
+        # Extract function name from first line if possible
+        function_name = function
+        if lines and lines[0].startswith("Function:"):
+            function_name = lines[0].replace("Function:", "").strip()
+        
+        # Look for local variables section
+        in_local_vars = False
+        for line in lines:
+            line = line.strip()
+            if line == "Local Variables:":
+                in_local_vars = True
+                continue
+            
+            if in_local_vars and line and not line.startswith("Function:") and not line.startswith("Parameters:"):
+                # Parse variable line: "  varName: type @ address"
+                parts = line.strip().split(':')
+                if len(parts) >= 2:
+                    var_name = parts[0].strip()
+                    var_type = ':'.join(parts[1:]).strip()
+                    
+                    # Extract address if present
+                    address = ""
+                    if '@' in var_type:
+                        type_parts = var_type.split('@')
+                        var_type = type_parts[0].strip()
+                        address = type_parts[1].strip()
+                    
+                    variables.append({
+                        "name": var_name,
+                        "dataType": var_type,
+                        "address": address,
+                        "type": "local"
+                    })
+        
+        # Return structured response
+        return {
+            "success": True,
+            "result": {
+                "function": function_name,
+                "variables": variables
+            },
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
+    else:
+        # Unexpected format, return an error
+        return {
+            "success": False,
+            "error": "Unexpected response format from Ghidra plugin",
+            "timestamp": int(time.time() * 1000),
+            "port": port
+        }
 
 @mcp.tool()
-def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", new_name: str = "") -> str:
-    """Rename a variable in a function"""
+def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", new_name: str = "") -> dict:
+    """Rename a variable in a function
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function: Name of the function containing the variable
+        name: Current name of the variable
+        new_name: New name for the variable
+        
+    Returns:
+        Dict containing the result of the operation
+    """
     if not function or not name or not new_name:
-        return "Error: function, name, and new_name parameters are required"
+        return {"success": False, "error": "Function, name, and new_name parameters are required"}
 
     encoded_function = quote(function)
     encoded_var = quote(name)
     return safe_post(port, f"functions/{encoded_function}/variables/{encoded_var}", {"newName": new_name})
 
 @mcp.tool()
-def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", data_type: str = "") -> str:
-    """Change the data type of a variable in a function"""
+def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", data_type: str = "") -> dict:
+    """Change the data type of a variable in a function
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function: Name of the function containing the variable
+        name: Current name of the variable
+        data_type: New data type for the variable
+        
+    Returns:
+        Dict containing the result of the operation
+    """
     if not function or not name or not data_type:
-        return "Error: function, name, and data_type parameters are required"
+        return {"success": False, "error": "Function, name, and data_type parameters are required"}
 
     encoded_function = quote(function)
     encoded_var = quote(name)

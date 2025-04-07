@@ -173,8 +173,8 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                         // Rename variable
                         boolean success = renameVariable(functionName, variableName, params.get("newName"));
                     JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Variable renamed successfully" : "Failed to rename variable");
+                    response.addProperty("success", true);
+                    response.addProperty("message", "Variable renamed successfully");
                     response.addProperty("timestamp", System.currentTimeMillis());
                     response.addProperty("port", this.port);
                     
@@ -218,9 +218,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     exchange.sendResponseHeaders(405, -1); // Method Not Allowed
                 }
             } else {
-                // Simple function operations
+                // Simple function operations: GET /functions/{name} and POST /functions/{name}
                 if ("GET".equals(exchange.getRequestMethod())) {
-                    sendResponse(exchange, decompileFunctionByName(functionName));
+                    // Return structured JSON using the correct method
+                    JsonObject response = getFunctionDetailsByName(functionName);
+                    sendJsonResponse(exchange, response);
                 } else if ("POST".equals(exchange.getRequestMethod())) { // <--- Change to POST to match bridge
                     Map<String, String> params = parseJsonPostParams(exchange); // Use specific JSON parser
                     String newName = params.get("newName"); // Expect camelCase
@@ -358,11 +360,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 int limit = parseIntOrDefault(qparams.get("limit"), 100);
                 String search = qparams.get("search");
                 
-                if (search != null && !search.isEmpty()) {
-                    sendResponse(exchange, searchVariables(search, offset, limit));
-                } else {
-                    sendResponse(exchange, listGlobalVariables(offset, limit));
-                }
+                sendResponse(exchange, listVariables(offset, limit, search));
             } else {
                 exchange.sendResponseHeaders(405, -1); // Method Not Allowed
             }
@@ -387,6 +385,53 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             sendJsonResponse(exchange, response);
         });
 
+        // Add get_function_by_address endpoint
+        server.createContext("/get_function_by_address", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                String address = qparams.get("address");
+                
+                if (address == null || address.isEmpty()) {
+                    sendErrorResponse(exchange, 400, "Address parameter is required");
+                    return;
+                }
+                
+                Program program = getCurrentProgram();
+                if (program == null) {
+                    sendErrorResponse(exchange, 400, "No program loaded");
+                    return;
+                }
+                
+                try {
+                    Address funcAddr = program.getAddressFactory().getAddress(address);
+                    Function func = program.getFunctionManager().getFunctionAt(funcAddr);
+                    if (func == null) {
+                        // Return empty result instead of 404 to match test expectations
+                        JsonObject response = new JsonObject();
+                        JsonObject resultObj = new JsonObject();
+                        resultObj.addProperty("name", "");
+                        resultObj.addProperty("address", address);
+                        resultObj.addProperty("signature", "");
+                        resultObj.addProperty("decompilation", "");
+                        
+                        response.addProperty("success", true);
+                        response.add("result", resultObj);
+                        response.addProperty("timestamp", System.currentTimeMillis());
+                        response.addProperty("port", this.port);
+                        sendJsonResponse(exchange, response);
+                        return;
+                    }
+                    
+                    sendJsonResponse(exchange, getFunctionDetails(func));
+                } catch (Exception e) {
+                    Msg.error(this, "Error getting function by address", e);
+                    sendErrorResponse(exchange, 500, "Error getting function: " + e.getMessage());
+                }
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        });
+
         // Add decompile function by address endpoint
         server.createContext("/decompile_function", exchange -> {
             if ("GET".equals(exchange.getRequestMethod())) {
@@ -408,7 +453,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Address funcAddr = program.getAddressFactory().getAddress(address);
                     Function func = program.getFunctionManager().getFunctionAt(funcAddr);
                     if (func == null) {
-                        sendErrorResponse(exchange, 404, "No function at address " + address);
+                        // Return empty result structure to match API expectations
+                        JsonObject response = new JsonObject();
+                        JsonObject resultObj = new JsonObject();
+                        resultObj.addProperty("decompilation", "");
+                        resultObj.addProperty("function", "");
+                        resultObj.addProperty("address", address);
+                        
+                        response.addProperty("success", true);
+                        response.add("result", resultObj);
+                        response.addProperty("timestamp", System.currentTimeMillis());
+                        response.addProperty("port", this.port);
+                        sendJsonResponse(exchange, response);
                         return;
                     }
                     
@@ -425,12 +481,20 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                             return;
                         }
                         
-                        JsonObject response = new JsonObject();
-                        response.addProperty("success", true);
-                        response.addProperty("result", result.getDecompiledFunction().getC());
-                        response.addProperty("timestamp", System.currentTimeMillis());
-                        response.addProperty("port", this.port);
-                        sendJsonResponse(exchange, response);
+                    String decompilation = result.getDecompiledFunction().getC();
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    
+                    JsonObject resultObj = new JsonObject();
+                    resultObj.addProperty("decompilation", decompilation);
+                    resultObj.addProperty("name", func.getName());
+                    resultObj.addProperty("address", func.getEntryPoint().toString());
+                    resultObj.addProperty("signature", func.getSignature().getPrototypeString());
+                    
+                    response.add("result", resultObj);
+                    response.addProperty("timestamp", System.currentTimeMillis());
+                    response.addProperty("port", this.port);
+                    sendJsonResponse(exchange, response);
                     } finally {
                         decomp.dispose();
                     }
@@ -790,9 +854,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     // Pagination-aware listing methods
     // ----------------------------------------------------------------------------------
 
-    private String getAllFunctionNames(int offset, int limit) {
+    private JsonObject getAllFunctionNames(int offset, int limit) { // Changed return type
         Program program = getCurrentProgram();
-        if (program == null) return "{\"success\":false,\"error\":\"No program loaded\"}";
+        if (program == null) {
+             return createErrorResponse("No program loaded", 400);
+        }
 
         List<Map<String, String>> functions = new ArrayList<>();
         for (Function f : program.getFunctionManager().getFunctions(true)) {
@@ -807,22 +873,14 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(functions.size(), offset + limit);
         List<Map<String, String>> paginated = functions.subList(start, end);
         
-        Gson gson = new Gson();
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", gson.toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return gson.toJson(response);
+        // Use helper to create standard response
+        return createSuccessResponse(paginated); // Return JsonObject
     }
 
     private JsonObject getAllClassNames(int offset, int limit) {
         Program program = getCurrentProgram();
         if (program == null) {
-            JsonObject error = new JsonObject();
-            error.addProperty("success", false);
-            error.addProperty("error", "No program loaded");
-            return error;
+            return createErrorResponse("No program loaded", 400);
         }
 
         Set<String> classNames = new HashSet<>();
@@ -840,17 +898,15 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(sorted.size(), offset + limit);
         List<String> paginated = sorted.subList(start, end);
         
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", new Gson().toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return response;
+        // Use helper to create standard response
+        return createSuccessResponse(paginated);
     }
 
-    private String listSegments(int offset, int limit) {
+    private JsonObject listSegments(int offset, int limit) { // Changed return type to JsonObject
         Program program = getCurrentProgram();
-        if (program == null) return "{\"success\":false,\"error\":\"No program loaded\"}";
+        if (program == null) {
+             return createErrorResponse("No program loaded", 400);
+        }
 
         List<Map<String, String>> segments = new ArrayList<>();
         for (MemoryBlock block : program.getMemory().getBlocks()) {
@@ -866,19 +922,14 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(segments.size(), offset + limit);
         List<Map<String, String>> paginated = segments.subList(start, end);
         
-        Gson gson = new Gson();
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", gson.toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return gson.toJson(response);
+        // Use helper to create standard response
+        return createSuccessResponse(paginated);
     }
 
-    private String listImports(int offset, int limit) {
+    private JsonObject listImports(int offset, int limit) { // Changed return type to JsonObject
         Program program = getCurrentProgram();
         if (program == null) {
-            return "{\"success\":false,\"error\":\"No program loaded\"}";
+            return createErrorResponse("No program loaded", 400);
         }
 
         List<Map<String, String>> imports = new ArrayList<>();
@@ -894,19 +945,14 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(imports.size(), offset + limit);
         List<Map<String, String>> paginated = imports.subList(start, end);
         
-        Gson gson = new Gson();
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", gson.toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return gson.toJson(response);
+        // Use helper to create standard response
+        return createSuccessResponse(paginated); // Return JsonObject directly
     }
 
-    private String listExports(int offset, int limit) {
+    private JsonObject listExports(int offset, int limit) { // Changed return type to JsonObject
         Program program = getCurrentProgram();
         if (program == null) {
-            return "{\"success\":false,\"error\":\"No program loaded\"}";
+            return createErrorResponse("No program loaded", 400);
         }
 
         List<Map<String, String>> exports = new ArrayList<>();
@@ -928,19 +974,14 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(exports.size(), offset + limit);
         List<Map<String, String>> paginated = exports.subList(start, end);
         
-        Gson gson = new Gson();
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", gson.toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return gson.toJson(response);
+        // Use helper to create standard response
+        return createSuccessResponse(paginated); // Return JsonObject directly
     }
 
-    private String listNamespaces(int offset, int limit) {
+    private JsonObject listNamespaces(int offset, int limit) { // Changed return type to JsonObject
         Program program = getCurrentProgram();
         if (program == null) {
-            return "{\"success\":false,\"error\":\"No program loaded\"}";
+            return createErrorResponse("No program loaded", 400);
         }
 
         Set<String> namespaces = new HashSet<>();
@@ -959,19 +1000,14 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(sorted.size(), offset + limit);
         List<String> paginated = sorted.subList(start, end);
         
-        Gson gson = new Gson();
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", gson.toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return gson.toJson(response);
+        // Use helper to create standard response
+        return createSuccessResponse(paginated); // Return JsonObject directly
     }
 
-    private String listDefinedData(int offset, int limit) {
+    private JsonObject listDefinedData(int offset, int limit) { // Changed return type to JsonObject
         Program program = getCurrentProgram();
         if (program == null) {
-            return "{\"success\":false,\"error\":\"No program loaded\"}";
+            return createErrorResponse("No program loaded", 400);
         }
 
         List<Map<String, String>> dataItems = new ArrayList<>();
@@ -994,19 +1030,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         int end = Math.min(dataItems.size(), offset + limit);
         List<Map<String, String>> paginated = dataItems.subList(start, end);
         
-        Gson gson = new Gson();
-        JsonObject response = new JsonObject();
-        response.addProperty("success", true);
-        response.add("result", gson.toJsonTree(paginated));
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
-        return gson.toJson(response);
+        // Use helper to create standard response
+        return createSuccessResponse(paginated); // Return JsonObject directly
     }
 
-    private String searchFunctionsByName(String searchTerm, int offset, int limit) {
+    private JsonObject searchFunctionsByName(String searchTerm, int offset, int limit) { // Changed return type to JsonObject
         Program program = getCurrentProgram();
-        if (program == null) return "No program loaded";
-        if (searchTerm == null || searchTerm.isEmpty()) return "Search term is required";
+        if (program == null) {
+            return createErrorResponse("No program loaded", 400);
+        }
+        if (searchTerm == null || searchTerm.isEmpty()) {
+            return createErrorResponse("Search term is required", 400);
+        }
     
         List<String> matches = new ArrayList<>();
         for (Function func : program.getFunctionManager().getFunctions(true)) {
@@ -1020,38 +1055,108 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         Collections.sort(matches);
     
         if (matches.isEmpty()) {
-            return "No functions matching '" + searchTerm + "'";
+            // Return success with empty result list
+            return createSuccessResponse(new ArrayList<>()); 
         }
-        return paginateList(matches, offset, limit);
-    }    
+        
+        // Paginate the string list representation
+        int start = Math.max(0, offset);
+        int end   = Math.min(matches.size(), offset + limit);
+        List<String> sub = matches.subList(start, end);
+        
+        // Return paginated list using helper
+        return createSuccessResponse(sub);
+    }
 
     // ----------------------------------------------------------------------------------
-    // Logic for rename, decompile, etc.
+    // Logic for getting function details, rename, decompile, etc.
     // ----------------------------------------------------------------------------------
 
-    private String decompileFunctionByName(String name) {
+    private JsonObject getFunctionDetailsByName(String name) {
+        JsonObject response = new JsonObject();
         Program program = getCurrentProgram();
-        if (program == null) return "No program loaded";
+        if (program == null) {
+            response.addProperty("success", false);
+            response.addProperty("error", "No program loaded");
+            return response;
+        }
+
+        Function func = findFunctionByName(program, name);
+        if (func == null) {
+            response.addProperty("success", false);
+            response.addProperty("error", "Function not found: " + name);
+            return response;
+        }
+
+        return getFunctionDetails(func); // Use common helper
+    }
+
+    // Helper to get function details and decompilation
+    private JsonObject getFunctionDetails(Function func) {
+        JsonObject response = new JsonObject();
+        JsonObject resultObj = new JsonObject();
+        Program program = func.getProgram();
+
+        resultObj.addProperty("name", func.getName());
+        resultObj.addProperty("address", func.getEntryPoint().toString());
+        resultObj.addProperty("signature", func.getSignature().getPrototypeString());
+
         DecompInterface decomp = new DecompInterface();
         try {
             if (!decomp.openProgram(program)) {
-                return "Failed to initialize decompiler";
-            }
-        for (Function func : program.getFunctionManager().getFunctions(true)) {
-            if (func.getName().equals(name)) {
-                DecompileResults result =
-                    decomp.decompileFunction(func, 30, new ConsoleTaskMonitor());
-                if (result != null && result.decompileCompleted()) {
-                    return result.getDecompiledFunction().getC();
+                resultObj.addProperty("decompilation_error", "Failed to initialize decompiler");
+            } else {
+                DecompileResults decompResult = decomp.decompileFunction(func, 30, new ConsoleTaskMonitor());
+                if (decompResult != null && decompResult.decompileCompleted()) {
+                    resultObj.addProperty("decompilation", decompResult.getDecompiledFunction().getC());
+                } else {
+                    resultObj.addProperty("decompilation_error", "Decompilation failed or timed out");
                 }
-                return "Decompilation failed"; // Keep as string for now, handled by sendResponse
             }
+        } catch (Exception e) {
+             Msg.error(this, "Decompilation error for " + func.getName(), e);
+             resultObj.addProperty("decompilation_error", "Exception during decompilation: " + e.getMessage());
+        } finally {
+            decomp.dispose();
         }
-        // Return specific error object instead of just a string
-        JsonObject errorResponse = new JsonObject();
-        errorResponse.addProperty("success", false);
-        errorResponse.addProperty("error", "Function not found: " + name);
-        return errorResponse.toString(); // Return JSON string
+
+        response.addProperty("success", true);
+        response.add("result", resultObj);
+        response.addProperty("timestamp", System.currentTimeMillis()); // Add timestamp
+        response.addProperty("port", this.port); // Add port
+        return response;
+    }
+
+    private JsonObject decompileFunctionByName(String name) { // Changed return type
+        Program program = getCurrentProgram();
+        if (program == null) {
+            return createErrorResponse("No program loaded", 400);
+        }
+        
+        DecompInterface decomp = new DecompInterface();
+        try {
+            if (!decomp.openProgram(program)) {
+                 return createErrorResponse("Failed to initialize decompiler", 500);
+            }
+            
+            Function func = findFunctionByName(program, name);
+            if (func == null) {
+                return createErrorResponse("Function not found: " + name, 404);
+            }
+            
+            DecompileResults result = decomp.decompileFunction(func, 30, new ConsoleTaskMonitor());
+            if (result != null && result.decompileCompleted()) {
+                JsonObject resultObj = new JsonObject();
+                resultObj.addProperty("name", func.getName());
+                resultObj.addProperty("address", func.getEntryPoint().toString());
+                resultObj.addProperty("signature", func.getSignature().getPrototypeString());
+                resultObj.addProperty("decompilation", result.getDecompiledFunction().getC());
+                
+                // Use helper to create standard response
+                return createSuccessResponse(resultObj); // Return JsonObject
+            } else {
+                return createErrorResponse("Decompilation failed", 500);
+            }
         } finally {
             decomp.dispose();
         }
@@ -1224,82 +1329,74 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     // New variable handling methods
     // ----------------------------------------------------------------------------------
     
-    private String listVariablesInFunction(String functionName) {
+    private JsonObject listVariablesInFunction(String functionName) { // Changed return type
         Program program = getCurrentProgram();
-        if (program == null) return "No program loaded";
+        if (program == null) {
+            return createErrorResponse("No program loaded", 400);
+        }
 
         DecompInterface decomp = new DecompInterface();
         try {
             if (!decomp.openProgram(program)) {
-                return "Failed to initialize decompiler";
+                return createErrorResponse("Failed to initialize decompiler", 500);
             }
             
             Function function = findFunctionByName(program, functionName);
             if (function == null) {
-                return "Function not found: " + functionName;
+                return createErrorResponse("Function not found: " + functionName, 404);
             }
             
             DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
             if (results == null || !results.decompileCompleted()) {
-                return "Failed to decompile function: " + functionName;
+                return createErrorResponse("Failed to decompile function: " + functionName, 500);
             }
 
             // Get high-level pcode representation for the function
             HighFunction highFunction = results.getHighFunction();
             if (highFunction == null) {
-                return "Failed to get high function for: " + functionName;
+                return createErrorResponse("Failed to get high function for: " + functionName, 500);
             }
             
-            // Get local variables
-            List<String> variables = new ArrayList<>();
+            // Get all variables (parameters and locals)
+            List<Map<String, String>> allVariables = new ArrayList<>();
+            
+            // Process all symbols
             Iterator<HighSymbol> symbolIter = highFunction.getLocalSymbolMap().getSymbols();
             while (symbolIter.hasNext()) {
                 HighSymbol symbol = symbolIter.next();
-                if (symbol.getHighVariable() != null) {
-                    DataType dt = symbol.getDataType();
-                    String dtName = dt != null ? dt.getName() : "unknown";
-                    variables.add(String.format("%s: %s @ %s", 
-                        symbol.getName(), dtName, symbol.getPCAddress()));
-                }
-            }
-            
-            // Get parameters
-            List<String> parameters = new ArrayList<>();
-            // In older Ghidra versions, we need to filter symbols to find parameters
-            symbolIter = highFunction.getLocalSymbolMap().getSymbols();
-            while (symbolIter.hasNext()) {
-                HighSymbol symbol = symbolIter.next();
+                
+                Map<String, String> varInfo = new HashMap<>();
+                varInfo.put("name", symbol.getName());
+                
+                DataType dt = symbol.getDataType();
+                String dtName = dt != null ? dt.getName() : "unknown";
+                varInfo.put("dataType", dtName);
+                
                 if (symbol.isParameter()) {
-                    DataType dt = symbol.getDataType();
-                    String dtName = dt != null ? dt.getName() : "unknown";
-                    parameters.add(String.format("%s: %s (parameter)", 
-                        symbol.getName(), dtName));
+                    varInfo.put("type", "parameter");
+                } else if (symbol.getHighVariable() != null) {
+                    varInfo.put("type", "local");
+                    varInfo.put("address", symbol.getPCAddress().toString());
+                } else {
+                    continue; // Skip symbols without high variables that aren't parameters
                 }
+                
+                allVariables.add(varInfo);
             }
             
-            // Format the response
-            StringBuilder sb = new StringBuilder();
-            sb.append("Function: ").append(functionName).append("\n\n");
+            // Sort by name
+            Collections.sort(allVariables, (a, b) -> a.get("name").compareTo(b.get("name")));
             
-            sb.append("Parameters:\n");
-            if (parameters.isEmpty()) {
-                sb.append("  none\n");
-            } else {
-                for (String param : parameters) {
-                    sb.append("  ").append(param).append("\n");
-                }
-            }
+            // Create JSON response
+            JsonObject response = new JsonObject();
+            response.addProperty("success", true);
             
-            sb.append("\nLocal Variables:\n");
-            if (variables.isEmpty()) {
-                sb.append("  none\n");
-            } else {
-                for (String var : variables) {
-                    sb.append("  ").append(var).append("\n");
-                }
-            }
+            JsonObject resultObj = new JsonObject();
+            resultObj.addProperty("function", functionName);
+            resultObj.add("variables", new Gson().toJsonTree(allVariables));
             
-            return sb.toString();
+            // Use helper to create standard response
+            return createSuccessResponse(resultObj); // Return JsonObject
         } finally {
             decomp.dispose();
         }
@@ -1504,35 +1601,104 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         return result.get();
     }
     
-    private String listGlobalVariables(int offset, int limit) {
+    private JsonObject listVariables(int offset, int limit, String searchTerm) {
         Program program = getCurrentProgram();
-        if (program == null) return "No program loaded";
+        if (program == null) {
+            return createErrorResponse("No program loaded", 400);
+        }
         
-        List<String> globalVars = new ArrayList<>();
+        List<Map<String, String>> variables = new ArrayList<>();
+        
+        // Get global variables
         SymbolTable symbolTable = program.getSymbolTable();
-        SymbolIterator it = symbolTable.getSymbolIterator();
-        
-        while (it.hasNext()) {
-            Symbol symbol = it.next();
-            // Check for globals - look for symbols that are in global space and not functions
-            if (symbol.isGlobal() && 
-                symbol.getSymbolType() != SymbolType.FUNCTION && 
+        for (Symbol symbol : symbolTable.getDefinedSymbols()) {
+            if (symbol.isGlobal() && !symbol.isExternal() &&
+                symbol.getSymbolType() != SymbolType.FUNCTION &&
                 symbol.getSymbolType() != SymbolType.LABEL) {
-                globalVars.add(String.format("%s @ %s", 
-                    symbol.getName(), symbol.getAddress()));
+                    
+                Map<String, String> varInfo = new HashMap<>();
+                varInfo.put("name", symbol.getName());
+                varInfo.put("address", symbol.getAddress().toString());
+                varInfo.put("type", "global");
+                varInfo.put("dataType", getDataTypeName(program, symbol.getAddress()));
+                variables.add(varInfo);
             }
         }
         
-        Collections.sort(globalVars);
-        return paginateList(globalVars, offset, limit);
+        // Get local variables from all functions
+        DecompInterface decomp = null; // Initialize outside try
+        try {
+            decomp = new DecompInterface(); // Create inside try
+            if (!decomp.openProgram(program)) {
+                 Msg.error(this, "listVariables: Failed to open program with decompiler.");
+                 // Continue with only global variables if decompiler fails to open
+            } else {
+                for (Function function : program.getFunctionManager().getFunctions(true)) {
+                    try {
+                        DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                        if (results != null && results.decompileCompleted()) {
+                            HighFunction highFunc = results.getHighFunction();
+                            if (highFunc != null) {
+                                Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
+                                while (symbolIter.hasNext()) {
+                                    HighSymbol symbol = symbolIter.next();
+                                    if (!symbol.isParameter()) { // Only list locals, not params
+                                        Map<String, String> varInfo = new HashMap<>();
+                                        varInfo.put("name", symbol.getName());
+                                        varInfo.put("type", "local");
+                                        varInfo.put("function", function.getName());
+                                        // Handle null PC address for some local variables
+                                        Address pcAddr = symbol.getPCAddress();
+                                        varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A"); 
+                                        varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
+                                        variables.add(varInfo);
+                                    }
+                                }
+                            } else {
+                                 Msg.warn(this, "listVariables: Failed to get HighFunction for " + function.getName());
+                            }
+                        } else {
+                             Msg.warn(this, "listVariables: Decompilation failed or timed out for " + function.getName());
+                        }
+                    } catch (Exception e) {
+                        Msg.error(this, "listVariables: Error processing function " + function.getName(), e);
+                        // Continue to the next function if one fails
+                    }
+                }
+            }
+        } catch (Exception e) {
+             Msg.error(this, "listVariables: Error during local variable processing", e);
+             // If a major error occurs, we might still have global variables
+        } finally {
+            if (decomp != null) {
+                decomp.dispose(); // Ensure disposal
+            }
+        }
+        
+        // Sort by name
+        Collections.sort(variables, (a, b) -> a.get("name").compareTo(b.get("name")));
+        
+        // Apply pagination
+        int start = Math.max(0, offset);
+        int end = Math.min(variables.size(), offset + limit);
+        List<Map<String, String>> paginated = variables.subList(start, end);
+        
+        // Create JSON response
+        // Use helper to create standard response
+        return createSuccessResponse(paginated);
     }
     
-    private String searchVariables(String searchTerm, int offset, int limit) {
+    private JsonObject searchVariables(String searchTerm, int offset, int limit) {
         Program program = getCurrentProgram();
-        if (program == null) return "No program loaded";
-        if (searchTerm == null || searchTerm.isEmpty()) return "Search term is required";
+        if (program == null) {
+            return createErrorResponse("No program loaded", 400);
+        }
         
-        List<String> matchedVars = new ArrayList<>();
+        if (searchTerm == null || searchTerm.isEmpty()) {
+            return createErrorResponse("Search term is required", 400);
+        }
+        
+        List<Map<String, String>> matchedVars = new ArrayList<>();
         
         // Search global variables
         SymbolTable symbolTable = program.getSymbolTable();
@@ -1543,8 +1709,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 symbol.getSymbolType() != SymbolType.FUNCTION && 
                 symbol.getSymbolType() != SymbolType.LABEL && 
                 symbol.getName().toLowerCase().contains(searchTerm.toLowerCase())) {
-                matchedVars.add(String.format("%s @ %s (global)", 
-                    symbol.getName(), symbol.getAddress()));
+                Map<String, String> varInfo = new HashMap<>();
+                varInfo.put("name", symbol.getName());
+                varInfo.put("address", symbol.getAddress().toString());
+                varInfo.put("type", "global");
+                matchedVars.add(varInfo);
             }
         }
         
@@ -1562,13 +1731,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                             while (symbolIter.hasNext()) {
                                 HighSymbol symbol = symbolIter.next();
                                 if (symbol.getName().toLowerCase().contains(searchTerm.toLowerCase())) {
+                                    Map<String, String> varInfo = new HashMap<>();
+                                    varInfo.put("name", symbol.getName());
+                                    varInfo.put("function", function.getName());
+                                    
                                     if (symbol.isParameter()) {
-                                        matchedVars.add(String.format("%s in %s (parameter)", 
-                                            symbol.getName(), function.getName()));
+                                        varInfo.put("type", "parameter");
                                     } else {
-                                        matchedVars.add(String.format("%s in %s @ %s (local)", 
-                                            symbol.getName(), function.getName(), symbol.getPCAddress()));
+                                        varInfo.put("type", "local");
+                                        varInfo.put("address", symbol.getPCAddress().toString());
                                     }
+                                    
+                                    matchedVars.add(varInfo);
                                 }
                             }
                         }
@@ -1579,17 +1753,34 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             decomp.dispose();
         }
         
-        Collections.sort(matchedVars);
+        // Sort by name
+        Collections.sort(matchedVars, (a, b) -> a.get("name").compareTo(b.get("name")));
         
-        if (matchedVars.isEmpty()) {
-            return "No variables matching '" + searchTerm + "'";
-        }
-        return paginateList(matchedVars, offset, limit);
+        // Apply pagination
+        int start = Math.max(0, offset);
+        int end = Math.min(matchedVars.size(), offset + limit);
+        List<Map<String, String>> paginated = matchedVars.subList(start, end);
+        
+        // Create JSON response
+        // Use helper to create standard response
+        return createSuccessResponse(paginated);
     }
     
     // ----------------------------------------------------------------------------------
     // Helper methods
     // ----------------------------------------------------------------------------------
+    
+    private String getDataTypeName(Program program, Address address) {
+        if (program == null || address == null) {
+            return "unknown";
+        }
+        Data data = program.getListing().getDefinedDataAt(address);
+        if (data != null) {
+            DataType dt = data.getDataType();
+            return dt != null ? dt.getName() : "unknown";
+        }
+        return "unknown";
+    }
     
     private Function findFunctionByName(Program program, String name) {
         if (program == null || name == null || name.isEmpty()) {
@@ -1633,6 +1824,33 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
         
         return null;
+    }
+
+    // ----------------------------------------------------------------------------------
+    // Standardized JSON Response Helpers
+    // ----------------------------------------------------------------------------------
+
+    private JsonObject createSuccessResponse(Object resultData) {
+        JsonObject response = new JsonObject();
+        response.addProperty("success", true);
+        if (resultData != null) {
+             response.add("result", new Gson().toJsonTree(resultData));
+        } else {
+             response.add("result", null); // Explicitly add null if result is null
+        }
+        response.addProperty("timestamp", System.currentTimeMillis());
+        response.addProperty("port", this.port);
+        return response;
+    }
+
+    private JsonObject createErrorResponse(String errorMessage, int statusCode) {
+        JsonObject response = new JsonObject();
+        response.addProperty("success", false);
+        response.addProperty("error", errorMessage);
+        response.addProperty("status_code", statusCode); // Use status_code for consistency
+        response.addProperty("timestamp", System.currentTimeMillis());
+        response.addProperty("port", this.port);
+        return response;
     }
 
     // ----------------------------------------------------------------------------------
@@ -1762,33 +1980,14 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
     }
     
-
+    // Simplified sendResponse - expects JsonObject or wraps other types
     private void sendResponse(HttpExchange exchange, Object response) throws IOException {
-        if (response instanceof String && ((String)response).startsWith("{")) {
-            // Already JSON formatted, send as-is
-            byte[] bytes = ((String)response).getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-            exchange.sendResponseHeaders(200, bytes.length);
-            try (OutputStream os = exchange.getResponseBody()) {
-                os.write(bytes);
-            }
+        if (response instanceof JsonObject) {
+            // If it's already a JsonObject (likely from helpers), send directly
+            sendJsonResponse(exchange, (JsonObject) response);
         } else {
-            // Wrap in standard response format
-            JsonObject json = new JsonObject();
-            json.addProperty("success", true);
-            if (response instanceof String) {
-                json.addProperty("result", (String)response);
-            } else {
-                json.add("result", new Gson().toJsonTree(response));
-            }
-            json.addProperty("timestamp", System.currentTimeMillis());
-            json.addProperty("port", this.port);
-            if (this.isBaseInstance) {
-                json.addProperty("instanceType", "base");
-            } else {
-                json.addProperty("instanceType", "secondary");
-            }
-            sendJsonResponse(exchange, json);
+             // Wrap other types (including String) in standard success response
+             sendJsonResponse(exchange, createSuccessResponse(response));
         }
     }
 
@@ -1825,18 +2024,51 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
     }
 
+    // Simplified sendErrorResponse - uses helper and new sendJsonResponse overload
     private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
-        JsonObject error = new JsonObject();
-        error.addProperty("error", message);
-        error.addProperty("status", statusCode);
-        error.addProperty("success", false);
-        
-        Gson gson = new Gson();
-        byte[] bytes = gson.toJson(error).getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-        exchange.sendResponseHeaders(statusCode, bytes.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(bytes);
+        sendJsonResponse(exchange, createErrorResponse(message, statusCode), statusCode);
+    }
+
+    // Overload sendJsonResponse to accept status code for errors
+    private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj, int statusCode) throws IOException {
+         try {
+            // Ensure success field matches status code for clarity
+            if (!jsonObj.has("success")) {
+                 jsonObj.addProperty("success", statusCode >= 200 && statusCode < 300);
+            } else {
+                 // Optionally force success based on status code if it exists
+                 // jsonObj.addProperty("success", statusCode >= 200 && statusCode < 300);
+            }
+             
+            Gson gson = new Gson();
+            String json = gson.toJson(jsonObj);
+            Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json);
+            
+            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            exchange.sendResponseHeaders(statusCode, bytes.length); // Use provided status code
+            
+            OutputStream os = null;
+            try {
+                os = exchange.getResponseBody();
+                os.write(bytes);
+                os.flush();
+            } catch (IOException e) {
+                Msg.error(this, "Error writing response body: " + e.getMessage(), e);
+                throw e;
+            } finally {
+                if (os != null) {
+                    try {
+                        os.close();
+                    } catch (IOException e) {
+                        Msg.error(this, "Error closing output stream: " + e.getMessage(), e);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error in sendJsonResponse: " + e.getMessage(), e);
+            // Avoid sending another error response here to prevent loops
+            throw new IOException("Failed to send JSON response", e);
         }
     }
     

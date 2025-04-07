@@ -16,6 +16,26 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp_client_test")
 
+async def assert_standard_mcp_success_response(response_content, expected_result_type=None):
+    """Helper to assert the standard success response structure for MCP tool calls."""
+    assert response_content, "Response content is empty"
+    try:
+        data = json.loads(response_content[0].text)
+    except (json.JSONDecodeError, IndexError) as e:
+        assert False, f"Failed to parse JSON response: {e} - Content: {response_content}"
+
+    assert "success" in data, "Response missing 'success' field"
+    assert data["success"] is True, f"API call failed: {data.get('error', 'Unknown error')}"
+    assert "timestamp" in data, "Response missing 'timestamp' field"
+    assert isinstance(data["timestamp"], (int, float)), "'timestamp' should be a number"
+    assert "port" in data, "Response missing 'port' field"
+    # We don't strictly check port number here as it might vary in MCP tests
+    assert "result" in data, "Response missing 'result' field"
+    if expected_result_type:
+        assert isinstance(data["result"], expected_result_type), \
+            f"'result' field type mismatch: expected {expected_result_type}, got {type(data['result'])}"
+    return data # Return parsed data for further checks if needed
+
 async def test_bridge():
     """Test the bridge using the MCP client"""
     # Configure the server parameters
@@ -72,71 +92,92 @@ async def test_bridge():
                     logger.warning("No functions found - skipping mutating tests")
                     return
                 
-                # The list_functions result contains the function data directly
-                if not list_funcs.content:
-                    logger.warning("No function data found - skipping mutating tests")
-                    return
-                
-                # Parse the JSON response
+                # Parse the JSON response from list_functions using helper
                 try:
-                    func_data = json.loads(list_funcs.content[0].text)
-                    func_list = func_data.get("result", [])
+                    list_funcs_data = await assert_standard_mcp_success_response(list_funcs.content, expected_result_type=list)
+                    func_list = list_funcs_data.get("result", [])
                     if not func_list:
-                        logger.warning("No functions in result - skipping mutating tests")
+                        logger.warning("No functions in list_functions result - skipping mutating tests")
                         return
 
-                    # Get first function's name and address directly from list_functions result
+                    # Get first function's name and address
                     first_func = func_list[0]
                     func_name = first_func.get("name", "")
-                    func_address = first_func.get("address", "") # Get address directly
+                    func_address = first_func.get("address", "")
 
                     if not func_name or not func_address:
                         logger.warning("No function name/address found in list_functions result - skipping mutating tests")
                         return
-
-                except json.JSONDecodeError as e:
-                    logger.warning(f"Error parsing list_functions data: {e} - skipping mutating tests")
-                    return
+                except AssertionError as e:
+                     logger.warning(f"Error processing list_functions data: {e} - skipping mutating tests")
+                     return
 
                 # Test function renaming
                 original_name = func_name
                 test_name = f"{func_name}_test"
 
-                # Test successful rename operations
+                # Test successful rename operations (These return simple success/message, not full result)
                 rename_args = {"port": 8192, "name": original_name, "new_name": test_name}
                 logger.info(f"Calling update_function with args: {rename_args}")
                 rename_result = await session.call_tool("update_function", arguments=rename_args)
-                rename_data = json.loads(rename_result.content[0].text)
+                rename_data = json.loads(rename_result.content[0].text) # Parse simple response
                 assert rename_data.get("success") is True, f"Rename failed: {rename_data}"
                 logger.info(f"Rename result: {rename_result}")
                 
-                # Verify rename
-                renamed_func = await session.call_tool(
-                    "get_function",
-                    arguments={"port": 8192, "name": test_name}
-                )
-                renamed_data = json.loads(renamed_func.content[0].text)
-                assert renamed_data.get("success") is True, f"Get renamed function failed: {renamed_data}"
+                # Verify rename by getting the function
+                renamed_func = await session.call_tool("get_function", arguments={"port": 8192, "name": test_name})
+                renamed_data = await assert_standard_mcp_success_response(renamed_func.content, expected_result_type=dict)
+                assert renamed_data.get("result", {}).get("name") == test_name, f"Renamed function has wrong name: {renamed_data}"
                 logger.info(f"Renamed function result: {renamed_func}")
                 
                 # Rename back to original
                 revert_args = {"port": 8192, "name": test_name, "new_name": original_name}
                 logger.info(f"Calling update_function with args: {revert_args}")
                 revert_result = await session.call_tool("update_function", arguments=revert_args)
-                revert_data = json.loads(revert_result.content[0].text)
+                revert_data = json.loads(revert_result.content[0].text) # Parse simple response
                 assert revert_data.get("success") is True, f"Revert rename failed: {revert_data}"
                 logger.info(f"Revert rename result: {revert_result}")
                 
-                # Verify revert
-                original_func = await session.call_tool(
-                    "get_function",
-                    arguments={"port": 8192, "name": original_name}
-                )
-                original_data = json.loads(original_func.content[0].text)
-                assert original_data.get("success") is True, f"Get original function failed: {original_data}"
+                # Verify revert by getting the function
+                original_func = await session.call_tool("get_function", arguments={"port": 8192, "name": original_name})
+                original_data = await assert_standard_mcp_success_response(original_func.content, expected_result_type=dict)
+                assert original_data.get("result", {}).get("name") == original_name, f"Original function has wrong name: {original_data}"
                 logger.info(f"Original function result: {original_func}")
-                
-                # Test successful comment operations
+
+                # Test get_function_by_address
+                logger.info(f"Calling get_function_by_address with address: {func_address}")
+                get_by_addr_result = await session.call_tool("get_function_by_address", arguments={"port": 8192, "address": func_address})
+                get_by_addr_data = await assert_standard_mcp_success_response(get_by_addr_result.content, expected_result_type=dict)
+                result_data = get_by_addr_data.get("result", {})
+                assert "name" in result_data, "Missing name field in get_function_by_address result"
+                assert "address" in result_data, "Missing address field in get_function_by_address result" 
+                assert "signature" in result_data, "Missing signature field in get_function_by_address result"
+                assert "decompilation" in result_data, "Missing decompilation field in get_function_by_address result"
+                assert result_data.get("name") == original_name, f"Wrong name in get_function_by_address: {result_data.get('name')}"
+                logger.info(f"Get function by address result: {get_by_addr_result}")
+
+                # Test decompile_function_by_address
+                logger.info(f"Calling decompile_function_by_address with address: {func_address}")
+                decompile_result = await session.call_tool("decompile_function_by_address", arguments={"port": 8192, "address": func_address})
+                decompile_data = await assert_standard_mcp_success_response(decompile_result.content, expected_result_type=dict)
+                assert "decompilation" in decompile_data.get("result", {}), f"Decompile result missing 'decompilation': {decompile_data}"
+                assert isinstance(decompile_data.get("result", {}).get("decompilation", ""), str), f"Decompilation is not a string: {decompile_data}"
+                assert len(decompile_data.get("result", {}).get("decompilation", "")) > 0, f"Decompilation result is empty: {decompile_data}"
+                logger.info(f"Decompile function by address result: {decompile_result}")
+
+                # Test list_variables 
+                logger.info("Calling list_variables tool...")
+                list_vars_result = await session.call_tool("list_variables", arguments={"port": 8192, "limit": 10})
+                list_vars_data = await assert_standard_mcp_success_response(list_vars_result.content, expected_result_type=list)
+                variables_list = list_vars_data.get("result", [])
+                if variables_list:  # Only validate structure if we get results
+                    for var in variables_list:
+                        assert "name" in var, f"Variable missing name: {var}"
+                        assert "type" in var, f"Variable missing type: {var}"
+                        assert "dataType" in var, f"Variable missing dataType: {var}"
+                logger.info(f"List variables result: {list_vars_result}")
+
+                # Test successful comment operations (These return simple success/message)
                 test_comment = "Test comment from MCP client"
                 comment_args = {"port": 8192, "address": func_address, "comment": test_comment}
                 logger.info(f"Calling set_decompiler_comment with args: {comment_args}")
