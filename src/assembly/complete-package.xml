@@ -26,7 +26,8 @@
         <fileSet>
             <directory>${project.build.directory}</directory>
             <includes>
-                <include>GhydraMCP-${project.version}.zip</include>
+                <!-- Use build.identifier to match the actual filename -->
+                <include>GhydraMCP-${build.identifier}.zip</include>
             </includes>
             <outputDirectory></outputDirectory>
         </fileSet>
