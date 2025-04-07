@@ -22,12 +22,11 @@
             <outputDirectory></outputDirectory>
         </fileSet>
         
-        <!-- Include pre-built Ghidra plugin zip -->
-        <fileSet>
-            <directory>${project.build.directory}</directory>
+        <!-- Include the Ghidra plugin zip copied by maven-resources-plugin -->
+         <fileSet>
+            <directory>${project.build.directory}/staging</directory>
             <includes>
-                <!-- Use properties consistent with pom.xml finalName -->
-                <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
+                <include>GhydraMCP-*.zip</include>
             </includes>
             <outputDirectory></outputDirectory>
         </fileSet>

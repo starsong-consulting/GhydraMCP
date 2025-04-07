@@ -205,7 +205,7 @@
           <!-- Default execution for the plugin only -->
           <execution>
             <id>plugin-assembly</id>
-            <phase>package</phase>
+            <phase>prepare-package</phase> <!-- Run earlier to ensure zip exists for copy -->
             <goals>
               <goal>single</goal>
             </goals>
@@ -215,6 +215,9 @@
               </descriptors>
               <finalName>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
+              <!-- Don't attach artifact, we will copy it manually -->
+              <!-- <attach>true</attach> -->
+              <!-- <classifier>ghidra-extension</classifier> -->
             </configuration>
           </execution>
           
@@ -232,6 +235,33 @@
               <finalName>GhydraMCP-Complete-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Copy the generated plugin zip to a staging area -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>copy-plugin-zip</id>
+            <phase>package</phase> <!-- Run after plugin-assembly -->
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/staging</outputDirectory>
+              <resources>          
+                <resource>
+                  <directory>${project.build.directory}</directory>
+                  <includes>
+                    <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
+                  </includes>
+                </resource>
+              </resources>              
+            </configuration>            
           </execution>
         </executions>
       </plugin>
