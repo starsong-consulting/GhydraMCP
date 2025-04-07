@@ -26,8 +26,8 @@
         <fileSet>
             <directory>${project.build.directory}</directory>
             <includes>
-                <!-- Use build.identifier to match the actual filename -->
-                <include>GhydraMCP-${build.identifier}.zip</include>
+                <!-- Use properties consistent with pom.xml finalName -->
+                <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
             </includes>
             <outputDirectory></outputDirectory>
         </fileSet>
