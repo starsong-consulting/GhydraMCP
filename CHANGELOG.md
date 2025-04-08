@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.4.0] - 2025-04-08
 
 ### Added
 - Structured JSON communication between Python bridge and Java plugin
@@ -12,11 +12,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Comprehensive test suites for HTTP API and MCP bridge
 - Test runner script for easy test execution
 - Detailed testing documentation in TESTING.md
+- Origin checking for API requests
+- Mutating tests for API functionality
 
 ### Changed
 - Improved error handling in API responses
 - Enhanced JSON parsing in the Java plugin
 - Updated documentation with JSON communication details
+- Standardized API responses across all endpoints
+- Improved version handling in build system
+
+### Fixed
+- Build complete package in `package` phase
+- Versioning and naming of JAR files
+- GitHub Actions workflow permissions
+- Extension ZIP inclusion in complete package
+- ProgramManager requirement
+- Git tag fetching functionality
+- MCP bridge test failures
 
 ## [1.3.0] - 2025-04-02
 
@@ -70,7 +83,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Initial project setup
 - Basic MCP bridge functionality
 
-[unreleased]: https://github.com/teal-bauer/GhydraMCP/compare/v1.3.0...HEAD
+[unreleased]: https://github.com/teal-bauer/GhydraMCP/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/teal-bauer/GhydraMCP/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/teal-bauer/GhydraMCP/compare/v1.2...v1.3.0
 [1.2]: https://github.com/teal-bauer/GhydraMCP/compare/v1.1...v1.2
 [1.1]: https://github.com/teal-bauer/GhydraMCP/compare/1.0...v1.1
