@@ -461,7 +461,8 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                         resultObj.addProperty("function", "");
                         resultObj.addProperty("address", address);
                         
-                        response.addProperty("success", true);
+                        response.addProperty("success", false);
+                        response.addProperty("message", "Function not found");
                         response.add("result", resultObj);
                         response.addProperty("timestamp", System.currentTimeMillis());
                         response.addProperty("port", this.port);
