@@ -278,5 +278,30 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # This should return 404, but some servers might return other codes
         self.assertNotEqual(response.status_code, 200)
 
+    def test_get_current_address(self):
+        """Test the /get_current_address endpoint"""
+        response = requests.get(f"{BASE_URL}/get_current_address")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertStandardSuccessResponse(data, expected_result_type=dict)
+        
+        result = data.get("result", {})
+        self.assertIn("address", result)
+        self.assertIsInstance(result["address"], str)
+
+    def test_get_current_function(self):
+        """Test the /get_current_function endpoint"""
+        response = requests.get(f"{BASE_URL}/get_current_function")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertStandardSuccessResponse(data, expected_result_type=dict)
+        
+        result = data.get("result", {})
+        self.assertIn("name", result)
+        self.assertIn("address", result)
+        self.assertIn("signature", result)
+
 if __name__ == "__main__":
     unittest.main()

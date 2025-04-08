@@ -358,20 +358,11 @@ def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", cCode: bool = 
     Returns:
         dict: Contains function name, address, signature and decompilation
     """
-    response = safe_get(port, f"functions/{quote(name)}", {
+    return safe_get(port, f"functions/{quote(name)}", {
         "cCode": str(cCode).lower(),
         "syntaxTree": str(syntaxTree).lower(),
         "simplificationStyle": simplificationStyle
     })
-    
-    if not isinstance(response, dict) or "success" not in response:
-        return {
-            "success": False,
-            "error": "Invalid response format from Ghidra plugin",
-            "timestamp": int(time.time() * 1000),
-            "port": port
-        }
-    return response
 
 @mcp.tool()
 def update_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", new_name: str = "") -> str:
@@ -499,51 +490,55 @@ def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") 
     Returns:
         dict: Contains function name, address, signature and decompilation
     """
-    response = safe_get(port, "get_function_by_address", {"address": address})
-    
-    if isinstance(response, dict) and "success" in response:
-        return response
-    elif isinstance(response, str):
-        return {
-            "success": True,
-            "result": {
-                "decompilation": response,
-                "address": address
-            },
-            "timestamp": int(time.time() * 1000),
-            "port": port
-        }
-    else:
-        return {
-            "success": False,
-            "error": "Unexpected response format from Ghidra plugin",
-            "timestamp": int(time.time() * 1000),
-            "port": port
-        }
+    return safe_get(port, "get_function_by_address", {"address": address})
 
 @mcp.tool()
 def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> dict:
-    """Get currently selected address in Ghidra UI
-    
+    """Get the address currently selected in Ghidra's UI
+
     Args:
         port: Ghidra instance port (default: 8192)
-        
+
     Returns:
-        dict: Contains current memory address in hex format
+        Dict containing:
+        - success: boolean indicating success
+        - result: object with address field
+        - error: error message if failed
+        - timestamp: timestamp of response
     """
-    return safe_get(port, "get_current_address")
+    response = safe_get(port, "get_current_address")
+    if isinstance(response, dict) and "success" in response:
+        return response
+    return {
+        "success": False,
+        "error": "Unexpected response format from Ghidra plugin",
+        "timestamp": int(time.time() * 1000),
+        "port": port
+    }
 
 @mcp.tool()
 def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict:
-    """Get currently selected function in Ghidra UI
-    
+    """Get the function currently selected in Ghidra's UI
+
     Args:
         port: Ghidra instance port (default: 8192)
         
     Returns:
-        dict: Contains function name, address and signature
+        Dict containing:
+        - success: boolean indicating success
+        - result: object with name, address and signature fields
+        - error: error message if failed
+        - timestamp: timestamp of response
     """
-    return safe_get(port, "get_current_function")
+    response = safe_get(port, "get_current_function")
+    if isinstance(response, dict) and "success" in response:
+        return response
+    return {
+        "success": False,
+        "error": "Unexpected response format from Ghidra plugin",
+        "timestamp": int(time.time() * 1000),
+        "port": port
+    }
 
 @mcp.tool()
 def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "", cCode: bool = True, syntaxTree: bool = False, simplificationStyle: str = "normalize") -> dict:
@@ -559,21 +554,12 @@ def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str 
     Returns:
         dict: Contains decompiled code in 'result.decompilation'
     """
-    response = safe_get(port, "decompile_function", {
+    return safe_get(port, "decompile_function", {
         "address": address,
         "cCode": str(cCode).lower(),
         "syntaxTree": str(syntaxTree).lower(),
         "simplificationStyle": simplificationStyle
     })
-    
-    if not isinstance(response, dict) or "success" not in response:
-        return {
-            "success": False,
-            "error": "Invalid response format from Ghidra plugin",
-            "timestamp": int(time.time() * 1000),
-            "port": port
-        }
-    return response
 
 @mcp.tool()
 def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> dict:
@@ -691,16 +677,7 @@ def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int 
     if search:
         params["search"] = search
     
-    response = safe_get(port, "variables", params)
-    
-    if not isinstance(response, dict) or "success" not in response:
-        return {
-            "success": False,
-            "error": "Invalid response format from Ghidra plugin",
-            "timestamp": int(time.time() * 1000),
-            "port": port
-        }
-    return response
+    return safe_get(port, "variables", params)
 
 @mcp.tool()
 def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "") -> dict:
@@ -717,16 +694,7 @@ def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "")
         return {"success": False, "error": "Function name is required"}
 
     encoded_name = quote(function)
-    response = safe_get(port, f"functions/{encoded_name}/variables", {})
-    
-    if not isinstance(response, dict) or "success" not in response:
-        return {
-            "success": False,
-            "error": "Invalid response format from Ghidra plugin",
-            "timestamp": int(time.time() * 1000),
-            "port": port
-        }
-    return response
+    return safe_get(port, f"functions/{encoded_name}/variables", {})
 
 @mcp.tool()
 def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", new_name: str = "") -> dict:

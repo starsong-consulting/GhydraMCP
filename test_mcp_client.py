@@ -223,6 +223,24 @@ async def test_bridge():
                 bad_comment_result = await session.call_tool("set_decompiler_comment", arguments=bad_comment_args)
                 bad_comment_data = json.loads(bad_comment_result.content[0].text)
                 assert bad_comment_data.get("success") is False, "Commenting on invalid address should fail"
+
+                # Test get_current_address
+                logger.info("Calling get_current_address tool...")
+                current_addr_result = await session.call_tool("get_current_address", arguments={"port": 8192})
+                current_addr_data = await assert_standard_mcp_success_response(current_addr_result.content, expected_result_type=dict)
+                assert "address" in current_addr_data.get("result", {}), "Missing address in get_current_address result"
+                assert isinstance(current_addr_data.get("result", {}).get("address", ""), str), "Address should be a string"
+                logger.info(f"Get current address result: {current_addr_result}")
+
+                # Test get_current_function
+                logger.info("Calling get_current_function tool...")
+                current_func_result = await session.call_tool("get_current_function", arguments={"port": 8192})
+                current_func_data = await assert_standard_mcp_success_response(current_func_result.content, expected_result_type=dict)
+                result_data = current_func_data.get("result", {})
+                assert "name" in result_data, "Missing name in get_current_function result"
+                assert "address" in result_data, "Missing address in get_current_function result"
+                assert "signature" in result_data, "Missing signature in get_current_function result"
+                logger.info(f"Get current function result: {current_func_result}")
                 
             except Exception as e:
                 logger.error(f"Error testing mutating operations: {e}")

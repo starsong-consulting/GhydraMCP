@@ -11,16 +11,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Cleaned up comments and simplified code in bridge_mcp_hydra.py
 - Improved error handling and response formatting
 - Standardized API response structure across all endpoints
+- Completed conversion of bridge/plugin protocol to pure JSON:
+  - All endpoints now use structured JSON requests/responses
+  - Removed all string parsing/formatting code from both bridge and plugin
+  - Standardized error handling with consistent JSON error responses
+  - Added detailed JSON schemas for all API endpoints
+  - Using only POST methods for mutation endpoints (previously mixed PUT/POST)
+  - Uniform camelCase parameter naming across JSON payloads
+  - Improved response metadata (timestamps, status codes)
+
+### Changed
+- Completed conversion of bridge/plugin protocol to pure JSON:
+  - All endpoints now use structured JSON requests/responses
+  - Removed all string parsing/formatting code from both bridge and plugin
+  - Standardized error handling with consistent JSON error responses
+  - Added detailed JSON schemas for all API endpoints
+  - Using only POST methods for mutation endpoints (previously mixed PUT/POST)
+  - Uniform camelCase parameter naming across JSON payloads
+  - Improved response metadata (timestamps, status codes)
 
 ### Added
 - Added GHIDRA_HTTP_API.md with documentation of the Java Plugin's HTTP API
 - Added better docstrings and type hints for all MCP tools
 - Added improved content-type handling for API requests
 - Added decompiler output controls to customize analysis results:
-  - Choose between clean C-like pseudocode (default) or raw decompiler output
-  - Toggle syntax tree visibility for detailed analysis
-  - Select different simplification styles for alternate views
-  - Useful for comparing different decompilation approaches or focusing on specific aspects of the code
+- Choose between clean C-like pseudocode (default) or raw decompiler output
+- Toggle syntax tree visibility for detailed analysis
+- Select different simplification styles for alternate views
+- Useful for comparing different decompilation approaches or focusing on specific aspects of the code
   
   Example showing how to get raw decompiler output with syntax tree:
   ```xml

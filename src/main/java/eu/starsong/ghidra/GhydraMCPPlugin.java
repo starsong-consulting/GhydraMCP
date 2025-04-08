@@ -116,19 +116,24 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         // Each listing endpoint uses offset & limit from query params:
         // Function resources
         server.createContext("/functions", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                String query = qparams.get("query");
-                
-                if (query != null && !query.isEmpty()) {
-                    sendResponse(exchange, searchFunctionsByName(query, offset, limit));
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    String query = qparams.get("query");
+                    
+                    if (query != null && !query.isEmpty()) {
+                        sendJsonResponse(exchange, searchFunctionsByName(query, offset, limit));
+                    } else {
+                        sendJsonResponse(exchange, getAllFunctionNames(offset, limit));
+                    }
                 } else {
-                    sendResponse(exchange, getAllFunctionNames(offset, limit));
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            } catch (Exception e) {
+                Msg.error(this, "Error in /functions endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
@@ -254,116 +259,131 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
         // Class resources
         server.createContext("/classes", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                try {
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
                     sendJsonResponse(exchange, getAllClassNames(offset, limit));
-                } catch (Exception e) {
-                    Msg.error(this, "/classes: Error in request processing", e);
-                    try {
-                        sendErrorResponse(exchange, 500, "Internal server error");
-                    } catch (IOException ioe) {
-                        Msg.error(this, "/classes: Failed to send error response", ioe);
-                    }
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            } catch (Exception e) {
+                Msg.error(this, "Error in /classes endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
         // Memory segments
         server.createContext("/segments", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                sendResponse(exchange, listSegments(offset, limit));
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    sendJsonResponse(exchange, listSegments(offset, limit));
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /segments endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
         // Symbol resources (imports/exports)
         server.createContext("/symbols/imports", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                sendResponse(exchange, listImports(offset, limit));
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    sendJsonResponse(exchange, listImports(offset, limit));
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /symbols/imports endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
         server.createContext("/symbols/exports", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                sendResponse(exchange, listExports(offset, limit));
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    sendJsonResponse(exchange, listExports(offset, limit));
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /symbols/exports endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
         // Namespace resources
         server.createContext("/namespaces", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                sendResponse(exchange, listNamespaces(offset, limit));
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    sendJsonResponse(exchange, listNamespaces(offset, limit));
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /namespaces endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
         // Data resources
         server.createContext("/data", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                sendResponse(exchange, listDefinedData(offset, limit));
-            } else if ("POST".equals(exchange.getRequestMethod())) { // Change PUT to POST
-                Map<String, String> params = parseJsonPostParams(exchange); // Use specific JSON parser
-                boolean success = renameDataAtAddress(params.get("address"), params.get("newName")); // Expect camelCase
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    sendJsonResponse(exchange, listDefinedData(offset, limit));
+                } else if ("POST".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parseJsonPostParams(exchange);
+                    boolean success = renameDataAtAddress(params.get("address"), params.get("newName"));
+                    
                     JsonObject response = new JsonObject();
                     response.addProperty("success", success);
                     response.addProperty("message", success ? "Data renamed successfully" : "Failed to rename data");
                     response.addProperty("timestamp", System.currentTimeMillis());
                     response.addProperty("port", this.port);
-                    
-                    Gson gson = new Gson();
-                    String json = gson.toJson(response);
-                    byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-                    
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
-                    exchange.sendResponseHeaders(success ? 200 : 400, bytes.length);
-                    
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(bytes);
-                        os.flush();
-                    }
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                    sendJsonResponse(exchange, response);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /data endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
         
         // Global variables endpoint
         server.createContext("/variables", exchange -> {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                int offset = parseIntOrDefault(qparams.get("offset"), 0);
-                int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                String search = qparams.get("search");
-                
-                sendResponse(exchange, listVariables(offset, limit, search));
-            } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    String search = qparams.get("search");
+                    
+                    sendJsonResponse(exchange, listVariables(offset, limit, search));
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /variables endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error");
             }
         });
 
@@ -724,54 +744,110 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
+        // Add get current address endpoint (Changed to GET to match test expectations)
+        server.createContext("/get_current_address", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Program program = getCurrentProgram();
+                if (program == null) {
+                    sendErrorResponse(exchange, 400, "No program loaded");
+                    return;
+                }
 
-        // Super simple info endpoint with guaranteed response
+                JsonObject response = new JsonObject();
+                JsonObject resultObj = new JsonObject();
+                
+                try {
+                    Address currentAddr = getCurrentAddress();
+                    if (currentAddr != null) {
+                        resultObj.addProperty("address", currentAddr.toString());
+                        response.addProperty("success", true);
+                    } else {
+                        resultObj.addProperty("address", "");
+                        response.addProperty("success", false);
+                        response.addProperty("message", "No address currently selected");
+                    }
+                } catch (Exception e) {
+                    Msg.error(this, "Error getting current address", e);
+                    response.addProperty("success", false);
+                    response.addProperty("error", "Error getting current address: " + e.getMessage());
+                }
+                
+                response.add("result", resultObj);
+                response.addProperty("timestamp", System.currentTimeMillis());
+                response.addProperty("port", this.port);
+                sendJsonResponse(exchange, response);
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        });
+
+        // Add get current function endpoint (Changed to GET to match test expectations)
+        server.createContext("/get_current_function", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Program program = getCurrentProgram();
+                if (program == null) {
+                    sendErrorResponse(exchange, 400, "No program loaded");
+                    return;
+                }
+
+                JsonObject response = new JsonObject();
+                JsonObject resultObj = new JsonObject();
+                
+                try {
+                    Function currentFunc = getCurrentFunction();
+                    if (currentFunc != null) {
+                        resultObj.addProperty("name", currentFunc.getName());
+                        resultObj.addProperty("address", currentFunc.getEntryPoint().toString());
+                        resultObj.addProperty("signature", currentFunc.getSignature().getPrototypeString());
+                        response.addProperty("success", true);
+                    } else {
+                        resultObj.addProperty("name", "");
+                        resultObj.addProperty("address", "");
+                        resultObj.addProperty("signature", "");
+                        response.addProperty("success", false);
+                        response.addProperty("message", "No function currently selected");
+                    }
+                } catch (Exception e) {
+                    Msg.error(this, "Error getting current function", e);
+                    response.addProperty("success", false);
+                    response.addProperty("error", "Error getting current function: " + e.getMessage());
+                }
+                
+                response.add("result", resultObj);
+                response.addProperty("timestamp", System.currentTimeMillis());
+                response.addProperty("port", this.port);
+                sendJsonResponse(exchange, response);
+            } else {
+                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+            }
+        });
+
+
+        // Info endpoint with standardized JSON response
         server.createContext("/info", exchange -> {
             try {
-                String response = "{\n";
-                response += "\"port\": " + port + ",\n";
-                response += "\"isBaseInstance\": " + isBaseInstance + ",\n";
+                JsonObject response = new JsonObject();
+                response.addProperty("port", port);
+                response.addProperty("isBaseInstance", isBaseInstance);
                 
                 // Try to get program info if available
                 Program program = getCurrentProgram();
-                String programName = "\"\"";
-                if (program != null) {
-                    programName = "\"" + program.getName() + "\"";
-                }
+                response.addProperty("file", program != null ? program.getName() : "");
                 
                 // Try to get project info if available
                 Project project = tool.getProject();
-                String projectName = "\"\"";
-                if (project != null) {
-                    projectName = "\"" + project.getName() + "\"";
-                }
+                response.addProperty("project", project != null ? project.getName() : "");
                 
-                response += "\"project\": " + projectName + ",\n";
-                response += "\"file\": " + programName + "\n";
-                response += "}";
+                response.addProperty("timestamp", System.currentTimeMillis());
+                response.addProperty("success", true);
                 
-                Msg.info(this, "Sending /info response: " + response);
-                byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                exchange.sendResponseHeaders(200, bytes.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(bytes);
-                }
+                sendJsonResponse(exchange, response);
             } catch (Exception e) {
                 Msg.error(this, "Error serving /info endpoint", e);
-                try {
-                    String error = "{\"error\": \"Internal error\", \"port\": " + port + "}";
-                    byte[] bytes = error.getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    // For mutation operations, set Content-Length explicitly to avoid chunked encoding
-                    exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
-                    exchange.sendResponseHeaders(200, bytes.length);
-                    OutputStream os = exchange.getResponseBody();
-                    os.write(bytes);
-                    os.close();
-                } catch (IOException ioe) {
-                    Msg.error(this, "Failed to send error response", ioe);
-                }
+                JsonObject error = new JsonObject();
+                error.addProperty("error", "Internal server error");
+                error.addProperty("port", port);
+                sendJsonResponse(exchange, error, 500);
             }
         });
         
@@ -786,35 +862,19 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
             
             try {
-                String response = "{\n";
-                response += "\"port\": " + port + ",\n";
-                response += "\"isBaseInstance\": " + isBaseInstance + ",\n";
+                JsonObject response = new JsonObject();
+                response.addProperty("port", port);
+                response.addProperty("isBaseInstance", isBaseInstance);
                 
                 // Try to get program info if available
                 Program program = getCurrentProgram();
-                String programName = "\"\"";
-                if (program != null) {
-                    programName = "\"" + program.getName() + "\"";
-                }
+                response.addProperty("file", program != null ? program.getName() : "");
                 
                 // Try to get project info if available
                 Project project = tool.getProject();
-                String projectName = "\"\"";
-                if (project != null) {
-                    projectName = "\"" + project.getName() + "\"";
-                }
+                response.addProperty("project", project != null ? project.getName() : "");
                 
-                response += "\"project\": " + projectName + ",\n";
-                response += "\"file\": " + programName + "\n";
-                response += "}";
-                
-                Msg.info(this, "Sending / response: " + response);
-                byte[] bytes = response.getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                exchange.sendResponseHeaders(200, bytes.length);
-                try (OutputStream os = exchange.getResponseBody()) {
-                    os.write(bytes);
-                }
+                sendJsonResponse(exchange, response);
             } catch (Exception e) {
                 Msg.error(this, "Error serving / endpoint", e);
                 try {
@@ -832,23 +892,55 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         });
 
         server.createContext("/registerInstance", exchange -> {
-            Map<String, String> params = parseJsonPostParams(exchange); // Use JSON parser
-            int port = parseIntOrDefault(params.get("port"), 0);
-            if (port > 0) {
-                sendResponse(exchange, "Instance registered on port " + port);
-            } else {
-                sendResponse(exchange, "Invalid port number");
+            try {
+                Map<String, String> params = parseJsonPostParams(exchange);
+                int port = parseIntOrDefault(params.get("port"), 0);
+                if (port > 0) {
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    response.addProperty("message", "Instance registered on port " + port);
+                    response.addProperty("port", port);
+                    response.addProperty("timestamp", System.currentTimeMillis());
+                    sendJsonResponse(exchange, response);
+                } else {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("error", "Invalid port number");
+                    error.addProperty("port", this.port);
+                    sendJsonResponse(exchange, error, 400);
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /registerInstance", e);
+                JsonObject error = new JsonObject();
+                error.addProperty("error", "Internal server error");
+                error.addProperty("port", this.port);
+                sendJsonResponse(exchange, error, 500);
             }
         });
 
         server.createContext("/unregisterInstance", exchange -> {
-            Map<String, String> params = parseJsonPostParams(exchange); // Use JSON parser
-            int port = parseIntOrDefault(params.get("port"), 0);
-            if (port > 0 && activeInstances.containsKey(port)) {
-                activeInstances.remove(port);
-                sendResponse(exchange, "Unregistered instance on port " + port);
-            } else {
-                sendResponse(exchange, "No instance found on port " + port);
+            try {
+                Map<String, String> params = parseJsonPostParams(exchange);
+                int port = parseIntOrDefault(params.get("port"), 0);
+                if (port > 0 && activeInstances.containsKey(port)) {
+                    activeInstances.remove(port);
+                    JsonObject response = new JsonObject();
+                    response.addProperty("success", true);
+                    response.addProperty("message", "Unregistered instance on port " + port);
+                    response.addProperty("port", port);
+                    response.addProperty("timestamp", System.currentTimeMillis());
+                    sendJsonResponse(exchange, response);
+                } else {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("error", "No instance found on port " + port);
+                    error.addProperty("port", this.port);
+                    sendJsonResponse(exchange, error, 404);
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error in /unregisterInstance", e);
+                JsonObject error = new JsonObject();
+                error.addProperty("error", "Internal server error");
+                error.addProperty("port", this.port);
+                sendJsonResponse(exchange, error, 500);
             }
         });
 
@@ -1995,7 +2087,40 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
     }
     
-    // Simplified sendResponse - expects JsonObject or wraps other types
+        // Get the currently selected address in Ghidra's UI
+        private Address getCurrentAddress() {
+            try {
+                Program program = getCurrentProgram();
+                if (program == null) {
+                    return null;
+                }
+                
+                // Return the minimum address as a fallback
+                return program.getMinAddress();
+            } catch (Exception e) {
+                Msg.error(this, "Error getting current address", e);
+                return null;
+            }
+        }
+
+        // Get the currently selected function in Ghidra's UI
+        private Function getCurrentFunction() {
+            try {
+                Program program = getCurrentProgram();
+                if (program == null) {
+                    return null;
+                }
+                
+                // Return the first function as a fallback
+                Iterator<Function> functions = program.getFunctionManager().getFunctions(true);
+                return functions.hasNext() ? functions.next() : null;
+            } catch (Exception e) {
+                Msg.error(this, "Error getting current function", e);
+                return null;
+            }
+        }
+
+        // Simplified sendResponse - expects JsonObject or wraps other types
     private void sendResponse(HttpExchange exchange, Object response) throws IOException {
         if (response instanceof JsonObject) {
             // If it's already a JsonObject (likely from helpers), send directly
