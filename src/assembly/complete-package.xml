@@ -29,7 +29,6 @@
             <source>${project.build.directory}/${inner.zip.filename}</source>
             <outputDirectory>/</outputDirectory>
             <fileMode>0644</fileMode>
-            <destName>GhydraMCP-plugin.zip</destName>
         </file>
     </files>
 </assembly>
