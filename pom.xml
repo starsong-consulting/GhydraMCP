@@ -8,7 +8,7 @@
   <packaging>jar</packaging>
   <version>${revision}</version>
   <name>GhydraMCP</name>
-  <url>https://github.com/teal-bauer/GhydraMCP</url>
+  <url>https://github.com/starsong-consulting/GhydraMCP</url>
   
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -99,14 +99,14 @@
     <plugins>
       <!-- Set Java version -->
       <!-- Resources plugin to handle filtering -->
-      <plugin>
+      <!-- <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
         <version>3.3.1</version>
         <configuration>
           <encoding>UTF-8</encoding>
         </configuration>
-      </plugin>
+      </plugin> -->
       
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -115,16 +115,15 @@
         <configuration>
           <source>21</source>
           <target>21</target>
-          <!-- Ignore warning about system paths -->
           <compilerArgument>-Xlint:-path</compilerArgument>
         </configuration>
       </plugin>
       
-      <!-- Git Commit ID plugin to generate version from git -->
+      <!-- Git Commit ID plugin to generate version info -->
       <plugin>
         <groupId>io.github.git-commit-id</groupId>
         <artifactId>git-commit-id-maven-plugin</artifactId>
-        <version>5.0.0</version>
+        <version>9.0.1</version>
         <executions>
           <execution>
             <id>get-git-info</id>
@@ -135,19 +134,16 @@
           </execution>
         </executions>
         <configuration>
+          <gitDescribe>
+            <tags>true</tags>
+          </gitDescribe>
           <generateGitPropertiesFile>true</generateGitPropertiesFile>
           <generateGitPropertiesFilename>${project.build.outputDirectory}/git.properties</generateGitPropertiesFilename>
-          <includeOnlyProperties>
-            <includeOnlyProperty>git.commit.id.abbrev</includeOnlyProperty>
-            <includeOnlyProperty>git.commit.time</includeOnlyProperty>
-            <includeOnlyProperty>git.closest.tag.name</includeOnlyProperty>
-            <includeOnlyProperty>git.build.version</includeOnlyProperty>
-          </includeOnlyProperties>
           <commitIdGenerationMode>full</commitIdGenerationMode>
         </configuration>
       </plugin>
       
-      <!-- Set revision property from git info -->
+      <!-- Simplified version naming - use tag if available, otherwise commit+dirty -->
       <plugin>
         <groupId>org.codehaus.mojo</groupId>
         <artifactId>build-helper-maven-plugin</artifactId>
@@ -161,9 +157,9 @@
             </goals>
             <configuration>
               <name>revision</name>
-              <value>${git.commit.id.abbrev}-${maven.build.timestamp}</value>
-              <regex>.*</regex>
-              <replacement>$0</replacement>
+              <value>${git.closest.tag.name}</value>
+              <regex>^$</regex>
+              <replacement>${git.commit.id.abbrev}${git.dirty ? "-dirty" : ""}</replacement>
               <failIfNoMatch>false</failIfNoMatch>
             </configuration>
           </execution>
