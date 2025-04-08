@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Added decompiler output controls to customize analysis results:
+  - Choose between clean C-like pseudocode (default) or raw decompiler output
+  - Toggle syntax tree visibility for detailed analysis
+  - Select different simplification styles for alternate views
+  - Useful for comparing different decompilation approaches or focusing on specific aspects of the code
+  
+  Example showing how to get raw decompiler output with syntax tree:
+  ```xml
+  <use_mcp_tool>
+  <server_name>ghydra</server_name>
+  <tool_name>decompile_function_by_address</tool_name>
+  <arguments>
+  {
+    "address": "0x1000",
+    "cCode": false,
+    "syntaxTree": true
+  }
+  </arguments>
+  </use_mcp_tool>
+  ```
+
 ## [1.4.0] - 2025-04-08
 
 ### Added

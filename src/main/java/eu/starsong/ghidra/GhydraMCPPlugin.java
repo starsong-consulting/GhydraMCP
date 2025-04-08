@@ -438,6 +438,9 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> qparams = parseQueryParams(exchange);
                 String address = qparams.get("address");
+                boolean cCode = Boolean.parseBoolean(qparams.getOrDefault("cCode", "true"));
+                boolean syntaxTree = Boolean.parseBoolean(qparams.getOrDefault("syntaxTree", "false"));
+                String simplificationStyle = qparams.getOrDefault("simplificationStyle", "normalize");
                 
                 if (address == null || address.isEmpty()) {
                     sendErrorResponse(exchange, 400, "Address parameter is required");
@@ -472,6 +475,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     
                     DecompInterface decomp = new DecompInterface();
                     try {
+                        // Set decompilation options from parameters
+                        decomp.toggleCCode(cCode);
+                        decomp.setSimplificationStyle(simplificationStyle);
+                        decomp.toggleSyntaxTree(syntaxTree);
+                        
                         if (!decomp.openProgram(program)) {
                             sendErrorResponse(exchange, 500, "Failed to initialize decompiler");
                             return;
@@ -1105,6 +1113,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
         DecompInterface decomp = new DecompInterface();
         try {
+            // Default to C code output and no syntax tree for better readability
+            decomp.toggleCCode(true);
+            decomp.setSimplificationStyle("normalize");
+            decomp.toggleSyntaxTree(false);
+            
             if (!decomp.openProgram(program)) {
                 resultObj.addProperty("decompilation_error", "Failed to initialize decompiler");
             } else {

@@ -333,9 +333,24 @@ def list_classes(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 
     return safe_get(port, "classes", {"offset": offset, "limit": limit})
 
 @mcp.tool()
-def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "") -> dict:
-    """Get decompiled code for a specific function"""
-    response = safe_get(port, f"functions/{quote(name)}", {})
+def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", cCode: bool = True, syntaxTree: bool = False, simplificationStyle: str = "normalize") -> dict:
+    """Get decompiled code for a specific function
+
+    Args:
+        port: Ghidra instance port (default: 8192)
+        name: Name of the function to decompile
+        cCode: Whether to output C code (default: True)
+        syntaxTree: Whether to include syntax tree (default: False)
+        simplificationStyle: Decompiler analysis style (default: "normalize")
+
+    Returns:
+        Dict containing function details including decompiled code
+    """
+    response = safe_get(port, f"functions/{quote(name)}", {
+        "cCode": str(cCode).lower(),
+        "syntaxTree": str(syntaxTree).lower(),
+        "simplificationStyle": simplificationStyle
+    })
     
     # Check if the response is a string (old format) or already a dict with proper structure
     if isinstance(response, dict) and "success" in response:
@@ -524,17 +539,25 @@ def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict: # Return dict
     return safe_get(port, "get_current_function")
 
 @mcp.tool()
-def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> dict:
+def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "", cCode: bool = True, syntaxTree: bool = False, simplificationStyle: str = "normalize") -> dict:
     """Decompile a function at a specific memory address
 
     Args:
         port: Ghidra instance port (default: 8192)
         address: Memory address of the function (hex string)
+        cCode: Whether to output C code (default: True)
+        syntaxTree: Whether to include syntax tree (default: False)
+        simplificationStyle: Decompiler analysis style (default: "normalize")
 
     Returns:
         Dict containing the decompiled pseudocode in the 'result.decompilation' field
     """
-    response = safe_get(port, "decompile_function", {"address": address})
+    response = safe_get(port, "decompile_function", {
+        "address": address,
+        "cCode": str(cCode).lower(),
+        "syntaxTree": str(syntaxTree).lower(),
+        "simplificationStyle": simplificationStyle
+    })
     
     # Check if the response is a string (old format) or already a dict with proper structure
     if isinstance(response, dict) and "success" in response:
