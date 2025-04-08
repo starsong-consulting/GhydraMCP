@@ -6,7 +6,7 @@
   <groupId>eu.starsong.ghidra</groupId>
   <artifactId>GhydraMCP</artifactId>
   <packaging>jar</packaging>
-  <version>${revision}</version>
+  <version>dev</version>
   <name>GhydraMCP</name>
   <url>https://github.com/starsong-consulting/GhydraMCP</url>
   
@@ -17,7 +17,7 @@
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
-    <revision>dev-SNAPSHOT</revision>
+    <revision>dev</revision>
   </properties>
 
   <dependencies>
@@ -143,28 +143,6 @@
         </configuration>
       </plugin>
       
-      <!-- Simplified version naming - use tag if available, otherwise commit+dirty -->
-      <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>build-helper-maven-plugin</artifactId>
-        <version>3.4.0</version>
-        <executions>
-          <execution>
-            <id>set-revision-from-git</id>
-            <phase>initialize</phase>
-            <goals>
-              <goal>regex-property</goal>
-            </goals>
-            <configuration>
-              <name>revision</name>
-              <value>${git.closest.tag.name}</value>
-              <regex>^$</regex>
-              <replacement>${git.commit.id.abbrev}${git.dirty ? "-dirty" : ""}</replacement>
-              <failIfNoMatch>false</failIfNoMatch>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
       
       <!-- Use custom MANIFEST.MF -->
       <plugin>
@@ -210,7 +188,7 @@
               <descriptors>
                 <descriptor>src/assembly/ghidra-extension.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
+              <finalName>GhydraMCP-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
               <!-- Don't attach artifact -->
             </configuration>
@@ -227,7 +205,7 @@
               <descriptors>
                 <descriptor>src/assembly/complete-package.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-Complete-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
+              <finalName>GhydraMCP-Complete-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
