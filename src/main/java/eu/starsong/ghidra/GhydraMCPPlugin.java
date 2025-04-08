@@ -68,7 +68,8 @@ import ghidra.util.task.ConsoleTaskMonitor;
     packageName = ghidra.app.DeveloperPluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "GhydraMCP Plugin for AI Analysis",
-    description = "Starts an embedded HTTP server to expose program data via REST API for AI-assisted reverse engineering with MCP (Model Context Protocol)."
+    description = "Exposes program data via HTTP API for AI-assisted reverse engineering with MCP (Model Context Protocol).",
+    servicesRequired = { ProgramManager.class }
 )
 public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
