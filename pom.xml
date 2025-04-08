@@ -197,7 +197,7 @@
           <!-- Execution for the complete package -->
           <execution>
             <id>complete-package</id>
-            <phase>verify</phase> 
+            <phase>package</phase> 
             <goals>
               <goal>single</goal>
             </goals>
