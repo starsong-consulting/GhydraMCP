@@ -18,6 +18,7 @@
     <maven.install.skip>true</maven.install.skip>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
     <revision>dev</revision>
+    <inner.zip.filename>GhydraMCP-${git.commit.id.describe}-${maven.build.timestamp}.zip</inner.zip.filename>
   </properties>
 
   <dependencies>
@@ -177,7 +178,7 @@
         <artifactId>maven-assembly-plugin</artifactId>
         <version>3.3.0</version>
         <executions>
-          <!-- Execution for the Ghidra extension zip (runs first in package phase) -->
+          <!-- Execution for the Ghidra extension zip -->
           <execution>
             <id>plugin-assembly</id>
             <phase>package</phase> 
@@ -190,14 +191,13 @@
               </descriptors>
               <finalName>GhydraMCP-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
-              <!-- Don't attach artifact -->
             </configuration>
           </execution>
           
-          <!-- Execution for the complete package (runs second in package phase) -->
+          <!-- Execution for the complete package -->
           <execution>
             <id>complete-package</id>
-            <phase>package</phase> 
+            <phase>verify</phase> 
             <goals>
               <goal>single</goal>
             </goals>
@@ -208,34 +208,6 @@
               <finalName>GhydraMCP-Complete-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
-          </execution>
-        </executions>
-      </plugin>
-
-      <!-- Copy the generated plugin zip to a staging area in the verify phase -->
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-resources-plugin</artifactId>
-        <version>3.3.1</version>
-        <executions>
-          <execution>
-            <id>copy-plugin-zip</id>
-            <phase>verify</phase> <!-- Run after package phase -->
-            <goals>
-              <goal>copy-resources</goal>
-            </goals>
-            <configuration>
-              <outputDirectory>${project.build.directory}/staging</outputDirectory>
-              <resources>          
-                <resource>
-                  <directory>${project.build.directory}</directory>
-                  <includes>
-                    <!-- Use properties here as they should be resolved by verify phase -->
-                    <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
-                  </includes>
-                </resource>
-              </resources>              
-            </configuration>            
           </execution>
         </executions>
       </plugin>

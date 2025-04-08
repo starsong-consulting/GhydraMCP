@@ -19,17 +19,17 @@
                 <include>README.md</include>
                 <include>LICENSE</include>
             </includes>
-            <outputDirectory></outputDirectory>
-        </fileSet>
-        
-        <!-- Include the Ghidra plugin zip copied by maven-resources-plugin -->
-         <fileSet>
-            <directory>${project.build.directory}/staging</directory> <!-- Point to staging directory -->
-            <includes>
-                <!-- Use exact pattern matching the staged file -->
-                <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
-            </includes>
-            <outputDirectory></outputDirectory>
+            <outputDirectory>/</outputDirectory>
         </fileSet>
     </fileSets>
+    
+    <files>
+        <!-- Include the inner ZIP directly from target -->
+        <file>
+            <source>${project.build.directory}/${inner.zip.filename}</source>
+            <outputDirectory>/</outputDirectory>
+            <fileMode>0644</fileMode>
+            <destName>GhydraMCP-plugin.zip</destName>
+        </file>
+    </files>
 </assembly>
