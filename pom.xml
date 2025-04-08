@@ -26,6 +26,7 @@
       <groupId>com.google.code.gson</groupId>
       <artifactId>gson</artifactId>
       <version>2.10.1</version>
+      <scope>provided</scope>
     </dependency>
 
     <!-- Ghidra JARs as system-scoped dependencies -->
@@ -196,16 +197,16 @@
         </configuration>
       </plugin>
       
-      <!-- The Assembly Plugin for creating the Ghidra extension ZIP -->
+      <!-- The Assembly Plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-assembly-plugin</artifactId>
         <version>3.3.0</version>
         <executions>
-          <!-- Default execution for the plugin only -->
+          <!-- Execution for the Ghidra extension zip (runs first in package phase) -->
           <execution>
             <id>plugin-assembly</id>
-            <phase>prepare-package</phase> <!-- Run earlier to ensure zip exists for copy -->
+            <phase>package</phase> 
             <goals>
               <goal>single</goal>
             </goals>
@@ -215,16 +216,14 @@
               </descriptors>
               <finalName>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
-              <!-- Don't attach artifact, we will copy it manually -->
-              <!-- <attach>true</attach> -->
-              <!-- <classifier>ghidra-extension</classifier> -->
+              <!-- Don't attach artifact -->
             </configuration>
           </execution>
           
-          <!-- Execution for the complete package -->
+          <!-- Execution for the complete package (runs second in package phase) -->
           <execution>
             <id>complete-package</id>
-            <phase>package</phase>
+            <phase>package</phase> 
             <goals>
               <goal>single</goal>
             </goals>
@@ -239,7 +238,7 @@
         </executions>
       </plugin>
 
-      <!-- Copy the generated plugin zip to a staging area -->
+      <!-- Copy the generated plugin zip to a staging area in the verify phase -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-resources-plugin</artifactId>
@@ -247,7 +246,7 @@
         <executions>
           <execution>
             <id>copy-plugin-zip</id>
-            <phase>package</phase> <!-- Run after plugin-assembly -->
+            <phase>verify</phase> <!-- Run after package phase -->
             <goals>
               <goal>copy-resources</goal>
             </goals>
@@ -257,6 +256,7 @@
                 <resource>
                   <directory>${project.build.directory}</directory>
                   <includes>
+                    <!-- Use properties here as they should be resolved by verify phase -->
                     <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
                   </includes>
                 </resource>

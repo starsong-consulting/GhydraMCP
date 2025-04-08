@@ -24,9 +24,10 @@
         
         <!-- Include the Ghidra plugin zip copied by maven-resources-plugin -->
          <fileSet>
-            <directory>${project.build.directory}/staging</directory>
+            <directory>${project.build.directory}/staging</directory> <!-- Point to staging directory -->
             <includes>
-                <include>GhydraMCP-*.zip</include>
+                <!-- Use exact pattern matching the staged file -->
+                <include>GhydraMCP-${git.commit.id.abbrev}-${maven.build.timestamp}.zip</include>
             </includes>
             <outputDirectory></outputDirectory>
         </fileSet>
