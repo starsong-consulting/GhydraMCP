@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Cleaned up comments and simplified code in bridge_mcp_hydra.py
 - Improved error handling and response formatting
 - Standardized API response structure across all endpoints
+- Removed unused getFunctionDetailsByName method from GhydraMCPPlugin
 
 ### Added
 - Added GHIDRA_HTTP_API.md with documentation of the Java Plugin's HTTP API
