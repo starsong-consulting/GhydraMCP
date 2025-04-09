@@ -317,18 +317,58 @@ def _discover_instances(port_range, host=None, timeout=0.5) -> dict:
     }
 
 @mcp.tool()
-def list_functions(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
-    """List functions in the current program with pagination
+def list_functions(port: int = DEFAULT_GHIDRA_PORT, 
+                  offset: int = 0, 
+                  limit: int = 100,
+                  addr: str = None,
+                  name: str = None,
+                  name_contains: str = None,
+                  name_matches_regex: str = None) -> dict:
+    """List functions in the current program with filtering and pagination
     
     Args:
         port: Ghidra instance port (default: 8192)
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
+        addr: Filter by address (hexadecimal)
+        name: Exact name match filter (case-sensitive)
+        name_contains: Substring name filter (case-insensitive) 
+        name_matches_regex: Regex name filter
         
     Returns:
-        list: Function names and addresses
+        dict: {
+            "result": list of function info objects,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
     """
-    return safe_get(port, "functions", {"offset": offset, "limit": limit})
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if addr:
+        params["addr"] = addr
+    if name:
+        params["name"] = name
+    if name_contains:
+        params["name_contains"] = name_contains 
+    if name_matches_regex:
+        params["name_matches_regex"] = name_matches_regex
+        
+    response = safe_get(port, "programs/current/functions", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    # Transform to expected format if needed
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
 
 @mcp.tool()
 def list_classes(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
@@ -393,21 +433,101 @@ def update_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: st
     return safe_post(port, "data", {"address": address, "newName": new_name})
 
 @mcp.tool()
-def list_segments(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
-    """List memory segments with pagination
+def list_segments(port: int = DEFAULT_GHIDRA_PORT,
+                 offset: int = 0,
+                 limit: int = 100,
+                 name: str = None) -> dict:
+    """List memory segments with filtering and pagination
     
     Args:
         port: Ghidra instance port (default: 8192)
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
+        name: Filter by segment name (case-sensitive substring match)
         
     Returns:
-        list: Segment information strings
+        dict: {
+            "result": list of segment objects,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
     """
-    return safe_get(port, "segments", {"offset": offset, "limit": limit})
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if name:
+        params["name"] = name
+        
+    response = safe_get(port, "programs/current/segments", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
 
 @mcp.tool()
-def list_imports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+def list_symbols(port: int = DEFAULT_GHIDRA_PORT,
+                offset: int = 0,
+                limit: int = 100,
+                addr: str = None,
+                name: str = None,
+                name_contains: str = None,
+                type: str = None) -> dict:
+    """List symbols with filtering and pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        addr: Filter by address (hexadecimal)
+        name: Exact name match filter (case-sensitive)
+        name_contains: Substring name filter (case-insensitive)
+        type: Filter by symbol type (e.g. "function", "data", "label")
+        
+    Returns:
+        dict: {
+            "result": list of symbol objects,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
+    """
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if addr:
+        params["addr"] = addr
+    if name:
+        params["name"] = name
+    if name_contains:
+        params["name_contains"] = name_contains
+    if type:
+        params["type"] = type
+        
+    response = safe_get(port, "programs/current/symbols", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
+
+@mcp.tool()
+def list_imports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> dict:
     """List imported symbols with pagination
     
     Args:
@@ -416,12 +536,28 @@ def list_imports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 
         limit: Maximum items to return (default: 100)
         
     Returns:
-        list: Imported symbol information
+        dict: {
+            "result": list of imported symbols,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
     """
-    return safe_get(port, "symbols/imports", {"offset": offset, "limit": limit})
+    response = safe_get(port, "programs/current/symbols/imports", {"offset": offset, "limit": limit})
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
 
 @mcp.tool()
-def list_exports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
+def list_exports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> dict:
     """List exported symbols with pagination
     
     Args:
@@ -430,9 +566,25 @@ def list_exports(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 
         limit: Maximum items to return (default: 100)
         
     Returns:
-        list: Exported symbol information
+        dict: {
+            "result": list of exported symbols,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
     """
-    return safe_get(port, "symbols/exports", {"offset": offset, "limit": limit})
+    response = safe_get(port, "programs/current/symbols/exports", {"offset": offset, "limit": limit})
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
 
 @mcp.tool()
 def list_namespaces(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
@@ -449,18 +601,57 @@ def list_namespaces(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int
     return safe_get(port, "namespaces", {"offset": offset, "limit": limit})
 
 @mcp.tool()
-def list_data_items(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
-    """List data items with pagination
+def list_data_items(port: int = DEFAULT_GHIDRA_PORT, 
+                   offset: int = 0, 
+                   limit: int = 100,
+                   addr: str = None,
+                   name: str = None,
+                   name_contains: str = None,
+                   type: str = None) -> dict:
+    """List defined data items with filtering and pagination
     
     Args:
         port: Ghidra instance port (default: 8192)
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
+        addr: Filter by address (hexadecimal)
+        name: Exact name match filter (case-sensitive)
+        name_contains: Substring name filter (case-insensitive)
+        type: Filter by data type (e.g. "string", "dword")
         
     Returns:
-        list: Data item information strings
+        dict: {
+            "result": list of data item objects,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
     """
-    return safe_get(port, "data", {"offset": offset, "limit": limit})
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if addr:
+        params["addr"] = addr
+    if name:
+        params["name"] = name
+    if name_contains:
+        params["name_contains"] = name_contains
+    if type:
+        params["type"] = type
+        
+    response = safe_get(port, "programs/current/data", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
 
 @mcp.tool()
 def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", offset: int = 0, limit: int = 100) -> list:
@@ -478,6 +669,81 @@ def search_functions_by_name(port: int = DEFAULT_GHIDRA_PORT, query: str = "", o
     if not query:
         return ["Error: query string is required"]
     return safe_get(port, "functions", {"query": query, "offset": offset, "limit": limit})
+
+@mcp.tool()
+def read_memory(port: int = DEFAULT_GHIDRA_PORT, 
+               address: str = "",
+               length: int = 16,
+               format: str = "hex") -> dict:
+    """Read bytes from memory
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address in hex format
+        length: Number of bytes to read (default: 16)
+        format: Output format - "hex", "base64", or "string" (default: "hex")
+        
+    Returns:
+        dict: {
+            "address": original address,
+            "length": bytes read,
+            "format": output format,
+            "bytes": the memory contents,
+            "timestamp": response timestamp
+        }
+    """
+    if not address:
+        return {
+            "success": False,
+            "error": "Address parameter is required",
+            "timestamp": int(time.time() * 1000)
+        }
+        
+    response = safe_get(port, "programs/current/memory", {
+        "address": address,
+        "length": length,
+        "format": format
+    })
+    
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "address": address,
+        "length": length,
+        "format": format,
+        "bytes": response.get("result", ""),
+        "timestamp": response.get("timestamp", int(time.time() * 1000))
+    }
+
+@mcp.tool()
+def write_memory(port: int = DEFAULT_GHIDRA_PORT,
+                address: str = "",
+                bytes: str = "",
+                format: str = "hex") -> dict:
+    """Write bytes to memory (use with caution)
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address in hex format
+        bytes: Data to write (format depends on 'format' parameter)
+        format: Input format - "hex", "base64", or "string" (default: "hex")
+        
+    Returns:
+        dict: Operation result with success status
+    """
+    if not address or not bytes:
+        return {
+            "success": False,
+            "error": "Address and bytes parameters are required",
+            "timestamp": int(time.time() * 1000)
+        }
+        
+    return safe_post(port, "programs/current/memory", {
+        "address": address,
+        "bytes": bytes,
+        "format": format
+    })
 
 @mcp.tool()
 def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> dict:
@@ -515,6 +781,113 @@ def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> dict:
         "timestamp": int(time.time() * 1000),
         "port": port
     }
+
+@mcp.tool()
+def list_xrefs(port: int = DEFAULT_GHIDRA_PORT,
+              to_addr: str = None,
+              from_addr: str = None,
+              type: str = None,
+              offset: int = 0,
+              limit: int = 100) -> dict:
+    """List cross-references with filtering and pagination
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        to_addr: Filter references to this address (hexadecimal)
+        from_addr: Filter references from this address (hexadecimal)  
+        type: Filter by reference type (e.g. "CALL", "READ", "WRITE")
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        
+    Returns:
+        dict: {
+            "result": list of xref objects,
+            "size": total count,
+            "offset": current offset,
+            "limit": current limit,
+            "_links": pagination links
+        }
+    """
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if to_addr:
+        params["to_addr"] = to_addr
+    if from_addr:
+        params["from_addr"] = from_addr
+    if type:
+        params["type"] = type
+        
+    response = safe_get(port, "programs/current/xrefs", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+        
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
+
+@mcp.tool()
+def analyze_program(port: int = DEFAULT_GHIDRA_PORT, 
+                   analysis_options: dict = None) -> dict:
+    """Run analysis on the current program
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        analysis_options: Dictionary of analysis options to enable/disable
+                         (e.g. {"functionRecovery": True, "dataRefs": False})
+                         None means use default analysis options
+                         
+    Returns:
+        dict: Analysis operation result with status
+    """
+    return safe_post(port, "programs/current/analysis", analysis_options or {})
+
+@mcp.tool()
+def get_callgraph(port: int = DEFAULT_GHIDRA_PORT,
+                 function: str = None,
+                 max_depth: int = 3) -> dict:
+    """Get function call graph visualization data
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        function: Starting function name (None starts from entry point)
+        max_depth: Maximum call depth to analyze (default: 3)
+        
+    Returns:
+        dict: Graph data in DOT format with nodes and edges
+    """
+    params = {"max_depth": max_depth}
+    if function:
+        params["function"] = function
+        
+    return safe_get(port, "programs/current/analysis/callgraph", params)
+
+@mcp.tool()
+def get_dataflow(port: int = DEFAULT_GHIDRA_PORT,
+                address: str = "",
+                direction: str = "forward",
+                max_steps: int = 50) -> dict:
+    """Perform data flow analysis from an address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Starting address in hex format
+        direction: "forward" or "backward" (default: "forward")
+        max_steps: Maximum analysis steps (default: 50)
+        
+    Returns:
+        dict: Data flow analysis results
+    """
+    return safe_get(port, "programs/current/analysis/dataflow", {
+        "address": address,
+        "direction": direction,
+        "max_steps": max_steps
+    })
 
 @mcp.tool()
 def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict:

@@ -14,8 +14,10 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID; // Added for request IDs
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier; // Added for transaction helper
 
 import javax.swing.SwingUtilities;
 
@@ -63,6 +65,13 @@ import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
 import ghidra.util.task.ConsoleTaskMonitor;
 
+
+// Functional interface for Ghidra operations that might throw exceptions
+@FunctionalInterface
+interface GhidraSupplier<T> {
+    T get() throws Exception;
+}
+
 @PluginInfo(
     status = PluginStatus.RELEASED,
     packageName = ghidra.app.DeveloperPluginPackage.NAME,
@@ -73,6 +82,10 @@ import ghidra.util.task.ConsoleTaskMonitor;
 )
 public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
+    // Plugin version information
+    private static final String PLUGIN_VERSION = "v1.0.0"; // Update this with each release
+    private static final int API_VERSION = 1; // Increment when API changes in a breaking way
+    
     private static final Map<Integer, GhydraMCPPlugin> activeInstances = new ConcurrentHashMap<>();
     private static final Object baseInstanceLock = new Object();
     
@@ -83,11 +96,9 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     public GhydraMCPPlugin(PluginTool tool) {
         super(tool);
         
-        // Find available port
         this.port = findAvailablePort();
         activeInstances.put(port, this);
         
-        // Check if we should be base instance
         synchronized (baseInstanceLock) {
             if (port == 8192 || activeInstances.get(8192) == null) {
                 this.isBaseInstance = true;
@@ -95,7 +106,6 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         }
 
-        // Log to both console and log file
         Msg.info(this, "GhydraMCPPlugin loaded on port " + port);
         System.out.println("[GhydraMCP] Plugin loaded on port " + port);
 
@@ -113,7 +123,159 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     private void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
 
-        // Each listing endpoint uses offset & limit from query params:
+        // Meta endpoints
+        server.createContext("/plugin-version", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                JsonObject response = createBaseResponse(exchange);
+                response.addProperty("success", true);
+                
+                JsonObject result = new JsonObject();
+                result.addProperty("plugin_version", PLUGIN_VERSION);
+                result.addProperty("api_version", API_VERSION);
+                response.add("result", result);
+                
+                JsonObject links = new JsonObject();
+                links.add("self", createLink("/plugin-version"));
+                response.add("_links", links);
+                
+                sendJsonResponse(exchange, response, 200);
+            } else {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+            }
+        });
+
+        // Program resources
+        server.createContext("/programs", exchange -> {
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    List<Map<String, Object>> programs = new ArrayList<>();
+                    Program program = getCurrentProgram();
+                    if (program != null) {
+                        Map<String, Object> progInfo = new HashMap<>();
+                        progInfo.put("program_id", program.getDomainFile().getPathname());
+                        progInfo.put("name", program.getName());
+                        progInfo.put("language_id", program.getLanguageID().getIdAsString());
+                        progInfo.put("compiler_spec_id", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
+                        progInfo.put("image_base", program.getImageBase().toString());
+                        progInfo.put("memory_size", program.getMemory().getSize());
+                        progInfo.put("is_open", true);
+                        progInfo.put("analysis_complete", program.getListing().getNumDefinedData() > 0);
+                        programs.add(progInfo);
+                    }
+                    
+                    JsonObject response = createSuccessResponse(exchange, programs);
+                    response.add("_links", createLinks()
+                        .add("self", "/programs")
+                        .add("create", "/programs", "POST")
+                        .build());
+                        
+                    sendJsonResponse(exchange, response, 200);
+                } else if ("POST".equals(exchange.getRequestMethod())) {
+                    sendErrorResponse(exchange, 501, "Not Implemented", "NOT_IMPLEMENTED");
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+                }
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 500, "Internal server error", "INTERNAL_ERROR");
+            }
+        });
+
+        server.createContext("/programs/", exchange -> {
+            try {
+                String path = exchange.getRequestURI().getPath();
+                String programId = path.substring("/programs/".length());
+                
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Program program = getCurrentProgram();
+                    if (program == null) {
+                        sendErrorResponse(exchange, 404, "Program not found", "PROGRAM_NOT_FOUND");
+                        return;
+                    }
+                    
+                    Map<String, Object> programInfo = new HashMap<>();
+                    programInfo.put("program_id", program.getDomainFile().getPathname());
+                    programInfo.put("name", program.getName());
+                    programInfo.put("language_id", program.getLanguageID().getIdAsString());
+                    programInfo.put("compiler_spec_id", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
+                    programInfo.put("image_base", program.getImageBase().toString());
+                    programInfo.put("memory_size", program.getMemory().getSize());
+                    programInfo.put("is_open", true);
+                    programInfo.put("analysis_complete", program.getListing().getNumDefinedData() > 0);
+                    
+                    JsonObject links = new JsonObject();
+                    links.add("self", createLink("/programs/" + programId));
+                    links.add("project", createLink("/projects/" + program.getDomainFile().getProjectLocator().getName()));
+                    links.add("functions", createLink("/programs/" + programId + "/functions"));
+                    links.add("symbols", createLink("/programs/" + programId + "/symbols"));
+                    links.add("data", createLink("/programs/" + programId + "/data"));
+                    links.add("segments", createLink("/programs/" + programId + "/segments"));
+                    links.add("memory", createLink("/programs/" + programId + "/memory"));
+                    links.add("xrefs", createLink("/programs/" + programId + "/xrefs"));
+                    links.add("analysis", createLink("/programs/" + programId + "/analysis"));
+                    
+                    JsonObject response = createSuccessResponse(exchange, programInfo, links);
+                    sendJsonResponse(exchange, response, 200);
+                } else if ("DELETE".equals(exchange.getRequestMethod())) {
+                    sendErrorResponse(exchange, 501, "Not Implemented", "NOT_IMPLEMENTED");
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+                }
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 500, "Internal server error", "INTERNAL_ERROR");
+            }
+        });
+
+        // Meta endpoints
+        server.createContext("/plugin-version", exchange -> {
+            if ("GET".equals(exchange.getRequestMethod())) {
+                JsonObject response = createBaseResponse(exchange);
+                response.addProperty("success", true);
+                
+                JsonObject result = new JsonObject();
+                result.addProperty("plugin_version", PLUGIN_VERSION);
+                result.addProperty("api_version", API_VERSION);
+                response.add("result", result);
+                
+                JsonObject links = new JsonObject();
+                links.add("self", createLink("/plugin-version"));
+                response.add("_links", links);
+                
+                sendJsonResponse(exchange, response, 200);
+            } else {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+            }
+        });
+
+        // Project resources
+        server.createContext("/projects", exchange -> {
+            try {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    List<Map<String, String>> projects = new ArrayList<>();
+                    Project project = tool.getProject();
+                    if (project != null) {
+                        Map<String, String> projInfo = new HashMap<>();
+                        projInfo.put("name", project.getName());
+                        projInfo.put("location", project.getProjectLocator().toString());
+                        projects.add(projInfo);
+                    }
+                    
+                    JsonObject response = createSuccessResponse(exchange, projects);
+                    response.add("_links", createLinks()
+                        .add("self", "/projects")
+                        .add("create", "/projects", "POST")
+                        .build());
+                        
+                    sendJsonResponse(exchange, response, 200);
+                } else if ("POST".equals(exchange.getRequestMethod())) {
+                    sendErrorResponse(exchange, 501, "Not Implemented", "NOT_IMPLEMENTED");
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+                }
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 500, "Internal server error", "INTERNAL_ERROR");
+            }
+        });
+
         // Function resources
         server.createContext("/functions", exchange -> {
             try {
@@ -123,136 +285,170 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
                     String query = qparams.get("query");
                     
+                    Object resultData;
                     if (query != null && !query.isEmpty()) {
-                        sendJsonResponse(exchange, searchFunctionsByName(query, offset, limit));
+                        // TODO: Refactor searchFunctionsByName to return List<Map<String, String>> or similar
+                        resultData = searchFunctionsByName(query, offset, limit); 
                     } else {
-                        sendJsonResponse(exchange, getAllFunctionNames(offset, limit));
+                        // TODO: Refactor getAllFunctionNames to return List<Map<String, String>> or similar
+                         resultData = getAllFunctionNames(offset, limit); 
+                    }
+                    // Temporary check for old error format
+                    if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400); 
+                    } else {
+                         sendJsonResponse(exchange, resultData); 
                     }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /functions endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
         server.createContext("/functions/", exchange -> {
             String path = exchange.getRequestURI().getPath();
-            
-            // Handle sub-paths: /functions/{name}
-            // or /functions/{name}/variables
             String[] pathParts = path.split("/");
             
             if (pathParts.length < 3) {
-                exchange.sendResponseHeaders(400, -1); // Bad Request
+                sendErrorResponse(exchange, 400, "Invalid path format", "INVALID_PATH");
                 return;
             }
             
-            String functionName = pathParts[2];
-            try {
-                functionName = java.net.URLDecoder.decode(functionName, StandardCharsets.UTF_8.name());
-            } catch (Exception e) {
-                Msg.error(this, "Failed to decode function name", e);
-                exchange.sendResponseHeaders(400, -1); // Bad Request
-                return;
-            }
+            String functionName = "";
+             try {
+                 functionName = java.net.URLDecoder.decode(pathParts[2], StandardCharsets.UTF_8.name());
+             } catch (Exception e) {
+                 sendErrorResponse(exchange, 400, "Failed to decode function name", "INVALID_PARAMETER");
+                 return;
+             }
             
-            // Check if we're dealing with a variables request
-            if (pathParts.length > 3 && "variables".equals(pathParts[3])) {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    // List all variables in function
-                    sendResponse(exchange, listVariablesInFunction(functionName));
-                } else if ("POST".equals(exchange.getRequestMethod()) && pathParts.length > 4) { // Change PUT to POST
-                    // Handle operations on a specific variable (using POST now)
-                    String variableName = pathParts[4];
+            if (pathParts.length > 3 && "variables".equals(pathParts[3])) { // /functions/{name}/variables/...
+                if ("GET".equals(exchange.getRequestMethod()) && pathParts.length == 4) { // GET /functions/{name}/variables
                     try {
-                        variableName = java.net.URLDecoder.decode(variableName, StandardCharsets.UTF_8.name());
+                        // TODO: Refactor listVariablesInFunction to return data directly
+                        Object resultData = listVariablesInFunction(functionName);
+                        if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                             sendJsonResponse(exchange, (JsonObject)resultData, 400); 
+                        } else {
+                             sendJsonResponse(exchange, resultData);
+                        }
                     } catch (Exception e) {
-                        Msg.error(this, "Failed to decode variable name", e);
-                        exchange.sendResponseHeaders(400, -1);
+                         Msg.error(this, "Error listing function variables", e);
+                         sendErrorResponse(exchange, 500, "Error listing variables: " + e.getMessage(), "INTERNAL_ERROR");
+                    }
+                } else if ("POST".equals(exchange.getRequestMethod()) && pathParts.length == 5) { // POST /functions/{name}/variables/{varName}
+                    String variableName = "";
+                    try {
+                        variableName = java.net.URLDecoder.decode(pathParts[4], StandardCharsets.UTF_8.name());
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Failed to decode variable name", "INVALID_PARAMETER");
                         return;
                     }
                     
-                    Map<String, String> params = parseJsonPostParams(exchange); // Use specific JSON parser
-                    if (params.containsKey("newName")) {
-                        // Rename variable
-                        boolean success = renameVariable(functionName, variableName, params.get("newName"));
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", true);
-                    response.addProperty("message", "Variable renamed successfully");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    
-                    Gson gson = new Gson();
-                    String json = gson.toJson(response);
-                    byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-                    
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
-                    exchange.sendResponseHeaders(success ? 200 : 400, bytes.length);
-                    
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(bytes);
-                        os.flush();
-                    }
-                    } else if (params.containsKey("dataType")) { // Keep dataType for now, bridge uses it
-                        // Retype variable
-                        boolean success = retypeVariable(functionName, variableName, params.get("dataType"));
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Variable retyped successfully" : "Failed to retype variable");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    
-                    Gson gson = new Gson();
-                    String json = gson.toJson(response);
-                    byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-                    
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
-                    exchange.sendResponseHeaders(success ? 200 : 400, bytes.length);
-                    
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(bytes);
-                        os.flush();
-                    }
-                    } else {
-                        sendResponse(exchange, "Missing required parameter: newName or dataType");
+                    final String finalVariableName = variableName;
+                    final String finalFunctionName = functionName;
+                    try {
+                        Map<String, String> params = parseJsonPostParams(exchange);
+                        Program program = getCurrentProgram();
+                        if (program == null) {
+                             sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
+                             return;
+                        }
+
+                        if (params.containsKey("newName")) {
+                            final String newName = params.get("newName");
+                            try {
+                                executeInTransaction(program, "Rename Variable", () -> {
+                                    if (!renameVariable(finalFunctionName, finalVariableName, newName)) {
+                                         throw new Exception("Rename operation failed internally.");
+                                    }
+                                });
+                                sendJsonResponse(exchange, Map.of("message", "Variable renamed successfully"));
+                            } catch (Exception e) {
+                                 Msg.error(this, "Transaction failed: Rename Variable", e);
+                                 sendErrorResponse(exchange, 500, "Failed to rename variable: " + e.getMessage(), "TRANSACTION_ERROR");
+                            }
+                        } else if (params.containsKey("dataType")) {
+                            final String newType = params.get("dataType");
+                            try {
+                                executeInTransaction(program, "Retype Variable", () -> {
+                                    if (!retypeVariable(finalFunctionName, finalVariableName, newType)) {
+                                         throw new Exception("Retype operation failed internally.");
+                                    }
+                                });
+                                sendJsonResponse(exchange, Map.of("message", "Variable retyped successfully"));
+                            } catch (Exception e) {
+                                 Msg.error(this, "Transaction failed: Retype Variable", e);
+                                 sendErrorResponse(exchange, 500, "Failed to retype variable: " + e.getMessage(), "TRANSACTION_ERROR");
+                            }
+                        } else {
+                            sendErrorResponse(exchange, 400, "Missing required parameter: newName or dataType", "MISSING_PARAMETER");
+                        }
+                    } catch (IOException e) {
+                         Msg.error(this, "Error parsing POST params for variable update", e);
+                         sendErrorResponse(exchange, 400, "Invalid request body: " + e.getMessage(), "INVALID_REQUEST");
+                    } catch (Exception e) {
+                         Msg.error(this, "Error updating variable", e);
+                         sendErrorResponse(exchange, 500, "Error updating variable: " + e.getMessage(), "INTERNAL_ERROR");
                     }
                 } else {
-                    exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
-            } else {
-                // Simple function operations: GET /functions/{name} and POST /functions/{name}
+            } else if (pathParts.length == 3) { // GET or POST /functions/{name}
                 if ("GET".equals(exchange.getRequestMethod())) {
-                    // Return structured JSON using the correct method
-                    JsonObject response = getFunctionDetailsByName(functionName);
-                    sendJsonResponse(exchange, response);
-                } else if ("POST".equals(exchange.getRequestMethod())) { // <--- Change to POST to match bridge
-                    Map<String, String> params = parseJsonPostParams(exchange); // Use specific JSON parser
-                    String newName = params.get("newName"); // Expect camelCase
-                    boolean success = renameFunction(functionName, newName);
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Renamed successfully" : "Rename failed");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    
-                    Gson gson = new Gson();
-                    String json = gson.toJson(response);
-                    byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-                    
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.getResponseHeaders().set("Content-Length", String.valueOf(bytes.length));
-                    exchange.sendResponseHeaders(success ? 200 : 400, bytes.length);
-                    
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(bytes);
-                        os.flush();
+                    try {
+                        // TODO: Refactor getFunctionDetailsByName to return data directly
+                        Object resultData = getFunctionDetailsByName(functionName);
+                        if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                             sendJsonResponse(exchange, (JsonObject)resultData, 404); 
+                        } else {
+                             sendJsonResponse(exchange, resultData);
+                        }
+                    } catch (Exception e) {
+                         Msg.error(this, "Error getting function details", e);
+                         sendErrorResponse(exchange, 500, "Error getting details: " + e.getMessage(), "INTERNAL_ERROR");
+                    }
+                } else if ("POST".equals(exchange.getRequestMethod())) {
+                     try {
+                        Map<String, String> params = parseJsonPostParams(exchange);
+                        String newName = params.get("newName");
+                        if (newName == null || newName.isEmpty()) {
+                             sendErrorResponse(exchange, 400, "Missing required parameter: newName", "MISSING_PARAMETER");
+                             return;
+                        }
+                        
+                        Program program = getCurrentProgram();
+                        if (program == null) {
+                             sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
+                             return;
+                        }
+                        
+                        final String finalFunctionName = functionName;
+                        final String finalNewName = newName; 
+                        try {
+                            executeInTransaction(program, "Rename Function", () -> {
+                                 if (!renameFunction(finalFunctionName, finalNewName)) {
+                                     throw new Exception("Rename operation failed internally.");
+                                 }
+                            });
+                            sendJsonResponse(exchange, Map.of("message", "Function renamed successfully"));
+                        } catch (Exception e) {
+                             Msg.error(this, "Transaction failed: Rename Function", e);
+                             sendErrorResponse(exchange, 500, "Failed to rename function: " + e.getMessage(), "TRANSACTION_ERROR");
+                        }
+
+                    } catch (IOException e) {
+                         Msg.error(this, "Error parsing POST params for function rename", e);
+                         sendErrorResponse(exchange, 400, "Invalid request body: " + e.getMessage(), "INVALID_REQUEST");
+                    } catch (Exception e) {
+                         Msg.error(this, "Error renaming function", e);
+                         sendErrorResponse(exchange, 500, "Error renaming function: " + e.getMessage(), "INTERNAL_ERROR");
                     }
                 } else {
-                    exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             }
         });
@@ -264,13 +460,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    sendJsonResponse(exchange, getAllClassNames(offset, limit));
+                    Object resultData = getAllClassNames(offset, limit); 
+                    if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) { 
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400); 
+                    } else {
+                         sendJsonResponse(exchange, resultData); 
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /classes endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
@@ -281,13 +482,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    sendJsonResponse(exchange, listSegments(offset, limit));
+                    Object resultData = listSegments(offset, limit);
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400);
+                    } else {
+                         sendJsonResponse(exchange, resultData);
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /segments endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
@@ -298,13 +504,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    sendJsonResponse(exchange, listImports(offset, limit));
+                    Object resultData = listImports(offset, limit);
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400);
+                    } else {
+                         sendJsonResponse(exchange, resultData);
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /symbols/imports endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
@@ -314,13 +525,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    sendJsonResponse(exchange, listExports(offset, limit));
+                    Object resultData = listExports(offset, limit);
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400);
+                    } else {
+                         sendJsonResponse(exchange, resultData);
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /symbols/exports endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
@@ -331,13 +547,18 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    sendJsonResponse(exchange, listNamespaces(offset, limit));
+                    Object resultData = listNamespaces(offset, limit);
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) {
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400);
+                    } else {
+                         sendJsonResponse(exchange, resultData);
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /namespaces endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
@@ -348,28 +569,59 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    sendJsonResponse(exchange, listDefinedData(offset, limit));
-                } else if ("POST".equals(exchange.getRequestMethod())) {
-                    Map<String, String> params = parseJsonPostParams(exchange);
-                    boolean success = renameDataAtAddress(params.get("address"), params.get("newName"));
-                    
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Data renamed successfully" : "Failed to rename data");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    sendJsonResponse(exchange, response);
+                    Object resultData = listDefinedData(offset, limit);
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).get("success").getAsBoolean()) {
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400);
+                    } else {
+                         sendJsonResponse(exchange, resultData);
+                    }
+                } else if ("POST".equals(exchange.getRequestMethod())) { // POST /data
+                     try {
+                        Map<String, String> params = parseJsonPostParams(exchange);
+                        final String addressStr = params.get("address");
+                        final String newName = params.get("newName");
+
+                        if (addressStr == null || addressStr.isEmpty() || newName == null || newName.isEmpty()) {
+                            sendErrorResponse(exchange, 400, "Missing required parameters: address, newName", "MISSING_PARAMETER");
+                            return;
+                        }
+
+                        Program program = getCurrentProgram();
+                        if (program == null) {
+                             sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
+                             return;
+                        }
+                        
+                        try {
+                            executeInTransaction(program, "Rename Data", () -> {
+                                if (!renameDataAtAddress(addressStr, newName)) {
+                                    throw new Exception("Rename data operation failed internally.");
+                                }
+                            });
+                            sendJsonResponse(exchange, Map.of("message", "Data renamed successfully"));
+                        } catch (Exception e) {
+                             Msg.error(this, "Transaction failed: Rename Data", e);
+                             sendErrorResponse(exchange, 500, "Failed to rename data: " + e.getMessage(), "TRANSACTION_ERROR");
+                        }
+
+                    } catch (IOException e) {
+                         Msg.error(this, "Error parsing POST params for data rename", e);
+                         sendErrorResponse(exchange, 400, "Invalid request body: " + e.getMessage(), "INVALID_REQUEST");
+                    } catch (Exception e) {
+                         Msg.error(this, "Error renaming data", e);
+                         sendErrorResponse(exchange, 500, "Error renaming data: " + e.getMessage(), "INTERNAL_ERROR");
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /data endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
         
         // Global variables endpoint
-        server.createContext("/variables", exchange -> {
+        server.createContext("/variables", exchange -> { // GET /variables
             try {
                 if ("GET".equals(exchange.getRequestMethod())) {
                     Map<String, String> qparams = parseQueryParams(exchange);
@@ -377,33 +629,38 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
                     String search = qparams.get("search");
                     
-                    sendJsonResponse(exchange, listVariables(offset, limit, search));
+                    Object resultData = listVariables(offset, limit, search);
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) { // Check old error format
+                         sendJsonResponse(exchange, (JsonObject)resultData, 400);
+                    } else {
+                         sendJsonResponse(exchange, resultData); // Use new success helper
+                    }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /variables endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error");
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
         // Instance management endpoints
         server.createContext("/instances", exchange -> {
-            List<Map<String, String>> instances = new ArrayList<>();
-            for (Map.Entry<Integer, GhydraMCPPlugin> entry : activeInstances.entrySet()) {
-                Map<String, String> instance = new HashMap<>();
-                instance.put("port", entry.getKey().toString());
-                instance.put("type", entry.getValue().isBaseInstance ? "base" : "secondary");
-                instances.add(instance);
+            // TODO: This endpoint might change based on HATEOAS design for projects/programs
+            try {
+                 List<Map<String, Object>> instanceData = new ArrayList<>();
+                 for (Map.Entry<Integer, GhydraMCPPlugin> entry : activeInstances.entrySet()) {
+                    Map<String, Object> instance = new HashMap<>();
+                    instance.put("port", entry.getKey());
+                    instance.put("type", entry.getValue().isBaseInstance ? "base" : "secondary");
+                    // TODO: Add URL and program_id if available from instance info cache
+                    instanceData.add(instance);
+                }
+                sendJsonResponse(exchange, instanceData); // Use new success helper
+            } catch (Exception e) {
+                 Msg.error(this, "Error in /instances endpoint", e);
+                 sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
-            
-            Gson gson = new Gson();
-            JsonObject response = new JsonObject();
-            response.addProperty("success", true);
-            response.add("result", gson.toJsonTree(instances));
-            response.addProperty("timestamp", System.currentTimeMillis());
-            response.addProperty("port", this.port);
-            sendJsonResponse(exchange, response);
         });
 
         // Add get_function_by_address endpoint
@@ -413,13 +670,13 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 String address = qparams.get("address");
                 
                 if (address == null || address.isEmpty()) {
-                    sendErrorResponse(exchange, 400, "Address parameter is required");
+                    sendErrorResponse(exchange, 400, "Address parameter is required", "MISSING_PARAMETER");
                     return;
                 }
                 
                 Program program = getCurrentProgram();
                 if (program == null) {
-                    sendErrorResponse(exchange, 400, "No program loaded");
+                    sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
                     return;
                 }
                 
@@ -427,29 +684,25 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Address funcAddr = program.getAddressFactory().getAddress(address);
                     Function func = program.getFunctionManager().getFunctionAt(funcAddr);
                     if (func == null) {
-                        // Return empty result instead of 404 to match test expectations
-                        JsonObject response = new JsonObject();
-                        JsonObject resultObj = new JsonObject();
-                        resultObj.addProperty("name", "");
-                        resultObj.addProperty("address", address);
-                        resultObj.addProperty("signature", "");
-                        resultObj.addProperty("decompilation", "");
-                        
-                        response.addProperty("success", true);
-                        response.add("result", resultObj);
-                        response.addProperty("timestamp", System.currentTimeMillis());
-                        response.addProperty("port", this.port);
-                        sendJsonResponse(exchange, response);
-                        return;
+                         sendErrorResponse(exchange, 404, "Function not found at address: " + address, "RESOURCE_NOT_FOUND");
+                         return;
                     }
                     
-                    sendJsonResponse(exchange, getFunctionDetails(func));
+                    Object resultData = getFunctionDetails(func); 
+                     if (resultData instanceof JsonObject && !((JsonObject)resultData).has("result")) { 
+                         sendJsonResponse(exchange, (JsonObject)resultData, 500); 
+                    } else {
+                         sendJsonResponse(exchange, resultData); 
+                    }
+                } catch (ghidra.program.model.address.AddressFormatException afe) {
+                     Msg.warn(this, "Invalid address format: " + address, afe);
+                     sendErrorResponse(exchange, 400, "Invalid address format: " + address, "INVALID_ADDRESS");
                 } catch (Exception e) {
                     Msg.error(this, "Error getting function by address", e);
-                    sendErrorResponse(exchange, 500, "Error getting function: " + e.getMessage());
+                    sendErrorResponse(exchange, 500, "Error getting function: " + e.getMessage(), "INTERNAL_ERROR");
                 }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -463,13 +716,13 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 String simplificationStyle = qparams.getOrDefault("simplificationStyle", "normalize");
                 
                 if (address == null || address.isEmpty()) {
-                    sendErrorResponse(exchange, 400, "Address parameter is required");
+                    sendErrorResponse(exchange, 400, "Address parameter is required", "MISSING_PARAMETER");
                     return;
                 }
                 
                 Program program = getCurrentProgram();
                 if (program == null) {
-                    sendErrorResponse(exchange, 400, "No program loaded");
+                    sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
                     return;
                 }
                 
@@ -477,63 +730,59 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Address funcAddr = program.getAddressFactory().getAddress(address);
                     Function func = program.getFunctionManager().getFunctionAt(funcAddr);
                     if (func == null) {
-                        // Return empty result structure to match API expectations
-                        JsonObject response = new JsonObject();
-                        JsonObject resultObj = new JsonObject();
-                        resultObj.addProperty("decompilation", "");
-                        resultObj.addProperty("function", "");
-                        resultObj.addProperty("address", address);
-                        
-                        response.addProperty("success", false);
-                        response.addProperty("message", "Function not found");
-                        response.add("result", resultObj);
-                        response.addProperty("timestamp", System.currentTimeMillis());
-                        response.addProperty("port", this.port);
-                        sendJsonResponse(exchange, response);
-                        return;
+                         sendErrorResponse(exchange, 404, "Function not found at address: " + address, "RESOURCE_NOT_FOUND");
+                         return;
                     }
                     
                     DecompInterface decomp = new DecompInterface();
                     try {
-                        // Set decompilation options from parameters
                         decomp.toggleCCode(cCode);
                         decomp.setSimplificationStyle(simplificationStyle);
                         decomp.toggleSyntaxTree(syntaxTree);
                         
                         if (!decomp.openProgram(program)) {
-                            sendErrorResponse(exchange, 500, "Failed to initialize decompiler");
+                            sendErrorResponse(exchange, 500, "Failed to initialize decompiler", "DECOMPILER_ERROR");
                             return;
                         }
                         
                         DecompileResults result = decomp.decompileFunction(func, 30, new ConsoleTaskMonitor());
                         if (result == null || !result.decompileCompleted()) {
-                            sendErrorResponse(exchange, 500, "Decompilation failed");
+                            sendErrorResponse(exchange, 500, "Decompilation failed or timed out", "DECOMPILATION_FAILED");
                             return;
                         }
                         
-                    String decompilation = result.getDecompiledFunction().getC();
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", true);
-                    
-                    JsonObject resultObj = new JsonObject();
-                    resultObj.addProperty("decompilation", decompilation);
-                    resultObj.addProperty("name", func.getName());
-                    resultObj.addProperty("address", func.getEntryPoint().toString());
-                    resultObj.addProperty("signature", func.getSignature().getPrototypeString());
-                    
-                    response.add("result", resultObj);
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    sendJsonResponse(exchange, response);
+                        String decompilation = "";
+                        String errorMessage = null;
+                        if (result.getDecompiledFunction() != null) {
+                            decompilation = result.getDecompiledFunction().getC();
+                            if (decompilation == null || decompilation.isEmpty()) {
+                                errorMessage = "Decompilation returned empty result";
+                            }
+                        } else {
+                            errorMessage = "DecompiledFunction is null";
+                        }
+
+                        if (errorMessage != null) {
+                             Msg.error(this, "Error decompiling function: " + errorMessage);
+                             sendErrorResponse(exchange, 500, errorMessage, "DECOMPILATION_ERROR");
+                        } else {
+                            Map<String, Object> resultData = new HashMap<>();
+                            resultData.put("address", func.getEntryPoint().toString());
+                            resultData.put("ccode", decompilation);
+                            sendJsonResponse(exchange, resultData);
+                        }
                     } finally {
                         decomp.dispose();
                     }
+                } catch (ghidra.program.model.address.AddressFormatException afe) {
+                     Msg.warn(this, "Invalid address format: " + address, afe);
+                     sendErrorResponse(exchange, 400, "Invalid address format: " + address, "INVALID_ADDRESS");
                 } catch (Exception e) {
                     Msg.error(this, "Error decompiling function", e);
-                    sendErrorResponse(exchange, 500, "Error decompiling function: " + e.getMessage());
+                    sendErrorResponse(exchange, 500, "Error decompiling function: " + e.getMessage(), "INTERNAL_ERROR");
                 }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -556,21 +805,25 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 }
                 
                 try {
-                    Address addr = program.getAddressFactory().getAddress(address);
-                    boolean success = setDecompilerComment(addr, comment);
+                    final Address addr = program.getAddressFactory().getAddress(address);
+                    final String finalComment = comment; 
                     
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Comment set successfully" : "Failed to set comment");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    sendJsonResponse(exchange, response);
+                    executeInTransaction(program, "Set Decompiler Comment", () -> {
+                         if (!setDecompilerComment(addr, finalComment)) { 
+                             throw new Exception("Set decompiler comment operation failed internally.");
+                         }
+                    });
+                    sendJsonResponse(exchange, Map.of("message", "Decompiler comment set successfully"));
+
+                } catch (ghidra.program.model.address.AddressFormatException afe) {
+                     Msg.warn(this, "Invalid address format: " + address, afe);
+                     sendErrorResponse(exchange, 400, "Invalid address format: " + address, "INVALID_ADDRESS");
                 } catch (Exception e) {
                     Msg.error(this, "Error setting decompiler comment", e);
-                    sendErrorResponse(exchange, 500, "Error setting comment: " + e.getMessage());
+                    sendErrorResponse(exchange, 500, "Error setting comment: " + e.getMessage(), "INTERNAL_ERROR");
                 }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -593,21 +846,25 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 }
                 
                 try {
-                    Address addr = program.getAddressFactory().getAddress(address);
-                    boolean success = setDisassemblyComment(addr, comment);
-                    
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Comment set successfully" : "Failed to set comment");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    sendJsonResponse(exchange, response);
+                    final Address addr = program.getAddressFactory().getAddress(address);
+                     final String finalComment = comment; 
+
+                    executeInTransaction(program, "Set Disassembly Comment", () -> {
+                        if (!setDisassemblyComment(addr, finalComment)) { 
+                             throw new Exception("Set disassembly comment operation failed internally.");
+                         }
+                    });
+                    sendJsonResponse(exchange, Map.of("message", "Disassembly comment set successfully"));
+
+                 } catch (ghidra.program.model.address.AddressFormatException afe) {
+                     Msg.warn(this, "Invalid address format: " + address, afe);
+                     sendErrorResponse(exchange, 400, "Invalid address format: " + address, "INVALID_ADDRESS");
                 } catch (Exception e) {
                     Msg.error(this, "Error setting disassembly comment", e);
-                    sendErrorResponse(exchange, 500, "Error setting comment: " + e.getMessage());
+                    sendErrorResponse(exchange, 500, "Error setting comment: " + e.getMessage(), "INTERNAL_ERROR");
                 }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -635,23 +892,26 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 }
                 
                 try {
-                    Address funcAddr = program.getAddressFactory().getAddress(address);
-                    boolean success = renameFunctionByAddress(funcAddr, newName);
-                    
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", success);
-                    response.addProperty("message", success ? "Function renamed successfully" : "Failed to rename function");
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    response.addProperty("port", this.port);
-                    sendJsonResponse(exchange, response);
+                    final Address funcAddr = program.getAddressFactory().getAddress(address);
+                    final String finalNewName = newName; 
+
+                    executeInTransaction(program, "Rename Function by Address", () -> {
+                         if (!renameFunctionByAddress(funcAddr, finalNewName)) { 
+                             throw new Exception("Rename function by address operation failed internally.");
+                         }
+                    });
+                    sendJsonResponse(exchange, Map.of("message", "Function renamed successfully"));
+
+                 } catch (ghidra.program.model.address.AddressFormatException afe) {
+                     Msg.warn(this, "Invalid address format: " + address, afe);
+                     sendErrorResponse(exchange, 400, "Invalid address format: " + address, "INVALID_ADDRESS");
                 } catch (Exception e) {
-                    Msg.error(this, "Error renaming function", e);
-                    sendErrorResponse(exchange, 500, "Error renaming function: " + e.getMessage());
+                    Msg.error(this, "Error renaming function by address", e);
+                    sendErrorResponse(exchange, 500, "Error renaming function: " + e.getMessage(), "INTERNAL_ERROR");
                 }
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
-            // Removed duplicate else block here
         });
 
         // Add rename local variable endpoint (Using POST now as per bridge)
@@ -672,17 +932,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     sendErrorResponse(exchange, 400, "newName parameter is required"); return;
                 }
 
-                // Call the existing renameVariable logic (needs adjustment for address)
-                // For now, just return success/failure based on parameters
-                JsonObject response = new JsonObject();
-                response.addProperty("success", true); // Placeholder
-                response.addProperty("message", "Rename local variable (not fully implemented by address yet)");
-                response.addProperty("timestamp", System.currentTimeMillis());
-                response.addProperty("port", this.port);
-                sendJsonResponse(exchange, response);
+                // TODO: Implement actual logic using executeInTransaction
+                sendJsonResponse(exchange, Map.of("message", "Rename local variable request received (implementation pending)"));
 
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -700,16 +954,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     sendErrorResponse(exchange, 400, "prototype parameter is required"); return;
                 }
 
-                // Call logic to set prototype (needs implementation)
-                JsonObject response = new JsonObject();
-                response.addProperty("success", true); // Placeholder
-                response.addProperty("message", "Set function prototype (not fully implemented yet)");
-                response.addProperty("timestamp", System.currentTimeMillis());
-                response.addProperty("port", this.port);
-                sendJsonResponse(exchange, response);
+                // TODO: Implement actual logic using executeInTransaction
+                sendJsonResponse(exchange, Map.of("message", "Set function prototype request received (implementation pending)"));
 
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -731,16 +980,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     sendErrorResponse(exchange, 400, "newType parameter is required"); return;
                 }
 
-                // Call logic to set variable type (needs implementation)
-                 JsonObject response = new JsonObject();
-                response.addProperty("success", true); // Placeholder
-                response.addProperty("message", "Set local variable type (not fully implemented yet)");
-                response.addProperty("timestamp", System.currentTimeMillis());
-                response.addProperty("port", this.port);
-                sendJsonResponse(exchange, response);
+                // TODO: Implement actual logic using executeInTransaction
+                 sendJsonResponse(exchange, Map.of("message", "Set local variable type request received (implementation pending)"));
 
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -749,35 +993,23 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Program program = getCurrentProgram();
                 if (program == null) {
-                    sendErrorResponse(exchange, 400, "No program loaded");
+                    sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
                     return;
                 }
-
-                JsonObject response = new JsonObject();
-                JsonObject resultObj = new JsonObject();
                 
                 try {
-                    Address currentAddr = getCurrentAddress();
+                    Address currentAddr = getCurrentAddress(); 
                     if (currentAddr != null) {
-                        resultObj.addProperty("address", currentAddr.toString());
-                        response.addProperty("success", true);
+                        sendJsonResponse(exchange, Map.of("address", currentAddr.toString()));
                     } else {
-                        resultObj.addProperty("address", "");
-                        response.addProperty("success", false);
-                        response.addProperty("message", "No address currently selected");
+                        sendErrorResponse(exchange, 404, "No address currently selected", "RESOURCE_NOT_FOUND"); 
                     }
                 } catch (Exception e) {
                     Msg.error(this, "Error getting current address", e);
-                    response.addProperty("success", false);
-                    response.addProperty("error", "Error getting current address: " + e.getMessage());
+                    sendErrorResponse(exchange, 500, "Error getting current address: " + e.getMessage(), "INTERNAL_ERROR");
                 }
-                
-                response.add("result", resultObj);
-                response.addProperty("timestamp", System.currentTimeMillis());
-                response.addProperty("port", this.port);
-                sendJsonResponse(exchange, response);
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
@@ -786,161 +1018,110 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Program program = getCurrentProgram();
                 if (program == null) {
-                    sendErrorResponse(exchange, 400, "No program loaded");
+                    sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
                     return;
                 }
-
-                JsonObject response = new JsonObject();
-                JsonObject resultObj = new JsonObject();
                 
                 try {
-                    Function currentFunc = getCurrentFunction();
+                    Function currentFunc = getCurrentFunction(); 
                     if (currentFunc != null) {
-                        resultObj.addProperty("name", currentFunc.getName());
-                        resultObj.addProperty("address", currentFunc.getEntryPoint().toString());
-                        resultObj.addProperty("signature", currentFunc.getSignature().getPrototypeString());
-                        response.addProperty("success", true);
+                         Map<String, Object> funcData = new HashMap<>();
+                         funcData.put("name", currentFunc.getName());
+                         funcData.put("address", currentFunc.getEntryPoint().toString());
+                         funcData.put("signature", currentFunc.getSignature().getPrototypeString());
+                         sendJsonResponse(exchange, funcData);
                     } else {
-                        resultObj.addProperty("name", "");
-                        resultObj.addProperty("address", "");
-                        resultObj.addProperty("signature", "");
-                        response.addProperty("success", false);
-                        response.addProperty("message", "No function currently selected");
+                         sendErrorResponse(exchange, 404, "No function currently selected", "RESOURCE_NOT_FOUND");
                     }
                 } catch (Exception e) {
                     Msg.error(this, "Error getting current function", e);
-                    response.addProperty("success", false);
-                    response.addProperty("error", "Error getting current function: " + e.getMessage());
+                     sendErrorResponse(exchange, 500, "Error getting current function: " + e.getMessage(), "INTERNAL_ERROR");
                 }
-                
-                response.add("result", resultObj);
-                response.addProperty("timestamp", System.currentTimeMillis());
-                response.addProperty("port", this.port);
-                sendJsonResponse(exchange, response);
             } else {
-                exchange.sendResponseHeaders(405, -1); // Method Not Allowed
+                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
         });
 
 
-        // Info endpoint with standardized JSON response
+        // Info endpoint using new helpers
         server.createContext("/info", exchange -> {
             try {
-                JsonObject response = new JsonObject();
-                response.addProperty("port", port);
-                response.addProperty("isBaseInstance", isBaseInstance);
+                 Map<String, Object> infoData = new HashMap<>();
+                 infoData.put("port", port);
+                 infoData.put("isBaseInstance", isBaseInstance);
                 
-                // Try to get program info if available
                 Program program = getCurrentProgram();
-                response.addProperty("file", program != null ? program.getName() : "");
+                 infoData.put("file", program != null ? program.getName() : null); 
                 
-                // Try to get project info if available
                 Project project = tool.getProject();
-                response.addProperty("project", project != null ? project.getName() : "");
+                 infoData.put("project", project != null ? project.getName() : null);
                 
-                response.addProperty("timestamp", System.currentTimeMillis());
-                response.addProperty("success", true);
-                
-                sendJsonResponse(exchange, response);
+                 sendJsonResponse(exchange, infoData);
             } catch (Exception e) {
                 Msg.error(this, "Error serving /info endpoint", e);
-                JsonObject error = new JsonObject();
-                error.addProperty("error", "Internal server error");
-                error.addProperty("port", port);
-                sendJsonResponse(exchange, error, 500);
+                 sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
         
         // Root endpoint - only handle exact "/" path
         server.createContext("/", exchange -> {
-            // Only handle exact root path
             if (!exchange.getRequestURI().getPath().equals("/")) {
-                // Return 404 for any other path that reaches this handler
                 Msg.info(this, "Received request for unknown path: " + exchange.getRequestURI().getPath());
-                sendErrorResponse(exchange, 404, "Endpoint not found");
+                sendErrorResponse(exchange, 404, "Endpoint not found", "ENDPOINT_NOT_FOUND");
                 return;
             }
             
             try {
-                JsonObject response = new JsonObject();
-                response.addProperty("port", port);
-                response.addProperty("isBaseInstance", isBaseInstance);
-                
-                // Try to get program info if available
+                 Map<String, Object> rootData = new HashMap<>();
+                 rootData.put("port", port);
+                 rootData.put("isBaseInstance", isBaseInstance);
                 Program program = getCurrentProgram();
-                response.addProperty("file", program != null ? program.getName() : "");
-                
-                // Try to get project info if available
+                 rootData.put("file", program != null ? program.getName() : null);
                 Project project = tool.getProject();
-                response.addProperty("project", project != null ? project.getName() : "");
+                 rootData.put("project", project != null ? project.getName() : null);
+                 // TODO: Add HATEOAS links here (e.g., to /info, /projects, /programs)
                 
-                sendJsonResponse(exchange, response);
+                 sendJsonResponse(exchange, rootData);
             } catch (Exception e) {
                 Msg.error(this, "Error serving / endpoint", e);
-                try {
-                    String error = "{\"error\": \"Internal error\", \"port\": " + port + "}";
-                    byte[] bytes = error.getBytes(StandardCharsets.UTF_8);
-                    exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-                    exchange.sendResponseHeaders(200, bytes.length);
-                    try (OutputStream os = exchange.getResponseBody()) {
-                        os.write(bytes);
-                    }
-                } catch (IOException ioe) {
-                    Msg.error(this, "Failed to send error response", ioe);
-                }
+                 sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
         server.createContext("/registerInstance", exchange -> {
             try {
                 Map<String, String> params = parseJsonPostParams(exchange);
-                int port = parseIntOrDefault(params.get("port"), 0);
-                if (port > 0) {
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", true);
-                    response.addProperty("message", "Instance registered on port " + port);
-                    response.addProperty("port", port);
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    sendJsonResponse(exchange, response);
+                int regPort = parseIntOrDefault(params.get("port"), 0);
+                if (regPort > 0) {
+                     sendJsonResponse(exchange, Map.of("message", "Instance registration request received for port " + regPort));
                 } else {
-                    JsonObject error = new JsonObject();
-                    error.addProperty("error", "Invalid port number");
-                    error.addProperty("port", this.port);
-                    sendJsonResponse(exchange, error, 400);
+                     sendErrorResponse(exchange, 400, "Invalid or missing port number", "INVALID_PARAMETER");
                 }
+            } catch (IOException e) {
+                 Msg.error(this, "Error parsing POST params for registerInstance", e);
+                 sendErrorResponse(exchange, 400, "Invalid request body: " + e.getMessage(), "INVALID_REQUEST");
             } catch (Exception e) {
                 Msg.error(this, "Error in /registerInstance", e);
-                JsonObject error = new JsonObject();
-                error.addProperty("error", "Internal server error");
-                error.addProperty("port", this.port);
-                sendJsonResponse(exchange, error, 500);
+                 sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
         server.createContext("/unregisterInstance", exchange -> {
             try {
                 Map<String, String> params = parseJsonPostParams(exchange);
-                int port = parseIntOrDefault(params.get("port"), 0);
-                if (port > 0 && activeInstances.containsKey(port)) {
-                    activeInstances.remove(port);
-                    JsonObject response = new JsonObject();
-                    response.addProperty("success", true);
-                    response.addProperty("message", "Unregistered instance on port " + port);
-                    response.addProperty("port", port);
-                    response.addProperty("timestamp", System.currentTimeMillis());
-                    sendJsonResponse(exchange, response);
+                int unregPort = parseIntOrDefault(params.get("port"), 0);
+                if (unregPort > 0 && activeInstances.containsKey(unregPort)) {
+                    activeInstances.remove(unregPort); 
+                     sendJsonResponse(exchange, Map.of("message", "Instance unregistered for port " + unregPort));
                 } else {
-                    JsonObject error = new JsonObject();
-                    error.addProperty("error", "No instance found on port " + port);
-                    error.addProperty("port", this.port);
-                    sendJsonResponse(exchange, error, 404);
+                     sendErrorResponse(exchange, 404, "No instance found on port " + unregPort, "RESOURCE_NOT_FOUND");
                 }
+             } catch (IOException e) {
+                 Msg.error(this, "Error parsing POST params for unregisterInstance", e);
+                 sendErrorResponse(exchange, 400, "Invalid request body: " + e.getMessage(), "INVALID_REQUEST");
             } catch (Exception e) {
                 Msg.error(this, "Error in /unregisterInstance", e);
-                JsonObject error = new JsonObject();
-                error.addProperty("error", "Internal server error");
-                error.addProperty("port", this.port);
-                sendJsonResponse(exchange, error, 500);
+                 sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         });
 
@@ -1214,23 +1395,40 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 resultObj.addProperty("decompilation_error", "Failed to initialize decompiler");
             } else {
                 DecompileResults decompResult = decomp.decompileFunction(func, 30, new ConsoleTaskMonitor());
-                if (decompResult != null && decompResult.decompileCompleted()) {
-                    resultObj.addProperty("decompilation", decompResult.getDecompiledFunction().getC());
-                } else {
+                if (decompResult == null) {
+                    resultObj.addProperty("decompilation_error", "Decompilation returned null result");
+                } else if (!decompResult.decompileCompleted()) {
                     resultObj.addProperty("decompilation_error", "Decompilation failed or timed out");
+                } else {
+                    // Handle decompilation result with proper JSON structure
+                    JsonObject decompilationResult = new JsonObject();
+                    
+                    ghidra.app.decompiler.DecompiledFunction decompiledFunc = decompResult.getDecompiledFunction();
+                    if (decompiledFunc == null) {
+                        decompilationResult.addProperty("error", "Could not get decompiled function");
+                    } else {
+                        String decompiledCode = decompiledFunc.getC();
+                        if (decompiledCode != null) {
+                            decompilationResult.addProperty("code", decompiledCode);
+                        } else {
+                            decompilationResult.addProperty("error", "Decompiled code is null");
+                        }
+                    }
+                    
+                    resultObj.add("decompilation", decompilationResult);
                 }
             }
         } catch (Exception e) {
-             Msg.error(this, "Decompilation error for " + func.getName(), e);
-             resultObj.addProperty("decompilation_error", "Exception during decompilation: " + e.getMessage());
+            Msg.error(this, "Decompilation error for " + func.getName(), e);
+            resultObj.addProperty("decompilation_error", "Exception during decompilation: " + e.getMessage());
         } finally {
             decomp.dispose();
         }
 
         response.addProperty("success", true);
         response.add("result", resultObj);
-        response.addProperty("timestamp", System.currentTimeMillis()); // Add timestamp
-        response.addProperty("port", this.port); // Add port
+        response.addProperty("timestamp", System.currentTimeMillis());
+        response.addProperty("port", this.port);
         return response;
     }
 
@@ -1874,90 +2072,530 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     }
     
     // ----------------------------------------------------------------------------------
-    // Helper methods
-    // ----------------------------------------------------------------------------------
-    
-    private String getDataTypeName(Program program, Address address) {
-        if (program == null || address == null) {
-            return "unknown";
-        }
-        Data data = program.getListing().getDefinedDataAt(address);
-        if (data != null) {
-            DataType dt = data.getDataType();
-            return dt != null ? dt.getName() : "unknown";
-        }
-        return "unknown";
-    }
-    
-    private Function findFunctionByName(Program program, String name) {
-        if (program == null || name == null || name.isEmpty()) {
-            return null;
-        }
-        
-        for (Function function : program.getFunctionManager().getFunctions(true)) {
-            if (function.getName().equals(name)) {
-                return function;
-            }
-        }
-        return null;
-    }
-    
-    private DataType findDataType(Program program, String name) {
-        if (program == null || name == null || name.isEmpty()) {
-            return null;
-        }
-        
-        DataTypeManager dtm = program.getDataTypeManager();
-        
-        // First try direct lookup
-        DataType dt = dtm.getDataType("/" + name);
-        if (dt != null) {
-            return dt;
-        }
-        
-        // Try built-in types by simple name
-        dt = dtm.findDataType(name);
-        if (dt != null) {
-            return dt;
-        }
-        
-        // Try to find a matching type by name only
-        Iterator<DataType> dtIter = dtm.getAllDataTypes();
-        while (dtIter.hasNext()) {
-            DataType type = dtIter.next();
-            if (type.getName().equals(name)) {
-                return type;
-            }
-        }
-        
-        return null;
-    }
-
-    // ----------------------------------------------------------------------------------
-    // Standardized JSON Response Helpers
+    // Standardized JSON Response Helpers (Following GHIDRA_HTTP_API.md v1)
     // ----------------------------------------------------------------------------------
 
+    /**
+     * Creates the base structure for all JSON responses.
+     * Includes the request ID and instance URL.
+     * @param exchange The HTTP exchange to extract headers from.
+     * @return A JsonObject with 'id' and 'instance' fields.
+     */
+    /**
+     * Builder for standardized API responses
+     */
+    private static class ResponseBuilder {
+        private final HttpExchange exchange;
+        private final int port;
+        private JsonObject response;
+        private JsonObject links;
+        
+        public ResponseBuilder(HttpExchange exchange, int port) {
+            this.exchange = exchange;
+            this.port = port;
+            this.response = new JsonObject();
+            this.links = new JsonObject();
+            
+            String requestId = exchange.getRequestHeaders().getFirst("X-Request-ID");
+            response.addProperty("id", requestId != null ? requestId : UUID.randomUUID().toString());
+            response.addProperty("instance", "http://localhost:" + port);
+        }
+        
+        public ResponseBuilder success(boolean success) {
+            response.addProperty("success", success);
+            return this;
+        }
+        
+        public ResponseBuilder result(Object data) {
+            Gson gson = new Gson();
+            response.add("result", gson.toJsonTree(data));
+            return this;
+        }
+        
+        public ResponseBuilder error(String message, String code) {
+            JsonObject error = new JsonObject();
+            error.addProperty("message", message);
+            if (code != null) {
+                error.addProperty("code", code);
+            }
+            response.add("error", error);
+            return this;
+        }
+        
+        public ResponseBuilder addLink(String rel, String href) {
+            JsonObject link = new JsonObject();
+            link.addProperty("href", href);
+            links.add(rel, link);
+            return this;
+        }
+        
+        public JsonObject build() {
+            if (links.size() > 0) {
+                response.add("_links", links);
+            }
+            return response;
+        }
+    }
+    
+    private JsonObject createBaseResponse(HttpExchange exchange) {
+        return new ResponseBuilder(exchange, port).build();
+    }
+
+    private JsonObject createSuccessResponse(HttpExchange exchange, Object resultData, JsonObject links) {
+        ResponseBuilder builder = new ResponseBuilder(exchange, port)
+            .success(true)
+            .result(resultData);
+            
+        if (links != null) {
+            builder.links = links;
+        }
+        return builder.build();
+    }
+
+    private JsonObject createErrorResponse(HttpExchange exchange, String message, String errorCode) {
+        return new ResponseBuilder(exchange, port)
+            .success(false)
+            .error(message, errorCode)
+            .build();
+    }
+    
+    // Overload for simple success with no data and no links
+    private JsonObject createSuccessResponse(HttpExchange exchange) {
+        return createSuccessResponse(exchange, null, null);
+    }
+
+    /**
+     * Creates a standardized error response JSON object.
+     * @param exchange The HTTP exchange.
+     * @param message A descriptive error message.
+     * @param errorCode An optional machine-readable error code string.
+     * @return A JsonObject representing the error response.
+     */
+    private JsonObject createErrorResponse(HttpExchange exchange, String message, String errorCode) {
+        JsonObject response = createBaseResponse(exchange);
+        response.addProperty("success", false);
+        JsonObject errorObj = new JsonObject();
+        errorObj.addProperty("message", message != null ? message : "An unknown error occurred.");
+        if (errorCode != null && !errorCode.isEmpty()) {
+            errorObj.addProperty("code", errorCode);
+        }
+        response.add("error", errorObj);
+        return response;
+    }
+    
+    // Overload for error with just message
+    private JsonObject createErrorResponse(HttpExchange exchange, String message) {
+        return createErrorResponse(exchange, message, null);
+    }
+
+    // --- Deprecated Helpers (Marked for removal) ---
+    // These are kept temporarily only if absolutely needed during refactoring, 
+    // but the goal is to replace all their usages with the new helpers above.
+    @Deprecated
     private JsonObject createSuccessResponse(Object resultData) {
         JsonObject response = new JsonObject();
         response.addProperty("success", true);
         if (resultData != null) {
              response.add("result", new Gson().toJsonTree(resultData));
         } else {
-             response.add("result", null); // Explicitly add null if result is null
+             response.add("result", null);
         }
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
+        response.addProperty("timestamp", System.currentTimeMillis()); // Deprecated field
+        response.addProperty("port", this.port); // Deprecated field
         return response;
     }
 
+    @Deprecated
     private JsonObject createErrorResponse(String errorMessage, int statusCode) {
         JsonObject response = new JsonObject();
         response.addProperty("success", false);
-        response.addProperty("error", errorMessage);
-        response.addProperty("status_code", statusCode); // Use status_code for consistency
-        response.addProperty("timestamp", System.currentTimeMillis());
-        response.addProperty("port", this.port);
+        response.addProperty("error", errorMessage); // Deprecated structure
+        response.addProperty("status_code", statusCode); // Deprecated field
+        response.addProperty("timestamp", System.currentTimeMillis()); // Deprecated field
+        response.addProperty("port", this.port); // Deprecated field
         return response;
+    }
+    // --- End Deprecated Helpers ---
+
+    // ----------------------------------------------------------------------------------
+    // Transaction Management Helper
+    // ----------------------------------------------------------------------------------
+
+    /**
+     * Executes a Ghidra operation that modifies the program state within a transaction.
+     * Handles Swing thread invocation and ensures the transaction is properly managed.
+     * 
+     * @param <T> The return type of the operation (can be Void for operations without return value).
+     * @param program The program context for the transaction. Must not be null.
+     * @param transactionName A descriptive name for the Ghidra transaction log.
+     * @param operation A supplier function (using GhidraSupplier functional interface) 
+     *                  that performs the Ghidra API calls and returns a result.
+     *                  This function MUST NOT start or end its own transaction.
+     * @return The result of the operation.
+     * @throws TransactionException If the operation fails within the transaction or 
+     *                              if execution on the Swing thread fails. Wraps the original cause.
+     * @throws IllegalArgumentException If program is null.
+     */
+    private <T> T executeInTransaction(Program program, String transactionName, GhidraSupplier<T> operation) throws TransactionException {
+        if (program == null) {
+            throw new IllegalArgumentException("Program cannot be null for transaction");
+        }
+
+        final class ResultContainer {
+            T value = null;
+            Exception exception = null;
+        }
+        final ResultContainer resultContainer = new ResultContainer();
+
+        try {
+            SwingUtilities.invokeAndWait(() -> {
+                int txId = -1; 
+                boolean success = false;
+                try {
+                    txId = program.startTransaction(transactionName);
+                    if (txId < 0) {
+                         throw new TransactionException("Failed to start transaction: " + transactionName + ". Already in a transaction?");
+                    }
+                    resultContainer.value = operation.get(); 
+                    success = true; 
+                } catch (Exception e) {
+                    Msg.error(this, "Exception during transaction: " + transactionName, e);
+                    resultContainer.exception = e; 
+                    success = false; 
+                } finally {
+                    if (txId >= 0) { 
+                         program.endTransaction(txId, success);
+                         Msg.debug(this, "Transaction '" + transactionName + "' ended. Success: " + success);
+                    }
+                }
+            });
+        } catch (InterruptedException | InvocationTargetException e) {
+            Msg.error(this, "Failed to execute transaction '" + transactionName + "' on Swing thread", e);
+            throw new TransactionException("Failed to execute operation on Swing thread", e);
+        }
+
+        if (resultContainer.exception != null) {
+            throw new TransactionException("Operation failed within transaction: " + transactionName, resultContainer.exception);
+        }
+
+        return resultContainer.value;
+    }
+    
+    /**
+     * Overload of executeInTransaction for operations that don't return a value (Runnable).
+     * @param program The program context for the transaction.
+     * @param transactionName The name for the Ghidra transaction log.
+     * @param operation A Runnable that performs the Ghidra API calls.
+     * @throws TransactionException If the operation fails.
+     */
+    private void executeInTransaction(Program program, String transactionName, Runnable operation) throws TransactionException {
+         executeInTransaction(program, transactionName, () -> {
+             operation.run();
+             return null; 
+         });
+    }
+
+    /** Custom exception for transaction-related errors. */
+    public static class TransactionException extends Exception {
+        public TransactionException(String message) { super(message); }
+        public TransactionException(String message, Throwable cause) { super(message, cause); }
+    }
+
+    // ----------------------------------------------------------------------------------
+    // HTTP Response Sending Methods
+    // ----------------------------------------------------------------------------------
+
+    /**
+     * Sends a standard success JSON response with a 200 OK status.
+     * @param exchange The HTTP exchange.
+     * @param resultData The data payload for the 'result' field (can be null).
+     * @param links Optional HATEOAS links.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendSuccessResponse(HttpExchange exchange, Object resultData, JsonObject links) throws IOException {
+        sendJsonResponse(exchange, createSuccessResponse(exchange, resultData, links), 200);
+    }
+    
+    // Overload for success with data, no links
+    private void sendSuccessResponse(HttpExchange exchange, Object resultData) throws IOException {
+        sendSuccessResponse(exchange, resultData, null);
+    }
+    
+    // Overload for simple success, no data, no links (e.g., for 204 No Content)
+    private void sendSuccessResponse(HttpExchange exchange) throws IOException {
+        sendSuccessResponse(exchange, null, null);
+    }
+
+    /**
+     * Sends a standard error JSON response with the specified HTTP status code.
+     * @param exchange The HTTP exchange.
+     * @param statusCode The HTTP status code (e.g., 400, 404, 500).
+     * @param message A descriptive error message.
+     * @param errorCode An optional machine-readable error code string.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendErrorResponse(HttpExchange exchange, int statusCode, String message, String errorCode) throws IOException {
+        sendJsonResponse(exchange, createErrorResponse(exchange, message, errorCode), statusCode);
+    }
+    
+    // Overload for error without specific code
+    private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
+        sendErrorResponse(exchange, statusCode, message, null);
+    }
+
+    /**
+     * Core method to send any JsonObject response with a specific status code.
+     * Handles JSON serialization, setting headers, and writing the response body.
+     * @param exchange The HTTP exchange.
+     * @param jsonObj The JsonObject to send.
+     * @param statusCode The HTTP status code to set.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj, int statusCode) throws IOException {
+         try {
+            Gson gson = new Gson();
+            String json = gson.toJson(jsonObj);
+            if (json.length() < 1024) {
+                 Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json);
+            } else {
+                 Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json.substring(0, 1020) + "...");
+            }
+
+            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            
+            long responseLength = (statusCode == 204) ? -1 : bytes.length; 
+            exchange.sendResponseHeaders(statusCode, responseLength); 
+            
+            if (responseLength != -1) {
+                OutputStream os = null;
+                try {
+                    os = exchange.getResponseBody();
+                    os.write(bytes);
+                    os.flush();
+                } catch (IOException e) {
+                    Msg.error(this, "Error writing response body: " + e.getMessage(), e);
+                    throw e; 
+                } finally {
+                    if (os != null) {
+                        try { os.close(); } catch (IOException e) { /* Log or ignore */ }
+                    }
+                }
+            } else {
+                 exchange.getResponseBody().close();
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error sending JSON response: " + e.getMessage(), e);
+            throw new IOException("Failed to send JSON response", e);
+        }
+    }
+
+    // ----------------------------------------------------------------------------------
+    // Utility: parse query params, parse post params, pagination, etc.
+    // ----------------------------------------------------------------------------------
+
+    /**
+     * Executes a Ghidra operation that modifies the program state within a transaction.
+     * Handles Swing thread invocation and ensures the transaction is properly managed.
+     * 
+     * @param <T> The return type of the operation (can be Void for operations without return value).
+     * @param program The program context for the transaction. Must not be null.
+     * @param transactionName A descriptive name for the Ghidra transaction log.
+     * @param operation A supplier function (using GhidraSupplier functional interface) 
+     *                  that performs the Ghidra API calls and returns a result.
+     *                  This function MUST NOT start or end its own transaction.
+     * @return The result of the operation.
+     * @throws TransactionException If the operation fails within the transaction or 
+     *                              if execution on the Swing thread fails. Wraps the original cause.
+     * @throws IllegalArgumentException If program is null.
+     */
+    private <T> T executeInTransaction(Program program, String transactionName, GhidraSupplier<T> operation) throws TransactionException {
+        if (program == null) {
+            throw new IllegalArgumentException("Program cannot be null for transaction");
+        }
+
+        // Use a simple container to pass results/exceptions back from the Swing thread
+        final class ResultContainer {
+            T value = null;
+            Exception exception = null;
+        }
+        final ResultContainer resultContainer = new ResultContainer();
+
+        try {
+            // Ensure the operation runs on the Swing Event Dispatch Thread (EDT)
+            // as required by many Ghidra API calls that modify state.
+            SwingUtilities.invokeAndWait(() -> {
+                int txId = -1; // Initialize transaction ID
+                boolean success = false;
+                try {
+                    txId = program.startTransaction(transactionName);
+                    if (txId < 0) {
+                         // Handle case where transaction could not be started (e.g., already in transaction)
+                         // This ideally shouldn't happen if called correctly, but good to check.
+                         throw new TransactionException("Failed to start transaction: " + transactionName + ". Already in a transaction?");
+                    }
+                    resultContainer.value = operation.get(); // Execute the actual Ghidra operation
+                    success = true; // Mark as success if no exception was thrown
+                } catch (Exception e) {
+                    // Catch any exception from the operation
+                    Msg.error(this, "Exception during transaction: " + transactionName, e);
+                    resultContainer.exception = e; // Store the exception
+                    success = false; // Ensure transaction is rolled back
+                } finally {
+                    // Always end the transaction, committing only if success is true
+                    if (txId >= 0) { // Only end if successfully started
+                         program.endTransaction(txId, success);
+                         Msg.debug(this, "Transaction '" + transactionName + "' ended. Success: " + success);
+                    }
+                }
+            });
+        } catch (InterruptedException | InvocationTargetException e) {
+            // Handle exceptions related to SwingUtilities.invokeAndWait
+            Msg.error(this, "Failed to execute transaction '" + transactionName + "' on Swing thread", e);
+            // Wrap this error in our custom exception type
+            throw new TransactionException("Failed to execute operation on Swing thread", e);
+        }
+
+        // Check if an exception occurred within the Ghidra operation itself
+        if (resultContainer.exception != null) {
+            // Wrap the original Ghidra operation exception
+            throw new TransactionException("Operation failed within transaction: " + transactionName, resultContainer.exception);
+        }
+
+        // Return the result from the operation
+        return resultContainer.value;
+    }
+    
+    /**
+     * Overload of executeInTransaction for operations that don't return a value (Runnable).
+     * 
+     * @param program The program context for the transaction.
+     * @param transactionName The name for the Ghidra transaction log.
+     * @param operation A Runnable that performs the Ghidra API calls.
+     * @throws TransactionException If the operation fails.
+     */
+    private void executeInTransaction(Program program, String transactionName, Runnable operation) throws TransactionException {
+         // Wrap the Runnable in a GhidraSupplier that returns Void
+         executeInTransaction(program, transactionName, () -> {
+             operation.run();
+             return null; // Return null for void operations
+         });
+    }
+
+    /**
+     * Custom exception for transaction-related errors.
+     */
+    public static class TransactionException extends Exception {
+        public TransactionException(String message) {
+            super(message);
+        }
+
+        public TransactionException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    // ----------------------------------------------------------------------------------
+    // HTTP Response Sending Methods
+    // ----------------------------------------------------------------------------------
+
+    /**
+     * Sends a standard success JSON response with a 200 OK status.
+     * @param exchange The HTTP exchange.
+     * @param resultData The data payload for the 'result' field (can be null).
+     * @param links Optional HATEOAS links.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendSuccessResponse(HttpExchange exchange, Object resultData, JsonObject links) throws IOException {
+        sendJsonResponse(exchange, createSuccessResponse(exchange, resultData, links), 200);
+    }
+    
+    // Overload for success with data, no links
+    private void sendSuccessResponse(HttpExchange exchange, Object resultData) throws IOException {
+        sendSuccessResponse(exchange, resultData, null);
+    }
+    
+    // Overload for simple success, no data, no links (e.g., for 204 No Content)
+    private void sendSuccessResponse(HttpExchange exchange) throws IOException {
+        sendSuccessResponse(exchange, null, null);
+    }
+
+    /**
+     * Sends a standard error JSON response with the specified HTTP status code.
+     * @param exchange The HTTP exchange.
+     * @param statusCode The HTTP status code (e.g., 400, 404, 500).
+     * @param message A descriptive error message.
+     * @param errorCode An optional machine-readable error code string.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendErrorResponse(HttpExchange exchange, int statusCode, String message, String errorCode) throws IOException {
+        sendJsonResponse(exchange, createErrorResponse(exchange, message, errorCode), statusCode);
+    }
+    
+    // Overload for error without specific code
+    private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
+        sendErrorResponse(exchange, statusCode, message, null);
+    }
+
+    /**
+     * Core method to send any JsonObject response with a specific status code.
+     * Handles JSON serialization, setting headers, and writing the response body.
+     * @param exchange The HTTP exchange.
+     * @param jsonObj The JsonObject to send.
+     * @param statusCode The HTTP status code to set.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj, int statusCode) throws IOException {
+         try {
+            Gson gson = new Gson();
+            String json = gson.toJson(jsonObj);
+            // Use Msg.debug for potentially large responses
+            if (json.length() < 1024) {
+                 Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json);
+            } else {
+                 Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json.substring(0, 1020) + "...");
+            }
+
+            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            // Ensure CORS headers are set if needed (example, adjust as necessary)
+            // exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*"); 
+            
+            // Determine response length: 0 for 204, actual length otherwise
+            long responseLength = (statusCode == 204) ? -1 : bytes.length; 
+            exchange.sendResponseHeaders(statusCode, responseLength); 
+            
+            // Only write body if there is content (not for 204)
+            if (responseLength != -1) {
+                OutputStream os = null;
+                try {
+                    os = exchange.getResponseBody();
+                    os.write(bytes);
+                    os.flush();
+                } catch (IOException e) {
+                    // Log error, but don't try to send another response if body writing fails
+                    Msg.error(this, "Error writing response body: " + e.getMessage(), e);
+                    throw e; // Re-throw to indicate failure
+                } finally {
+                    if (os != null) {
+                        try {
+                            os.close();
+                        } catch (IOException e) {
+                            // Log error during close, but don't mask original exception if any
+                            Msg.error(this, "Error closing output stream: " + e.getMessage(), e);
+                        }
+                    }
+                }
+            } else {
+                 // For 204 No Content, just close the exchange without writing body
+                 exchange.getResponseBody().close();
+            }
+        } catch (Exception e) {
+            // Catch broader exceptions during response preparation/sending
+            Msg.error(this, "Error sending JSON response: " + e.getMessage(), e);
+            // Avoid sending another error response here to prevent potential loops
+            throw new IOException("Failed to send JSON response", e);
+        }
     }
 
     // ----------------------------------------------------------------------------------
@@ -2120,72 +2758,75 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         }
 
-        // Simplified sendResponse - expects JsonObject or wraps other types
-    private void sendResponse(HttpExchange exchange, Object response) throws IOException {
-        if (response instanceof JsonObject) {
-            // If it's already a JsonObject (likely from helpers), send directly
-            sendJsonResponse(exchange, (JsonObject) response);
-        } else {
-             // Wrap other types (including String) in standard success response
-             sendJsonResponse(exchange, createSuccessResponse(response));
-        }
+    // Removed old sendResponse method
+
+    // private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj) throws IOException { ... } // Keep the core sender
+
+    // ----------------------------------------------------------------------------------
+    // HTTP Response Sending Methods
+    // ----------------------------------------------------------------------------------
+
+    /**
+     * Sends a standard success JSON response with a 200 OK status.
+     * @param exchange The HTTP exchange.
+     * @param resultData The data payload for the 'result' field (can be null).
+     * @param links Optional HATEOAS links.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendSuccessResponse(HttpExchange exchange, Object resultData, JsonObject links) throws IOException {
+        sendJsonResponse(exchange, createSuccessResponse(exchange, resultData, links), 200);
+    }
+    
+    // Overload for success with data, no links
+    private void sendSuccessResponse(HttpExchange exchange, Object resultData) throws IOException {
+        sendSuccessResponse(exchange, resultData, null);
+    }
+    
+    // Overload for simple success, no data, no links
+    private void sendSuccessResponse(HttpExchange exchange) throws IOException {
+        sendSuccessResponse(exchange, null, null);
     }
 
-    private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj) throws IOException {
-        try {
-            Gson gson = new Gson();
-            String json = gson.toJson(jsonObj);
-            Msg.debug(this, "Sending JSON response: " + json);
-            
-            byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-            exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-            exchange.sendResponseHeaders(200, bytes.length);
-            
-            OutputStream os = null;
-            try {
-                os = exchange.getResponseBody();
-                os.write(bytes);
-                os.flush();
-            } catch (IOException e) {
-                Msg.error(this, "Error writing response body: " + e.getMessage(), e);
-                throw e;
-            } finally {
-                if (os != null) {
-                    try {
-                        os.close();
-                    } catch (IOException e) {
-                        Msg.error(this, "Error closing output stream: " + e.getMessage(), e);
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Msg.error(this, "Error in sendJsonResponse: " + e.getMessage(), e);
-            throw new IOException("Failed to send JSON response", e);
-        }
+    /**
+     * Sends a standard error JSON response with the specified HTTP status code.
+     * @param exchange The HTTP exchange.
+     * @param statusCode The HTTP status code (e.g., 400, 404, 500).
+     * @param message A descriptive error message.
+     * @param errorCode An optional machine-readable error code string.
+     * @throws IOException If sending the response fails.
+     */
+    private void sendErrorResponse(HttpExchange exchange, int statusCode, String message, String errorCode) throws IOException {
+        sendJsonResponse(exchange, createErrorResponse(exchange, message, errorCode), statusCode);
     }
-
-    // Simplified sendErrorResponse - uses helper and new sendJsonResponse overload
+    
+    // Overload for error without specific code
     private void sendErrorResponse(HttpExchange exchange, int statusCode, String message) throws IOException {
-        sendJsonResponse(exchange, createErrorResponse(message, statusCode), statusCode);
+        sendErrorResponse(exchange, statusCode, message, null);
     }
 
-    // Overload sendJsonResponse to accept status code for errors
+    /**
+     * Core method to send any JsonObject response with a specific status code.
+     * Handles JSON serialization, setting headers, and writing the response body.
+     * @param exchange The HTTP exchange.
+     * @param jsonObj The JsonObject to send.
+     * @param statusCode The HTTP status code to set.
+     * @throws IOException If sending the response fails.
+     */
     private void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj, int statusCode) throws IOException {
          try {
-            // Ensure success field matches status code for clarity
-            if (!jsonObj.has("success")) {
-                 jsonObj.addProperty("success", statusCode >= 200 && statusCode < 300);
-            } else {
-                 // Optionally force success based on status code if it exists
-                 // jsonObj.addProperty("success", statusCode >= 200 && statusCode < 300);
-            }
-             
             Gson gson = new Gson();
             String json = gson.toJson(jsonObj);
-            Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json);
-            
+            // Use Msg.debug for potentially large responses
+            if (json.length() < 1024) {
+                 Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json);
+            } else {
+                 Msg.debug(this, "Sending JSON response (Status " + statusCode + "): " + json.substring(0, 1020) + "...");
+            }
+
             byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            // Ensure CORS headers are set if needed (example, adjust as necessary)
+            // exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*"); 
             exchange.sendResponseHeaders(statusCode, bytes.length); // Use provided status code
             
             OutputStream os = null;
@@ -2194,20 +2835,23 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 os.write(bytes);
                 os.flush();
             } catch (IOException e) {
+                // Log error, but don't try to send another response if body writing fails
                 Msg.error(this, "Error writing response body: " + e.getMessage(), e);
-                throw e;
+                throw e; // Re-throw to indicate failure
             } finally {
                 if (os != null) {
                     try {
                         os.close();
                     } catch (IOException e) {
+                        // Log error during close, but don't mask original exception if any
                         Msg.error(this, "Error closing output stream: " + e.getMessage(), e);
                     }
                 }
             }
         } catch (Exception e) {
-            Msg.error(this, "Error in sendJsonResponse: " + e.getMessage(), e);
-            // Avoid sending another error response here to prevent loops
+            // Catch broader exceptions during response preparation/sending
+            Msg.error(this, "Error sending JSON response: " + e.getMessage(), e);
+            // Avoid sending another error response here to prevent potential loops
             throw new IOException("Failed to send JSON response", e);
         }
     }
