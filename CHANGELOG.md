@@ -6,54 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-- Updated port range calculations to use DEFAULT_GHIDRA_PORT
-- Cleaned up comments and simplified code in bridge_mcp_hydra.py
-- Improved error handling and response formatting
-- Standardized API response structure across all endpoints
-- Completed conversion of bridge/plugin protocol to pure JSON:
-  - All endpoints now use structured JSON requests/responses
-  - Removed all string parsing/formatting code from both bridge and plugin
-  - Standardized error handling with consistent JSON error responses
-  - Added detailed JSON schemas for all API endpoints
-  - Using only POST methods for mutation endpoints (previously mixed PUT/POST)
-  - Uniform camelCase parameter naming across JSON payloads
-  - Improved response metadata (timestamps, status codes)
-
-### Changed
-- Completed conversion of bridge/plugin protocol to pure JSON:
-  - All endpoints now use structured JSON requests/responses
-  - Removed all string parsing/formatting code from both bridge and plugin
-  - Standardized error handling with consistent JSON error responses
-  - Added detailed JSON schemas for all API endpoints
-  - Using only POST methods for mutation endpoints (previously mixed PUT/POST)
-  - Uniform camelCase parameter naming across JSON payloads
-  - Improved response metadata (timestamps, status codes)
-
 ### Added
-- Added GHIDRA_HTTP_API.md with documentation of the Java Plugin's HTTP API
-- Added better docstrings and type hints for all MCP tools
-- Added improved content-type handling for API requests
-- Added decompiler output controls to customize analysis results:
-- Choose between clean C-like pseudocode (default) or raw decompiler output
-- Toggle syntax tree visibility for detailed analysis
-- Select different simplification styles for alternate views
-- Useful for comparing different decompilation approaches or focusing on specific aspects of the code
-  
-  Example showing how to get raw decompiler output with syntax tree:
-  ```xml
-  <use_mcp_tool>
-  <server_name>ghydra</server_name>
-  <tool_name>decompile_function_by_address</tool_name>
-  <arguments>
-  {
-    "address": "0x1000",
-    "cCode": false,
-    "syntaxTree": true
-  }
-  </arguments>
-  </use_mcp_tool>
-  ```
+- Complete Ghidra HTTP API implementation:
+  - Memory operations (read/write)
+  - Cross-reference analysis
+  - Program analysis (callgraph, dataflow)
+- Enhanced decompiler controls:
+  - Raw output vs clean pseudocode
+  - Syntax tree visibility
+  - Multiple simplification styles
+- Comprehensive API documentation (GHIDRA_HTTP_API.md, MCP_BRIDGE_API.md)
+- Standardized JSON response formats
+
+### Changed
+- Unified all endpoints to use structured JSON
+- Improved error handling and response metadata
+- Simplified bridge code and added type hints
+- Updated port discovery to use DEFAULT_GHIDRA_PORT
 
 ## [1.4.0] - 2025-04-08
 
