@@ -135,17 +135,17 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/functions/", exchange -> {
+        server.createContext("/functions/by-name/", exchange -> {
             String path = exchange.getRequestURI().getPath();
 
             String[] pathParts = path.split("/");
 
-            if (pathParts.length < 3) {
+            if (pathParts.length < 4) {
                 exchange.sendResponseHeaders(400, -1);
                 return;
             }
 
-            String functionName = pathParts[2];
+            String functionName = pathParts[3];
             try {
                 functionName = java.net.URLDecoder.decode(functionName, StandardCharsets.UTF_8.name());
             } catch (Exception e) {
@@ -322,7 +322,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             sendJsonResponse(exchange, response);
         });
 
-        server.createContext("/get_function_by_address", exchange -> {
+        server.createContext("/functions/by-address", exchange -> {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> qparams = parseQueryParams(exchange);
                 String address = qparams.get("address");
@@ -367,7 +367,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/decompile_function", exchange -> {
+        server.createContext("/functions/by-address/decompile", exchange -> {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> qparams = parseQueryParams(exchange);
                 String address = qparams.get("address");
@@ -448,7 +448,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/set_decompiler_comment", exchange -> {
+        server.createContext("/comments/decompiler", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseJsonPostParams(exchange);
                 String address = params.get("address");
@@ -484,7 +484,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/set_disassembly_comment", exchange -> {
+        server.createContext("/comments/disassembly", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseJsonPostParams(exchange);
                 String address = params.get("address");
@@ -562,7 +562,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/rename_local_variable", exchange -> {
+        server.createContext("/variables/local", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseJsonPostParams(exchange);
                 String functionAddress = params.get("functionAddress");
@@ -594,7 +594,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/set_function_prototype", exchange -> {
+        server.createContext("/functions/prototype", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseJsonPostParams(exchange);
                 String functionAddress = params.get("functionAddress");
@@ -621,7 +621,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
 
-        server.createContext("/set_local_variable_type", exchange -> {
+        server.createContext("/variables/local/type", exchange -> {
             if ("POST".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseJsonPostParams(exchange);
                 String functionAddress = params.get("functionAddress");

@@ -17,13 +17,25 @@
     - `limit` - Max items to return
     - `query` - Search string for function names
 
-- `GET /functions/{name}` - Get function details
+- `GET /functions/by-name` - Get decompiled function by name
   - Parameters:
+    - `name` - Function name
     - `cCode` - Return C-style code (true/false)
     - `syntaxTree` - Include syntax tree (true/false)
     - `simplificationStyle` - Decompiler style
 
-- `GET /get_function_by_address` - Get function by address
+- `GET /functions/by-address` - Get decompiled function by address
+  - Parameters:
+    - `address` - Memory address in hex
+    - `cCode` - Return C-style code (true/false)
+    - `syntaxTree` - Include syntax tree (true/false)
+    - `simplificationStyle` - Decompiler style
+
+- `GET /functions/variables/by-name` - List function variables by function name
+  - Parameters:
+    - `name` - Function name
+
+- `GET /functions/variables/by-address` - List function variables by function address
   - Parameters:
     - `address` - Memory address in hex
 
@@ -34,32 +46,35 @@
 - `GET /namespaces` - List namespaces
 - `GET /data` - List data items
 - `GET /variables` - List global variables
-- `GET /functions/{name}/variables` - List function variables
 
 ### Modifications
-- `POST /functions/{name}` - Rename function
-  - Body: `{"newName": string}`
+- `PATCH /functions/by-name` - Update function properties by name
+  - Parameters:
+    - `name` - Function name
+  - Body: `{"name": string}`
 
-- `POST /data` - Rename data at address
-  - Body: `{"address": string, "newName": string}`
+- `PATCH /functions/by-address` - Update function properties by address
+  - Parameters:
+    - `address` - Memory address in hex
+  - Body: `{"name": string}`
 
-- `POST /set_decompiler_comment` - Add decompiler comment
+- `PATCH /data` - Update data properties
+  - Body: `{"address": string, "name": string}`
+
+- `POST /comments/decompiler` - Create decompiler comment
   - Body: `{"address": string, "comment": string}`
 
-- `POST /set_disassembly_comment` - Add disassembly comment
+- `POST /comments/disassembly` - Create disassembly comment
   - Body: `{"address": string, "comment": string}`
 
-- `POST /rename_local_variable` - Rename local variable
+- `PATCH /variables/local` - Update local variable
   - Body: `{"functionAddress": string, "oldName": string, "newName": string}`
 
-- `POST /rename_function_by_address` - Rename function by address
-  - Body: `{"functionAddress": string, "newName": string}`
-
-- `POST /set_function_prototype` - Update function prototype
+- `PUT /functions/prototype` - Replace function prototype
   - Body: `{"functionAddress": string, "prototype": string}`
 
-- `POST /set_local_variable_type` - Change variable type
-  - Body: `{"functionAddress": string, "variableName": string, "newType": string}`
+- `PATCH /variables/local/type` - Update local variable type
+  - Body: `{"functionAddress": string, "variableName": string, "type": string}`
 
 ## Response Format
 All endpoints return JSON with standard structure:
@@ -71,3 +86,4 @@ All endpoints return JSON with standard structure:
   "timestamp": number,
   "port": number
 }
+```

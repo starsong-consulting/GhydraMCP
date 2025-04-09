@@ -358,7 +358,8 @@ def get_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", cCode: bool = 
     Returns:
         dict: Contains function name, address, signature and decompilation
     """
-    response = safe_get(port, f"functions/{quote(name)}", {
+    response = safe_get(port, "functions/by-name", {
+        "name": name,
         "cCode": str(cCode).lower(),
         "syntaxTree": str(syntaxTree).lower(),
         "simplificationStyle": simplificationStyle
@@ -385,7 +386,7 @@ def update_function(port: int = DEFAULT_GHIDRA_PORT, name: str = "", new_name: s
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, f"functions/{quote(name)}", {"newName": new_name})
+    return safe_post(port, "functions/by-name", {"name": name, "newName": new_name})
 
 @mcp.tool()
 def update_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: str = "") -> str:
@@ -399,7 +400,7 @@ def update_data(port: int = DEFAULT_GHIDRA_PORT, address: str = "", new_name: st
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "data", {"address": address, "newName": new_name})
+    return safe_post(port, "data/by-address", {"address": address, "newName": new_name})
 
 @mcp.tool()
 def list_segments(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100) -> list:
@@ -499,7 +500,7 @@ def get_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "") 
     Returns:
         dict: Contains function name, address, signature and decompilation
     """
-    response = safe_get(port, "get_function_by_address", {"address": address})
+    response = safe_get(port, "functions/by-address", {"address": address})
     
     if isinstance(response, dict) and "success" in response:
         return response
@@ -531,7 +532,7 @@ def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> dict:
     Returns:
         dict: Contains current memory address in hex format
     """
-    return safe_get(port, "get_current_address")
+    return safe_get(port, "current/address")
 
 @mcp.tool()
 def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict:
@@ -543,7 +544,7 @@ def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict:
     Returns:
         dict: Contains function name, address and signature
     """
-    return safe_get(port, "get_current_function")
+    return safe_get(port, "current/function")
 
 @mcp.tool()
 def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str = "", cCode: bool = True, syntaxTree: bool = False, simplificationStyle: str = "normalize") -> dict:
@@ -559,7 +560,7 @@ def decompile_function_by_address(port: int = DEFAULT_GHIDRA_PORT, address: str 
     Returns:
         dict: Contains decompiled code in 'result.decompilation'
     """
-    response = safe_get(port, "decompile_function", {
+    response = safe_get(port, "functions/by-address", {
         "address": address,
         "cCode": str(cCode).lower(),
         "syntaxTree": str(syntaxTree).lower(),
@@ -586,7 +587,7 @@ def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> 
     Returns:
         dict: Contains assembly instructions with addresses and comments
     """
-    return safe_get(port, "disassemble_function", {"address": address})
+    return safe_get(port, "functions/by-address/disassembly", {"address": address})
 
 @mcp.tool()
 def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
@@ -600,7 +601,7 @@ def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", c
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "set_decompiler_comment", {"address": address, "comment": comment})
+    return safe_post(port, "comments/decompiler", {"address": address, "comment": comment})
 
 @mcp.tool()
 def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
@@ -614,7 +615,7 @@ def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", 
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "set_disassembly_comment", {"address": address, "comment": comment})
+    return safe_post(port, "comments/disassembly", {"address": address, "comment": comment})
 
 @mcp.tool()
 def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", old_name: str = "", new_name: str = "") -> str:
@@ -629,7 +630,11 @@ def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "rename_local_variable", {"functionAddress": function_address, "oldName": old_name, "newName": new_name})
+    return safe_post(port, "functions/variables/local/rename", {
+        "functionAddress": function_address,
+        "oldName": old_name,
+        "newName": new_name
+    })
 
 @mcp.tool()
 def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", new_name: str = "") -> str:
@@ -643,7 +648,10 @@ def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "rename_function_by_address", {"functionAddress": function_address, "newName": new_name})
+    return safe_post(port, "functions/by-address/rename", {
+        "functionAddress": function_address,
+        "newName": new_name
+    })
 
 @mcp.tool()
 def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", prototype: str = "") -> str:
@@ -657,7 +665,10 @@ def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: st
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "set_function_prototype", {"functionAddress": function_address, "prototype": prototype})
+    return safe_post(port, "functions/by-address/prototype", {
+        "functionAddress": function_address,
+        "prototype": prototype
+    })
 
 @mcp.tool()
 def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", variable_name: str = "", new_type: str = "") -> str:
@@ -672,7 +683,11 @@ def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: s
     Returns:
         str: Confirmation message or error
     """
-    return safe_post(port, "set_local_variable_type", {"functionAddress": function_address, "variableName": variable_name, "newType": new_type})
+    return safe_post(port, "functions/variables/local/type", {
+        "functionAddress": function_address,
+        "variableName": variable_name,
+        "newType": new_type
+    })
 
 @mcp.tool()
 def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int = 100, search: str = "") -> dict:
@@ -716,8 +731,7 @@ def list_function_variables(port: int = DEFAULT_GHIDRA_PORT, function: str = "")
     if not function:
         return {"success": False, "error": "Function name is required"}
 
-    encoded_name = quote(function)
-    response = safe_get(port, f"functions/{encoded_name}/variables", {})
+    response = safe_get(port, "functions/variables/by-name", {"name": function})
     
     if not isinstance(response, dict) or "success" not in response:
         return {
@@ -744,9 +758,11 @@ def rename_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: s
     if not function or not name or not new_name:
         return {"success": False, "error": "Function, name, and new_name parameters are required"}
 
-    encoded_function = quote(function)
-    encoded_var = quote(name)
-    return safe_post(port, f"functions/{encoded_function}/variables/{encoded_var}", {"newName": new_name})
+    return safe_post(port, "functions/variables/by-name/rename", {
+        "function": function,
+        "name": name,
+        "newName": new_name
+    })
 
 @mcp.tool()
 def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: str = "", data_type: str = "") -> dict:
@@ -764,9 +780,11 @@ def retype_variable(port: int = DEFAULT_GHIDRA_PORT, function: str = "", name: s
     if not function or not name or not data_type:
         return {"success": False, "error": "Function, name, and data_type parameters are required"}
 
-    encoded_function = quote(function)
-    encoded_var = quote(name)
-    return safe_post(port, f"functions/{encoded_function}/variables/{encoded_var}", {"dataType": data_type})
+    return safe_post(port, "functions/variables/by-name/type", {
+        "function": function,
+        "name": name,
+        "dataType": data_type
+    })
 
 def handle_sigint(signum, frame):
     os._exit(0)
