@@ -6,7 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Updated port range calculations to use DEFAULT_GHIDRA_PORT
+- Cleaned up comments and simplified code in bridge_mcp_hydra.py
+- Improved error handling and response formatting
+- Standardized API response structure across all endpoints
+
 ### Added
+- Added GHIDRA_HTTP_API.md with documentation of the Java Plugin's HTTP API
+- Added better docstrings and type hints for all MCP tools
+- Added improved content-type handling for API requests
 - Added decompiler output controls to customize analysis results:
   - Choose between clean C-like pseudocode (default) or raw decompiler output
   - Toggle syntax tree visibility for detailed analysis

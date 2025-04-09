@@ -7,10 +7,17 @@ import json
 import requests
 import time
 import unittest
+import os
 
 # Default Ghidra server port
 DEFAULT_PORT = 8192
-BASE_URL = f"http://localhost:{DEFAULT_PORT}"
+
+# Get host from environment variable or default to localhost
+GHYDRAMCP_TEST_HOST = os.getenv('GHYDRAMCP_TEST_HOST')
+if GHYDRAMCP_TEST_HOST and GHYDRAMCP_TEST_HOST.strip():
+    BASE_URL = f"http://{GHYDRAMCP_TEST_HOST}:{DEFAULT_PORT}"
+else:
+    BASE_URL = f"http://localhost:{DEFAULT_PORT}"
 
 class GhydraMCPHttpApiTests(unittest.TestCase):
     """Test cases for the GhydraMCP HTTP API"""

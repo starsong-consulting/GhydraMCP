@@ -1,14 +1,19 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 """
 Test script for the GhydraMCP bridge using the MCP client.
 This script tests the bridge by sending MCP requests and handling responses.
 """
 import json
 import logging
+import os
 import sys
 from typing import Any
 
 import anyio
+
+# Get host and port from environment variables or use defaults
+GHYDRAMCP_TEST_HOST = os.getenv('GHYDRAMCP_TEST_HOST', 'localhost')
+GHYDRAMCP_TEST_PORT = int(os.getenv('GHYDRAMCP_TEST_PORT', '8192'))
 from mcp.client.session import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
 
@@ -74,7 +79,7 @@ async def test_bridge():
             logger.info("Calling list_functions tool...")
             list_functions_result = await session.call_tool(
                 "list_functions",
-                arguments={"port": 8192, "offset": 0, "limit": 5}
+                arguments={"port": GHYDRAMCP_TEST_PORT, "offset": 0, "limit": 5}
             )
             logger.info(f"List functions result: {list_functions_result}")
 
@@ -85,7 +90,7 @@ async def test_bridge():
                 # Get a known function to test with from list_functions result
                 list_funcs = await session.call_tool(
                     "list_functions",
-                    arguments={"port": 8192, "offset": 0, "limit": 5}
+                    arguments={"port": GHYDRAMCP_TEST_PORT, "offset": 0, "limit": 5}
                 )
                 
                 if not list_funcs or not list_funcs.content:
@@ -117,7 +122,7 @@ async def test_bridge():
                 test_name = f"{func_name}_test"
 
                 # Test successful rename operations (These return simple success/message, not full result)
-                rename_args = {"port": 8192, "name": original_name, "new_name": test_name}
+                rename_args = {"port": GHYDRAMCP_TEST_PORT, "name": original_name, "new_name": test_name}
                 logger.info(f"Calling update_function with args: {rename_args}")
                 rename_result = await session.call_tool("update_function", arguments=rename_args)
                 rename_data = json.loads(rename_result.content[0].text) # Parse simple response
@@ -131,7 +136,7 @@ async def test_bridge():
                 logger.info(f"Renamed function result: {renamed_func}")
                 
                 # Rename back to original
-                revert_args = {"port": 8192, "name": test_name, "new_name": original_name}
+                revert_args = {"port": GHYDRAMCP_TEST_PORT, "name": test_name, "new_name": original_name}
                 logger.info(f"Calling update_function with args: {revert_args}")
                 revert_result = await session.call_tool("update_function", arguments=revert_args)
                 revert_data = json.loads(revert_result.content[0].text) # Parse simple response
@@ -139,14 +144,14 @@ async def test_bridge():
                 logger.info(f"Revert rename result: {revert_result}")
                 
                 # Verify revert by getting the function
-                original_func = await session.call_tool("get_function", arguments={"port": 8192, "name": original_name})
+                original_func = await session.call_tool("get_function", arguments={"port": GHYDRAMCP_TEST_PORT, "name": original_name})
                 original_data = await assert_standard_mcp_success_response(original_func.content, expected_result_type=dict)
                 assert original_data.get("result", {}).get("name") == original_name, f"Original function has wrong name: {original_data}"
                 logger.info(f"Original function result: {original_func}")
 
                 # Test get_function_by_address
                 logger.info(f"Calling get_function_by_address with address: {func_address}")
-                get_by_addr_result = await session.call_tool("get_function_by_address", arguments={"port": 8192, "address": func_address})
+                get_by_addr_result = await session.call_tool("get_function_by_address", arguments={"port": GHYDRAMCP_TEST_PORT, "address": func_address})
                 get_by_addr_data = await assert_standard_mcp_success_response(get_by_addr_result.content, expected_result_type=dict)
                 result_data = get_by_addr_data.get("result", {})
                 assert "name" in result_data, "Missing name field in get_function_by_address result"
@@ -158,7 +163,7 @@ async def test_bridge():
 
                 # Test decompile_function_by_address
                 logger.info(f"Calling decompile_function_by_address with address: {func_address}")
-                decompile_result = await session.call_tool("decompile_function_by_address", arguments={"port": 8192, "address": func_address})
+                decompile_result = await session.call_tool("decompile_function_by_address", arguments={"port": GHYDRAMCP_TEST_PORT, "address": func_address})
                 decompile_data = await assert_standard_mcp_success_response(decompile_result.content, expected_result_type=dict)
                 assert "decompilation" in decompile_data.get("result", {}), f"Decompile result missing 'decompilation': {decompile_data}"
                 assert isinstance(decompile_data.get("result", {}).get("decompilation", ""), str), f"Decompilation is not a string: {decompile_data}"
