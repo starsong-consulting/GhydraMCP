@@ -17,12 +17,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Multiple simplification styles
 - Comprehensive API documentation (GHIDRA_HTTP_API.md, MCP_BRIDGE_API.md)
 - Standardized JSON response formats
+- Implemented `/plugin-version` endpoint for version checking
+- Added proper error handling for when no program is loaded
 
 ### Changed
 - Unified all endpoints to use structured JSON
 - Improved error handling and response metadata
 - Simplified bridge code and added type hints
 - Updated port discovery to use DEFAULT_GHIDRA_PORT
+- Refactored Java plugin into modular architecture:
+  - Separated concerns into api, endpoints, util, and model packages
+  - Created standardized response builders and error handlers
+  - Implemented transaction management helpers
+  - Added model classes for structured data representation
+- Removed `port` field from responses (bridge knows what instance it called)
+
+### Fixed
+- Fixed endpoint registration in refactored code (all endpoints now working)
+- Improved handling of program-dependent endpoints when no program is loaded
+- Enhanced root endpoint to dynamically include links to available endpoints
+- Added proper HATEOAS links to all endpoints
 
 ## [1.4.0] - 2025-04-08
 

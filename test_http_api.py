@@ -26,10 +26,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         """Helper to assert the standard success response structure."""
         self.assertIn("success", data, "Response missing 'success' field")
         self.assertTrue(data["success"], f"API call failed: {data.get('error', 'Unknown error')}")
-        self.assertIn("timestamp", data, "Response missing 'timestamp' field")
-        self.assertIsInstance(data["timestamp"], (int, float), "'timestamp' should be a number")
-        self.assertIn("port", data, "Response missing 'port' field")
-        self.assertEqual(data["port"], DEFAULT_PORT, f"Response port mismatch: expected {DEFAULT_PORT}, got {data['port']}")
+        self.assertIn("id", data, "Response missing 'id' field")
+        self.assertIn("instance", data, "Response missing 'instance' field")
         self.assertIn("result", data, "Response missing 'result' field")
         if expected_result_type:
             self.assertIsInstance(data["result"], expected_result_type, f"'result' field type mismatch: expected {expected_result_type}, got {type(data['result'])}")
@@ -52,11 +50,14 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # Verify response is valid JSON
         data = response.json()
         
-        # Check required fields
-        self.assertIn("port", data)
-        self.assertIn("isBaseInstance", data)
-        self.assertIn("project", data)
-        self.assertIn("file", data)
+        # Check standard response structure
+        self.assertStandardSuccessResponse(data, expected_result_type=dict)
+        
+        # Check required fields in result
+        result = data["result"]
+        self.assertIn("isBaseInstance", result)
+        self.assertIn("project", result)
+        self.assertIn("file", result)
 
     def test_root_endpoint(self):
         """Test the / endpoint"""
@@ -66,11 +67,13 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # Verify response is valid JSON
         data = response.json()
         
-        # Check required fields
-        self.assertIn("port", data)
-        self.assertIn("isBaseInstance", data)
-        self.assertIn("project", data)
-        self.assertIn("file", data)
+        # Check standard response structure
+        self.assertStandardSuccessResponse(data, expected_result_type=dict)
+        
+        # Check required fields in result
+        result = data["result"]
+        self.assertIn("isBaseInstance", result)
+        self.assertIn("message", result)
 
     def test_instances_endpoint(self):
         """Test the /instances endpoint"""
