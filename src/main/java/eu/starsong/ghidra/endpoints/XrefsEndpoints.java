@@ -104,9 +104,8 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 
                 // Get references to this address
                 if (toAddr != null) {
-                    ReferenceIterator refsTo = refManager.getReferencesTo(toAddr);
-                    while (refsTo.hasNext()) {
-                        Reference ref = refsTo.next();
+                    Reference[] refsToArray = refManager.getReferencesTo(toAddr);
+                    for (Reference ref : refsToArray) {
                         if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
                             continue; // Skip if type filter doesn't match
                         }
@@ -118,9 +117,8 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 
                 // Get references from this address
                 if (fromAddr != null) {
-                    ReferenceIterator refsFrom = refManager.getReferencesFrom(fromAddr);
-                    while (refsFrom.hasNext()) {
-                        Reference ref = refsFrom.next();
+                    Reference[] refsFromArray = refManager.getReferencesFrom(fromAddr);
+                    for (Reference ref : refsFromArray) {
                         if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
                             continue; // Skip if type filter doesn't match
                         }
@@ -275,13 +273,7 @@ public class XrefsEndpoints extends AbstractEndpoint {
         PluginTool tool = getTool();
         if (tool != null) {
             try {
-                // Get the current location service from the tool
-                ghidra.app.services.GoToService goToService = tool.getService(ghidra.app.services.GoToService.class);
-                if (goToService != null) {
-                    return goToService.getDefaultAddress(program);
-                }
-                
-                // Try to get the address from the code browser service
+                // Try to get the address from the code browser service (most reliable in Ghidra 11+)
                 ghidra.app.services.CodeViewerService codeViewerService = 
                     tool.getService(ghidra.app.services.CodeViewerService.class);
                 if (codeViewerService != null) {
@@ -294,13 +286,19 @@ public class XrefsEndpoints extends AbstractEndpoint {
                     }
                 }
                 
-                // Try to get the address from the listing service
+                // Try to get the address from the current listing
                 ghidra.app.services.ProgramManager programManager = 
                     tool.getService(ghidra.app.services.ProgramManager.class);
-                if (programManager != null) {
-                    ghidra.program.util.ProgramLocation location = programManager.getCurrentLocation();
-                    if (location != null && location.getProgram() == program) {
-                        return location.getAddress();
+                if (programManager != null && programManager.getCurrentProgram() == program) {
+                    ghidra.program.util.ProgramSelection selection = programManager.getCurrentSelection();
+                    if (selection != null && !selection.isEmpty()) {
+                        return selection.getMinAddress();
+                    }
+                    
+                    // Try the current highlight selection
+                    selection = programManager.getCurrentHighlight();
+                    if (selection != null && !selection.isEmpty()) {
+                        return selection.getMinAddress();
                     }
                 }
             } catch (Exception e) {
