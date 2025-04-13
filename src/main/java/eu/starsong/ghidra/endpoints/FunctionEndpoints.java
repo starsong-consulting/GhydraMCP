@@ -1003,22 +1003,64 @@ public class FunctionEndpoints extends AbstractEndpoint {
             
             Program program = function.getProgram();
             if (program != null) {
-                long functionStart = function.getEntryPoint().getOffset();
-                long functionEnd = function.getBody().getMaxAddress().getOffset();
+                try {
+                    // Get actual disassembly from the program
+                    Address startAddr = function.getEntryPoint();
+                    Address endAddr = function.getBody().getMaxAddress();
+                    
+                    ghidra.program.model.listing.Listing listing = program.getListing();
+                    ghidra.program.model.listing.InstructionIterator instrIter = 
+                        listing.getInstructions(startAddr, true);
+                    
+                    while (instrIter.hasNext() && disassembly.size() < 100) {
+                        ghidra.program.model.listing.Instruction instr = instrIter.next();
+                        
+                        // Stop if we've gone past the end of the function
+                        if (instr.getAddress().compareTo(endAddr) > 0) {
+                            break;
+                        }
+                        
+                        Map<String, Object> instrMap = new HashMap<>();
+                        instrMap.put("address", instr.getAddress().toString());
+                        
+                        // Get actual bytes
+                        byte[] bytes = new byte[instr.getLength()];
+                        program.getMemory().getBytes(instr.getAddress(), bytes);
+                        StringBuilder hexBytes = new StringBuilder();
+                        for (byte b : bytes) {
+                            hexBytes.append(String.format("%02X", b & 0xFF));
+                        }
+                        instrMap.put("bytes", hexBytes.toString());
+                        
+                        // Get mnemonic and operands
+                        instrMap.put("mnemonic", instr.getMnemonicString());
+                        instrMap.put("operands", instr.toString().substring(instr.getMnemonicString().length()).trim());
+                        
+                        disassembly.add(instrMap);
+                    }
+                } catch (Exception e) {
+                    Msg.error(this, "Error getting disassembly for function: " + function.getName(), e);
+                }
                 
-                for (long addr = functionStart; addr <= functionStart + 20; addr += 2) {
-                    Map<String, Object> instruction = new HashMap<>();
-                    instruction.put("address", String.format("%08x", addr));
-                    instruction.put("mnemonic", "MOV");
-                    instruction.put("operands", "R0, R1");
-                    instruction.put("bytes", "1234");
-                    disassembly.add(instruction);
+                // If we couldn't get real instructions, add placeholder
+                if (disassembly.isEmpty()) {
+                    Address addr = function.getEntryPoint();
+                    for (int i = 0; i < 5; i++) {
+                        Map<String, Object> instruction = new HashMap<>();
+                        instruction.put("address", addr.toString());
+                        instruction.put("mnemonic", "???");
+                        instruction.put("operands", "???");
+                        instruction.put("bytes", "????");
+                        disassembly.add(instruction);
+                        addr = addr.add(2);
+                    }
                 }
             }
             
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
             functionInfo.put("name", function.getName());
+            functionInfo.put("signature", function.getSignature().toString());
             
             Map<String, Object> result = new HashMap<>();
             result.put("function", functionInfo);

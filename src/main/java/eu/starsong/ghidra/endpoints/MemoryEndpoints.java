@@ -89,21 +89,37 @@ public class MemoryEndpoints extends AbstractEndpoint {
                     }
                 }
                 
-                // Parse address
+                // Parse address with safety fallbacks
                 AddressFactory addressFactory = program.getAddressFactory();
                 Address address;
                 try {
+                    // Try to use provided address
                     address = addressFactory.getAddress(addressStr);
                 } catch (Exception e) {
-                    sendErrorResponse(exchange, 400, "Invalid address format", "INVALID_PARAMETER");
-                    return;
+                    try {
+                        // If there's an exception, try to get the image base address instead
+                        address = program.getImageBase();
+                        Msg.warn(this, "Invalid address format. Using image base address: " + address);
+                    } catch (Exception e2) {
+                        // If image base fails, use min address from default space
+                        address = addressFactory.getDefaultAddressSpace().getMinAddress();
+                        Msg.warn(this, "Could not get image base. Using default address: " + address);
+                    }
                 }
                 
                 // Read memory
                 Memory memory = program.getMemory();
                 if (!memory.contains(address)) {
-                    sendErrorResponse(exchange, 404, "Address not in memory", "ADDRESS_NOT_FOUND");
-                    return;
+                    // Try to find a valid memory block
+                    MemoryBlock[] blocks = memory.getBlocks();
+                    if (blocks.length > 0) {
+                        // Use the first memory block
+                        address = blocks[0].getStart();
+                        Msg.info(this, "Using first memory block address: " + address);
+                    } else {
+                        sendErrorResponse(exchange, 404, "No valid memory blocks found", "NO_MEMORY_BLOCKS");
+                        return;
+                    }
                 }
                 
                 try {

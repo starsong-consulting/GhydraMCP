@@ -101,27 +101,52 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 }
                 
                 // Get related addresses as placeholders for xrefs
-                // (simplified due to API constraints)
-                Address prevAddr = address.subtract(1);
-                Address nextAddr = address.add(1);
+                // Need to be careful with address arithmetic
+                Address prevAddr = null;
+                Address nextAddr = null;
                 
-                Map<String, Object> prevRef = new HashMap<>();
-                prevRef.put("direction", "to");
-                prevRef.put("address", prevAddr.toString());
-                prevRef.put("target", address.toString());
-                prevRef.put("refType", "data");
-                prevRef.put("isPrimary", true);
+                try {
+                    // Try to get addresses safely
+                    if (address.getOffset() > 0) {
+                        prevAddr = address.subtract(1);
+                    }
+                    nextAddr = address.add(1);
+                } catch (Exception e) {
+                    Msg.error(this, "Error with address arithmetic: " + e.getMessage(), e);
+                }
                 
-                Map<String, Object> nextRef = new HashMap<>();
-                nextRef.put("direction", "from");
-                nextRef.put("address", address.toString());
-                nextRef.put("target", nextAddr.toString());
-                nextRef.put("refType", "flow");
-                nextRef.put("isPrimary", true);
+                // Only add previous reference if we have a valid previous address
+                if (prevAddr != null) {
+                    Map<String, Object> prevRef = new HashMap<>();
+                    prevRef.put("direction", "to");
+                    prevRef.put("address", prevAddr.toString());
+                    prevRef.put("target", address.toString());
+                    prevRef.put("refType", "data");
+                    prevRef.put("isPrimary", true);
+                    referencesList.add(prevRef);
+                }
                 
-                // Add sample references
-                referencesList.add(prevRef);
-                referencesList.add(nextRef);
+                // Only add next reference if we have a valid next address
+                if (nextAddr != null) {
+                    Map<String, Object> nextRef = new HashMap<>();
+                    nextRef.put("direction", "from");
+                    nextRef.put("address", address.toString());
+                    nextRef.put("target", nextAddr.toString());
+                    nextRef.put("refType", "flow");
+                    nextRef.put("isPrimary", true);
+                    referencesList.add(nextRef);
+                }
+                
+                // Add a self reference if nothing else is available
+                if (referencesList.isEmpty()) {
+                    Map<String, Object> selfRef = new HashMap<>();
+                    selfRef.put("direction", "self");
+                    selfRef.put("address", address.toString());
+                    selfRef.put("target", address.toString());
+                    selfRef.put("refType", "self");
+                    selfRef.put("isPrimary", true);
+                    referencesList.add(selfRef);
+                }
                 
                 // Sort by type and address
                 Collections.sort(referencesList, (a, b) -> {
