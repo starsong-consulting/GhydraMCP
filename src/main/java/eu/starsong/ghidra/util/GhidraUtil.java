@@ -80,13 +80,31 @@ public class GhidraUtil {
         }
         
         // Get current program
-        Program program = tool.getService(ProgramManager.class).getCurrentProgram();
+        ProgramManager programManager = tool.getService(ProgramManager.class);
+        if (programManager == null) {
+            return null;
+        }
+        
+        Program program = programManager.getCurrentProgram();
         if (program == null) {
             return null;
         }
         
+        // Get the current cursor location using CodeViewerService
+        ghidra.app.services.CodeViewerService codeViewerService = tool.getService(ghidra.app.services.CodeViewerService.class);
+        if (codeViewerService == null) {
+            // Fallback to program's entry point if service not available
+            return program.getImageBase().toString();
+        }
+        
+        ghidra.program.util.ProgramLocation currentLocation = codeViewerService.getCurrentLocation();
+        if (currentLocation == null) {
+            // Fallback to program's entry point if location not available
+            return program.getImageBase().toString();
+        }
+        
         // Return the current address
-        return "00000000"; // Placeholder - actual implementation would get current cursor position
+        return currentLocation.getAddress().toString();
     }
     
     /**
@@ -102,22 +120,116 @@ public class GhidraUtil {
             return result;
         }
         
-        // For now, just return the first function in the program as a placeholder
-        FunctionManager functionManager = program.getFunctionManager();
-        Function function = null;
-        
-        for (Function f : functionManager.getFunctions(true)) {
-            function = f;
-            break;
-        }
-        
-        if (function == null) {
+        // Get the current cursor location using CodeViewerService
+        ghidra.app.services.CodeViewerService codeViewerService = tool.getService(ghidra.app.services.CodeViewerService.class);
+        if (codeViewerService == null) {
             return result;
         }
         
+        ghidra.program.util.ProgramLocation currentLocation = codeViewerService.getCurrentLocation();
+        if (currentLocation == null) {
+            return result;
+        }
+        
+        // Get the function at the current location
+        Address currentAddress = currentLocation.getAddress();
+        FunctionManager functionManager = program.getFunctionManager();
+        Function function = functionManager.getFunctionContaining(currentAddress);
+        
+        if (function == null) {
+            // If we couldn't find a function at the current address, return the first function as a fallback
+            for (Function f : functionManager.getFunctions(true)) {
+                function = f;
+                break;
+            }
+            
+            if (function == null) {
+                return result;
+            }
+        }
+        
+        // Build the function info
         result.put("name", function.getName());
         result.put("address", function.getEntryPoint().toString());
         result.put("signature", function.getSignature().getPrototypeString());
+        
+        // Add more details
+        if (function.getReturnType() != null) {
+            result.put("returnType", function.getReturnType().getName());
+        }
+        
+        if (function.getCallingConventionName() != null) {
+            result.put("callingConvention", function.getCallingConventionName());
+        }
+        
+        // Add parameters
+        List<Map<String, String>> parameters = new ArrayList<>();
+        for (Parameter param : function.getParameters()) {
+            Map<String, String> paramInfo = new HashMap<>();
+            paramInfo.put("name", param.getName());
+            paramInfo.put("type", param.getDataType().getName());
+            parameters.add(paramInfo);
+        }
+        result.put("parameters", parameters);
+        
+        return result;
+    }
+    
+    /**
+     * Gets information about a function by its name or address.
+     * @param program The current program.
+     * @param addressOrName The function address or name.
+     * @return A map containing information about the function, or null if not found.
+     */
+    public static Map<String, Object> getFunctionInfoByAddress(Program program, String addressOrName) {
+        if (program == null || addressOrName == null || addressOrName.isEmpty()) {
+            return null;
+        }
+        
+        Function function = null;
+        
+        // First try to interpret as an address
+        try {
+            Address address = program.getAddressFactory().getAddress(addressOrName);
+            if (address != null) {
+                function = program.getFunctionManager().getFunctionAt(address);
+                if (function == null) {
+                    function = program.getFunctionManager().getFunctionContaining(address);
+                }
+            }
+        } catch (Exception e) {
+            // Not a valid address, try as a name
+            Msg.debug(GhidraUtil.class, "Could not interpret as address: " + addressOrName);
+        }
+        
+        // If not found by address, try by name
+        if (function == null) {
+            for (Function f : program.getFunctionManager().getFunctions(true)) {
+                if (f.getName().equals(addressOrName)) {
+                    function = f;
+                    break;
+                }
+            }
+        }
+        
+        if (function == null) {
+            return null;
+        }
+        
+        // Build the function info
+        Map<String, Object> result = new HashMap<>();
+        result.put("name", function.getName());
+        result.put("address", function.getEntryPoint().toString());
+        result.put("signature", function.getSignature().getPrototypeString());
+        
+        // Add more details
+        if (function.getReturnType() != null) {
+            result.put("returnType", function.getReturnType().getName());
+        }
+        
+        if (function.getCallingConventionName() != null) {
+            result.put("callingConvention", function.getCallingConventionName());
+        }
         
         return result;
     }
@@ -220,7 +332,7 @@ public class GhidraUtil {
      * @param function The function to decompile.
      * @return The decompiled code as a string, or null if decompilation failed.
      */
-    private static String decompileFunction(Function function) {
+    public static String decompileFunction(Function function) {
         if (function == null) {
             return null;
         }

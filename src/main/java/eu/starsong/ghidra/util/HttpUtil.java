@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.Headers;
 import eu.starsong.ghidra.api.ResponseBuilder; // Use the ResponseBuilder
 import ghidra.util.Msg;
 
@@ -21,14 +22,42 @@ public class HttpUtil {
      * Sends a JSON response with the given status code.
      * Uses the ResponseBuilder internally.
      */
+    /**
+     * Add CORS headers to the response
+     */
+    public static void addCorsHeaders(HttpExchange exchange) {
+        Headers headers = exchange.getResponseHeaders();
+        headers.set("Access-Control-Allow-Origin", "http://localhost");
+        headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+        headers.set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID");
+        headers.set("Access-Control-Max-Age", "3600");
+    }
+    
+    /**
+     * Handle OPTIONS requests for CORS preflight
+     * @return true if the request was handled (OPTIONS request), false otherwise
+     */
+    public static boolean handleOptionsRequest(HttpExchange exchange) throws IOException {
+        if ("OPTIONS".equals(exchange.getRequestMethod())) {
+            addCorsHeaders(exchange);
+            exchange.sendResponseHeaders(204, -1);
+            return true;
+        }
+        return false;
+    }
+    
     public static void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj, int statusCode, int port) throws IOException {
          try {
+            // Handle OPTIONS requests for CORS preflight
+            if (handleOptionsRequest(exchange)) {
+                return;
+            }
+            
             String json = gson.toJson(jsonObj);
             byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
             
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-            // Consider adding CORS headers if needed:
-            // exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*"); 
+            addCorsHeaders(exchange);
             
             long responseLength = (statusCode == 204) ? -1 : bytes.length; 
             exchange.sendResponseHeaders(statusCode, responseLength); 

@@ -1,9 +1,10 @@
 package eu.starsong.ghidra;
 
-// New imports for refactored structure
+// Imports for refactored structure
 import eu.starsong.ghidra.api.*;
 import eu.starsong.ghidra.endpoints.*;
 import eu.starsong.ghidra.util.*;
+import eu.starsong.ghidra.model.*;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -13,12 +14,14 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 
 // For JSON response handling
-import com.google.gson.Gson; // Keep for now if needed by sendJsonResponse stub
-import com.google.gson.JsonObject; // Keep for now if needed by sendJsonResponse stub
-import com.sun.net.httpserver.HttpExchange; // Keep for now if needed by sendJsonResponse stub
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.Headers;
 
 import ghidra.app.plugin.PluginCategoryNames;
 import ghidra.app.services.ProgramManager;
@@ -37,20 +40,23 @@ import ghidra.util.Msg;
     packageName = ghidra.app.DeveloperPluginPackage.NAME,
     category = PluginCategoryNames.ANALYSIS,
     shortDescription = "GhydraMCP Plugin for AI Analysis",
-    description = "Exposes program data via HTTP API for AI-assisted reverse engineering with MCP (Model Context Protocol).",
+    description = "Exposes program data via HATEOAS HTTP API for AI-assisted reverse engineering with MCP (Model Context Protocol).",
     servicesRequired = { ProgramManager.class }
 )
 public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
-    // Made public static to be accessible by InstanceEndpoints - consider a better design pattern
+    // Made public static to be accessible by InstanceEndpoints
     public static final Map<Integer, GhydraMCPPlugin> activeInstances = new ConcurrentHashMap<>();
     private static final Object baseInstanceLock = new Object();
     
     private HttpServer server;
     private int port;
     private boolean isBaseInstance = false;
-    // Removed Gson instance, should be handled by HttpUtil or endpoints
 
+    /**
+     * Constructor for GhydraMCP Plugin.
+     * @param tool The Ghidra PluginTool
+     */
     public GhydraMCPPlugin(PluginTool tool) {
         super(tool);
         
@@ -78,13 +84,19 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         }
     }
 
+    /**
+     * Starts the HTTP server and registers all endpoints
+     */
     private void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
+        
+        // Use a cached thread pool for better performance with multiple concurrent requests
+        server.setExecutor(Executors.newCachedThreadPool());
 
         // --- Register Endpoints ---
         Program currentProgram = getCurrentProgram(); // Get program once
         
-        // Register Meta Endpoints
+        // Register Meta Endpoints (these don't require a program)
         registerMetaEndpoints(server); 
         
         // Register endpoints that don't require a program
@@ -92,12 +104,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         new InstanceEndpoints(currentProgram, port, activeInstances).registerEndpoints(server);
         
         // Register Resource Endpoints that require a program
-        registerProgramDependentEndpoints(currentProgram, server);
+        registerProgramDependentEndpoints(server);
         
         // Register Root Endpoint (should be last to include links to all other endpoints)
         registerRootEndpoint(server);
 
-        server.setExecutor(null); // Use default executor
         new Thread(() -> {
             server.start();
             Msg.info(this, "GhydraMCP HTTP server started on port " + port);
@@ -108,11 +119,19 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     /**
      * Register all endpoints that require a program to function.
      * This method always registers all endpoints, even when no program is loaded.
-     * When no program is loaded, the endpoints will return appropriate error messages.
+     * The endpoints will check for program availability at runtime when they're called.
      */
-    private void registerProgramDependentEndpoints(Program currentProgram, HttpServer server) {
-        // Always register all endpoints, even if currentProgram is null
-        // The endpoint implementations will handle the null program case
+    private void registerProgramDependentEndpoints(HttpServer server) {
+        // Register all endpoints without checking for a current program
+        // The endpoints will check for the current program at runtime when they're called
+        Msg.info(this, "Registering program-dependent endpoints. Programs will be checked at runtime.");
+        
+        Program currentProgram = getCurrentProgram();
+        Msg.info(this, "Current program at registration time: " + (currentProgram != null ? currentProgram.getName() : "none"));
+        
+        // Register the core HATEOAS-compliant program endpoints
+        // Always register all endpoints with a tool reference so they can get the current program at runtime
+        new ProgramEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new FunctionEndpoints(currentProgram, port).registerEndpoints(server);
         new VariableEndpoints(currentProgram, port).registerEndpoints(server);
         new ClassEndpoints(currentProgram, port).registerEndpoints(server);
@@ -121,147 +140,24 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         new NamespaceEndpoints(currentProgram, port).registerEndpoints(server);
         new DataEndpoints(currentProgram, port).registerEndpoints(server);
         
-        // Register additional endpoints for current program/address
-        registerCurrentAddressEndpoints(server, currentProgram);
-        registerDecompilerEndpoints(server, currentProgram);
-        
-        if (currentProgram != null) {
-            Msg.info(this, "Registered program-dependent endpoints for program: " + currentProgram.getName());
-        } else {
-            Msg.warn(this, "No current program available. Endpoints registered but will return appropriate errors when accessed.");
-        }
+        Msg.info(this, "Registered program-dependent endpoints. Programs will be checked at runtime.");
     }
     
     /**
-     * Register endpoints related to the current address in Ghidra.
+     * Register additional endpoints for current program state
      */
-    private void registerCurrentAddressEndpoints(HttpServer server, Program program) {
-        // Current address endpoint
-        server.createContext("/get_current_address", exchange -> {
-            try {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    Map<String, Object> addressData = new HashMap<>();
-                    addressData.put("address", GhidraUtil.getCurrentAddressString(tool));
-                    
-                    ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                        .success(true)
-                        .result(addressData)
-                        .addLink("self", "/get_current_address");
-                    
-                    HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
-                } else {
-                    HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
-                }
-            } catch (Exception e) {
-                Msg.error(this, "Error serving /get_current_address endpoint", e);
-                try { 
-                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
-                } catch (IOException ioEx) { 
-                    Msg.error(this, "Failed to send error for /get_current_address", ioEx); 
-                }
-            }
-        });
-        
-        // Current function endpoint
-        server.createContext("/get_current_function", exchange -> {
-            try {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    Map<String, Object> functionData = GhidraUtil.getCurrentFunctionInfo(tool, program);
-                    
-                    ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                        .success(true)
-                        .result(functionData)
-                        .addLink("self", "/get_current_function");
-                    
-                    HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
-                } else {
-                    HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
-                }
-            } catch (Exception e) {
-                Msg.error(this, "Error serving /get_current_function endpoint", e);
-                try { 
-                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
-                } catch (IOException ioEx) { 
-                    Msg.error(this, "Failed to send error for /get_current_function", ioEx); 
-                }
-            }
-        });
-    }
-    
-    /**
-     * Register endpoints related to the decompiler.
-     */
-    private void registerDecompilerEndpoints(HttpServer server, Program program) {
-        // Get function by address endpoint
-        server.createContext("/get_function_by_address", exchange -> {
-            try {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    Map<String, String> params = HttpUtil.parseQueryParams(exchange);
-                    String addressStr = params.get("address");
-                    
-                    if (addressStr == null || addressStr.isEmpty()) {
-                        HttpUtil.sendErrorResponse(exchange, 400, "Missing address parameter", "MISSING_PARAMETER", port);
-                        return;
-                    }
-                    
-                    Map<String, Object> functionData = GhidraUtil.getFunctionByAddress(program, addressStr);
-                    
-                    ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                        .success(true)
-                        .result(functionData)
-                        .addLink("self", "/get_function_by_address?address=" + addressStr);
-                    
-                    HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
-                } else {
-                    HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
-                }
-            } catch (Exception e) {
-                Msg.error(this, "Error serving /get_function_by_address endpoint", e);
-                try { 
-                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
-                } catch (IOException ioEx) { 
-                    Msg.error(this, "Failed to send error for /get_function_by_address", ioEx); 
-                }
-            }
-        });
-        
-        // Decompile function endpoint
-        server.createContext("/decompile_function", exchange -> {
-            try {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    Map<String, String> params = HttpUtil.parseQueryParams(exchange);
-                    String addressStr = params.get("address");
-                    
-                    if (addressStr == null || addressStr.isEmpty()) {
-                        HttpUtil.sendErrorResponse(exchange, 400, "Missing address parameter", "MISSING_PARAMETER", port);
-                        return;
-                    }
-                    
-                    Map<String, Object> decompData = GhidraUtil.decompileFunction(program, addressStr);
-                    
-                    ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                        .success(true)
-                        .result(decompData)
-                        .addLink("self", "/decompile_function?address=" + addressStr);
-                    
-                    HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
-                } else {
-                    HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
-                }
-            } catch (Exception e) {
-                Msg.error(this, "Error serving /decompile_function endpoint", e);
-                try { 
-                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
-                } catch (IOException ioEx) { 
-                    Msg.error(this, "Failed to send error for /decompile_function", ioEx); 
-                }
-            }
-        });
+    private void registerProgramStateEndpoints(HttpServer server) {
+        // Any additional endpoints can be added here if needed
+        // But prefer to use the HATEOAS endpoints in ProgramEndpoints, FunctionEndpoints, etc.
     }
     
     // --- Endpoint Registration Methods ---
     
+    /**
+     * Register meta endpoints that provide plugin information
+     */
     private void registerMetaEndpoints(HttpServer server) {
+        // Plugin version endpoint
         server.createContext("/plugin-version", exchange -> {
             try {
                 if ("GET".equals(exchange.getRequestMethod())) {
@@ -271,7 +167,9 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                             "plugin_version", ApiConstants.PLUGIN_VERSION,
                             "api_version", ApiConstants.API_VERSION
                         ))
-                        .addLink("self", "/plugin-version");
+                        .addLink("self", "/plugin-version")
+                        .addLink("root", "/");
+                        
                     HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
                 } else {
                     HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
@@ -281,30 +179,62 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
             }
         });
         
+        // Info endpoint
         server.createContext("/info", exchange -> {
             try {
-                 Map<String, Object> infoData = new HashMap<>();
-                 infoData.put("isBaseInstance", isBaseInstance);
+                Map<String, Object> infoData = new HashMap<>();
+                infoData.put("isBaseInstance", isBaseInstance);
+                
                 Program program = getCurrentProgram();
-                 infoData.put("file", program != null ? program.getName() : null); 
+                if (program != null) {
+                    infoData.put("file", program.getName());
+                    infoData.put("architecture", program.getLanguage().getLanguageID().getIdAsString());
+                    infoData.put("processor", program.getLanguage().getProcessor().toString());
+                    infoData.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
+                    infoData.put("creationDate", program.getCreationDate());
+                    infoData.put("executable", program.getExecutablePath());
+                }
+                
                 Project project = tool.getProject();
-                 infoData.put("project", project != null ? project.getName() : null);
-                 
-                 ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                    .success(true)
-                    .result(infoData)
-                    .addLink("self", "/info");
-                 HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
+                if (project != null) {
+                    infoData.put("project", project.getName());
+                    infoData.put("projectLocation", project.getProjectLocator().toString());
+                }
+                
+                // Add server details
+                infoData.put("serverPort", port);
+                infoData.put("serverStartTime", System.currentTimeMillis());
+                infoData.put("instanceCount", activeInstances.size());
+                
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                   .success(true)
+                   .result(infoData)
+                   .addLink("self", "/info")
+                   .addLink("root", "/")
+                   .addLink("instances", "/instances");
+                
+                // Add program link if available
+                if (program != null) {
+                    builder.addLink("program", "/programs/current");
+                }
+                
+                HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
             } catch (Exception e) {
                 Msg.error(this, "Error serving /info endpoint", e);
-                 try { HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); } 
-                 catch (IOException ioEx) { Msg.error(this, "Failed to send error for /info", ioEx); }
+                try { 
+                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
+                } catch (IOException ioEx) { 
+                    Msg.error(this, "Failed to send error for /info", ioEx); 
+                }
             }
         });
     }
     
+    /**
+     * Register project-related endpoints
+     */
     private void registerProjectEndpoints(HttpServer server) {
-         server.createContext("/projects", exchange -> {
+        server.createContext("/projects", exchange -> {
             try {
                 if ("GET".equals(exchange.getRequestMethod())) {
                     List<Map<String, String>> projects = new ArrayList<>();
@@ -320,34 +250,106 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                         .success(true)
                         .result(projects)
                         .addLink("self", "/projects")
-                        .addLink("create", "/projects", "POST"); 
+                        .addLink("create", "/projects", "POST");
                         
+                    // Add link to current project if available
+                    if (project != null) {
+                        builder.addLink("current", "/projects/" + project.getName());
+                    }
+                    
                     HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
                 } else if ("POST".equals(exchange.getRequestMethod())) {
-                    HttpUtil.sendErrorResponse(exchange, 501, "Not Implemented", "NOT_IMPLEMENTED", port);
+                    // Creating projects is not yet implemented
+                    HttpUtil.sendErrorResponse(exchange, 501, "Creating projects via API is not implemented", "NOT_IMPLEMENTED", port);
                 } else {
                     HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
                 }
             } catch (Exception e) {
-                 Msg.error(this, "Error serving /projects endpoint", e);
-                 try { HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); } 
-                 catch (IOException ioEx) { Msg.error(this, "Failed to send error for /projects", ioEx); }
+                Msg.error(this, "Error serving /projects endpoint", e);
+                try { 
+                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
+                } catch (IOException ioEx) { 
+                    Msg.error(this, "Failed to send error for /projects", ioEx); 
+                }
+            }
+        });
+        
+        // Specific project endpoint
+        server.createContext("/projects/", exchange -> {
+            try {
+                String path = exchange.getRequestURI().getPath();
+                if (path.equals("/projects/") || path.equals("/projects")) {
+                    // This should be handled by the /projects context
+                    exchange.getResponseHeaders().set("Location", "/projects");
+                    exchange.sendResponseHeaders(302, -1);
+                    return;
+                }
+                
+                // Extract project name from path
+                String projectName = path.substring("/projects/".length());
+                
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    Project currentProject = tool.getProject();
+                    if (currentProject == null) {
+                        HttpUtil.sendErrorResponse(exchange, 404, "No project is currently open", "NO_PROJECT_OPEN", port);
+                        return;
+                    }
+                    
+                    if (!currentProject.getName().equals(projectName)) {
+                        HttpUtil.sendErrorResponse(exchange, 404, "Project not found: " + projectName, "PROJECT_NOT_FOUND", port);
+                        return;
+                    }
+                    
+                    // Build project details
+                    Map<String, Object> projectDetails = new HashMap<>();
+                    projectDetails.put("name", currentProject.getName());
+                    projectDetails.put("location", currentProject.getProjectLocator().toString());
+                    
+                    ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                        .success(true)
+                        .result(projectDetails)
+                        .addLink("self", "/projects/" + projectName)
+                        .addLink("programs", "/programs?project=" + projectName);
+                    
+                    HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
+                } else {
+                    HttpUtil.sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED", port);
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error serving /projects/{name} endpoint", e);
+                try { 
+                    HttpUtil.sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR", port); 
+                } catch (IOException ioEx) { 
+                    Msg.error(this, "Failed to send error for /projects/{name}", ioEx); 
+                }
             }
         });
     }
     
+    /**
+     * Register the root endpoint which provides links to all other API endpoints
+     */
     private void registerRootEndpoint(HttpServer server) {
         server.createContext("/", exchange -> {
             try {
+                // Check if this is actually a CORS preflight request
+                if (exchange.getAttribute("cors.handled") != null) {
+                    // CORS was already handled
+                    return;
+                }
+                
+                // Check if this is a request for the root endpoint specifically
                 if (!exchange.getRequestURI().getPath().equals("/")) {
                     HttpUtil.sendErrorResponse(exchange, 404, "Endpoint not found", "ENDPOINT_NOT_FOUND", port);
                     return;
                 }
             
                 Map<String, Object> rootData = new HashMap<>();
-                rootData.put("message", "GhydraMCP Root Endpoint");
+                rootData.put("message", "GhydraMCP API " + ApiConstants.API_VERSION);
+                rootData.put("documentation", "See GHIDRA_HTTP_API.md for full API documentation");
                 rootData.put("isBaseInstance", isBaseInstance);
                 
+                // Build the HATEOAS response
                 ResponseBuilder builder = new ResponseBuilder(exchange, port)
                     .success(true)
                     .result(rootData)
@@ -355,21 +357,25 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     .addLink("info", "/info")
                     .addLink("plugin-version", "/plugin-version")
                     .addLink("projects", "/projects")
-                    .addLink("instances", "/instances");
+                    .addLink("instances", "/instances")
+                    .addLink("programs", "/programs");
                 
                 // Add links to program-dependent endpoints if a program is loaded
                 if (getCurrentProgram() != null) {
-                    builder.addLink("functions", "/functions")
-                           .addLink("variables", "/variables")
-                           .addLink("classes", "/classes")
-                           .addLink("segments", "/segments")
-                           .addLink("symbols", "/symbols")
-                           .addLink("namespaces", "/namespaces")
-                           .addLink("data", "/data")
-                           .addLink("current-address", "/get_current_address")
-                           .addLink("current-function", "/get_current_function")
-                           .addLink("get-function-by-address", "/get_function_by_address")
-                           .addLink("decompile-function", "/decompile_function");
+                    Project project = tool.getProject();
+                    String projectName = (project != null) ? project.getName() : "unknown";
+                    
+                    builder.addLink("current-program", "/programs/current")
+                           .addLink("current-project", "/projects/" + projectName)
+                           .addLink("functions", "/programs/current/functions")
+                           .addLink("symbols", "/programs/current/symbols")
+                           .addLink("data", "/programs/current/data")
+                           .addLink("segments", "/programs/current/segments")
+                           .addLink("memory", "/programs/current/memory")
+                           .addLink("xrefs", "/programs/current/xrefs")
+                           .addLink("analysis", "/programs/current/analysis")
+                           .addLink("current-address", "/programs/current/address")
+                           .addLink("current-function", "/programs/current/function");
                 }
                 
                 HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
@@ -385,9 +391,13 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     }
 
     // ----------------------------------------------------------------------------------
-    // Core Plugin Methods (Keep these)
+    // Core Plugin Methods
     // ----------------------------------------------------------------------------------
 
+    /**
+     * Gets the current program from the Ghidra tool
+     * @return The current program or null if no program is loaded
+     */
     public Program getCurrentProgram() {
         if (tool == null) {
             Msg.debug(this, "Tool is null when trying to get current program");
@@ -401,6 +411,10 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         return pm.getCurrentProgram();
     }
 
+    /**
+     * Find an available port for the HTTP server
+     * @return An available port number
+     */
     private int findAvailablePort() {
         int basePort = ApiConstants.DEFAULT_PORT;
         int maxAttempts = ApiConstants.MAX_PORT_ATTEMPTS;
@@ -421,6 +435,9 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         throw new RuntimeException("Could not find available port after " + maxAttempts + " attempts");
     }
 
+    /**
+     * Called when the plugin is disposed
+     */
     @Override
     public void dispose() {
         if (server != null) {
@@ -432,8 +449,19 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         super.dispose();
     }
 
-    // ----------------------------------------------------------------------------------
-    // Helper methods moved to util classes (HttpUtil, GhidraUtil) or AbstractEndpoint
-    // ----------------------------------------------------------------------------------
-     
+    /**
+     * Get the port this plugin instance is running on
+     * @return The HTTP server port
+     */
+    public int getPort() {
+        return port;
+    }
+    
+    /**
+     * Check if this is the base instance
+     * @return true if this is the base instance
+     */
+    public boolean isBaseInstance() {
+        return isBaseInstance;
+    }
 }

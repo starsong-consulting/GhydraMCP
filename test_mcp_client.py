@@ -75,13 +75,29 @@ async def test_bridge():
             discover_instances_result = await session.call_tool("discover_instances")
             logger.info(f"Discover instances result: {discover_instances_result}")
             
-            # Call the list_functions tool
+            # Call the list_functions tool with the new HATEOAS API
             logger.info("Calling list_functions tool...")
             list_functions_result = await session.call_tool(
                 "list_functions",
                 arguments={"port": GHYDRAMCP_TEST_PORT, "offset": 0, "limit": 5}
             )
             logger.info(f"List functions result: {list_functions_result}")
+            
+            # Test the programs endpoint
+            logger.info("Calling list_programs tool...")
+            list_programs_result = await session.call_tool(
+                "list_programs",
+                arguments={"port": GHYDRAMCP_TEST_PORT}
+            )
+            logger.info(f"List programs result: {list_programs_result}")
+            
+            # Test the current program endpoint
+            logger.info("Calling get_current_program tool...")
+            current_program_result = await session.call_tool(
+                "get_current_program",
+                arguments={"port": GHYDRAMCP_TEST_PORT}
+            )
+            logger.info(f"Current program result: {current_program_result}")
 
             # Test mutating operations by changing and reverting
             logger.info("Testing mutating operations...")
@@ -169,6 +185,18 @@ async def test_bridge():
                 assert isinstance(decompile_data.get("result", {}).get("decompilation", ""), str), f"Decompilation is not a string: {decompile_data}"
                 assert len(decompile_data.get("result", {}).get("decompilation", "")) > 0, f"Decompilation result is empty: {decompile_data}"
                 logger.info(f"Decompile function by address result: {decompile_result}")
+                
+                # Test disassemble_function
+                logger.info(f"Calling disassemble_function with address: {func_address}")
+                disassemble_result = await session.call_tool("disassemble_function", arguments={"port": GHYDRAMCP_TEST_PORT, "address": func_address})
+                disassemble_data = await assert_standard_mcp_success_response(disassemble_result.content, expected_result_type=list)
+                assert len(disassemble_data.get("result", [])) > 0, f"Disassembly result is empty: {disassemble_data}"
+                # Check the structure of the first instruction
+                if disassemble_data.get("result", []):
+                    first_instr = disassemble_data.get("result", [])[0]
+                    assert "address" in first_instr, f"Instruction missing address: {first_instr}"
+                    assert "mnemonic" in first_instr, f"Instruction missing mnemonic: {first_instr}"
+                logger.info(f"Disassemble function result: {disassemble_result}")
 
                 # Test list_variables 
                 logger.info("Calling list_variables tool...")

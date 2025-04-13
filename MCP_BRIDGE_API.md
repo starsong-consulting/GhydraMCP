@@ -6,6 +6,9 @@ This document describes the MCP tools and resources exposed by the GhydraMCP bri
 ## Core Concepts
 - Each Ghidra instance runs its own HTTP server (default port 8192)
 - The bridge discovers and manages multiple Ghidra instances
+- Programs are addressed by their unique identifier within Ghidra (`project:/path/to/file`).
+- The primary identifier for a program is its Ghidra path, e.g., `myproject:/path/to/mybinary.exe`.
+- The bridge must keep track of which plugin host and port has which project & file and route accordingly
 - Tools are organized by resource type (programs, functions, data, etc.)
 - Consistent response format with success/error indicators
 

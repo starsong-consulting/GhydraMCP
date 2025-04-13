@@ -5,6 +5,8 @@
 #     "requests==2.32.3",
 # ]
 # ///
+# GhydraMCP Bridge for Ghidra HATEOAS API
+# This script implements the MCP_BRIDGE_API.md specification
 import os
 import signal
 import sys
@@ -179,6 +181,12 @@ def safe_post(port: int, endpoint: str, data: dict | str) -> dict:
         text_payload = data
 
     return _make_request("POST", port, endpoint, json_data=json_payload, data=text_payload, headers=headers)
+
+
+def safe_patch(port: int, endpoint: str, data: dict) -> dict:
+    """Perform a PATCH request to a specific Ghidra instance with JSON payload"""
+    headers = data.pop("headers", None) if isinstance(data, dict) else None
+    return _make_request("PATCH", port, endpoint, json_data=data, headers=headers)
 
 # Instance management tools
 
@@ -536,11 +544,12 @@ def list_segments(port: int = DEFAULT_GHIDRA_PORT,
 
     Returns:
         dict: {
-            "result": list of segment objects,
-            "size": total count,
-            "offset": current offset,
-            "limit": current limit,
-            "_links": pagination links
+            "result": list of segment objects with properties including name, start, end, size, 
+                      permissions (readable, writable, executable), and initialized status,
+            "size": total count of segments matching the filter,
+            "offset": current offset in pagination,
+            "limit": current limit for pagination,
+            "_links": pagination links for HATEOAS navigation
         }
     """
     params = {
@@ -786,7 +795,7 @@ def read_memory(port: int = DEFAULT_GHIDRA_PORT,
             "address": original address,
             "length": bytes read,
             "format": output format,
-            "bytes": the memory contents,
+            "bytes": the memory contents as a string in the specified format,
             "timestamp": response timestamp
         }
     """
@@ -797,8 +806,7 @@ def read_memory(port: int = DEFAULT_GHIDRA_PORT,
             "timestamp": int(time.time() * 1000)
         }
 
-    response = safe_get(port, "programs/current/memory", {
-        "address": address,
+    response = safe_get(port, f"programs/current/memory/{address}", {
         "length": length,
         "format": format
     })
@@ -810,7 +818,7 @@ def read_memory(port: int = DEFAULT_GHIDRA_PORT,
         "address": address,
         "length": length,
         "format": format,
-        "bytes": response.get("result", ""),
+        "bytes": response.get("result", {}).get("bytes", ""),
         "timestamp": response.get("timestamp", int(time.time() * 1000))
     }
 
@@ -829,7 +837,10 @@ def write_memory(port: int = DEFAULT_GHIDRA_PORT,
         format: Input format - "hex", "base64", or "string" (default: "hex")
 
     Returns:
-        dict: Operation result with success status
+        dict: Operation result with success status containing:
+             - address: the target memory address
+             - length: number of bytes written
+             - bytesWritten: confirmation of bytes written
     """
     if not address or not bytes:
         return {
@@ -838,8 +849,7 @@ def write_memory(port: int = DEFAULT_GHIDRA_PORT,
             "timestamp": int(time.time() * 1000)
         }
 
-    return safe_post(port, "programs/current/memory", {
-        "address": address,
+    return safe_post(port, f"programs/current/memory/{address}", {
         "bytes": bytes,
         "format": format
     })
@@ -891,12 +901,14 @@ def get_current_address(port: int = DEFAULT_GHIDRA_PORT) -> dict:
         - error: error message if failed
         - timestamp: timestamp of response
     """
-    response = safe_get(port, "get_current_address")
+    # Use ONLY the new HATEOAS endpoint
+    response = safe_get(port, "programs/current/address")
     if isinstance(response, dict) and "success" in response:
         return response
+        
     return {
         "success": False,
-        "error": "Unexpected response format from Ghidra plugin",
+        "error": "Failed to get current address",
         "timestamp": int(time.time() * 1000),
         "port": port
     }
@@ -953,6 +965,56 @@ def list_xrefs(port: int = DEFAULT_GHIDRA_PORT,
 
 
 @mcp.tool()
+def list_xrefs(port: int = DEFAULT_GHIDRA_PORT,
+               to_addr: str = None,
+               from_addr: str = None,
+               type: str = None,
+               offset: int = 0,
+               limit: int = 100) -> dict:
+    """List cross-references with filtering and pagination
+
+    Args:
+        port: Ghidra instance port (default: 8192)
+        to_addr: Filter references to this address (hexadecimal)
+        from_addr: Filter references from this address (hexadecimal)  
+        type: Filter by reference type (e.g. "CALL", "READ", "WRITE")
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+
+    Returns:
+        dict: {
+            "result": list of xref objects with from_addr, to_addr, type, from_function, to_function fields,
+            "size": total number of xrefs matching the filter,
+            "offset": current offset for pagination,
+            "limit": current limit for pagination,
+            "_links": pagination links for HATEOAS navigation
+        }
+    """
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if to_addr:
+        params["to_addr"] = to_addr
+    if from_addr:
+        params["from_addr"] = from_addr
+    if type:
+        params["type"] = type
+
+    response = safe_get(port, "programs/current/xrefs", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
+
+
+@mcp.tool()
 def analyze_program(port: int = DEFAULT_GHIDRA_PORT,
                     analysis_options: dict = None) -> dict:
     """Run analysis on the current program
@@ -964,7 +1026,10 @@ def analyze_program(port: int = DEFAULT_GHIDRA_PORT,
                          None means use default analysis options
 
     Returns:
-        dict: Analysis operation result with status
+        dict: Analysis operation result with status containing:
+             - program: program name
+             - analysis_triggered: boolean indicating if analysis was successfully started
+             - message: status message
     """
     return safe_post(port, "programs/current/analysis", analysis_options or {})
 
@@ -981,13 +1046,20 @@ def get_callgraph(port: int = DEFAULT_GHIDRA_PORT,
         max_depth: Maximum call depth to analyze (default: 3)
 
     Returns:
-        dict: Graph data in DOT format with nodes and edges
+        dict: Graph data with:
+             - root: name of the starting function
+             - root_address: address of the starting function
+             - max_depth: depth limit used for graph generation
+             - nodes: list of function nodes in the graph (with id, name, address)
+             - edges: list of call relationships between functions
     """
     params = {"max_depth": max_depth}
     if function:
         params["function"] = function
 
     return safe_get(port, "programs/current/analysis/callgraph", params)
+
+
 
 
 @mcp.tool()
@@ -1027,12 +1099,14 @@ def get_current_function(port: int = DEFAULT_GHIDRA_PORT) -> dict:
         - error: error message if failed
         - timestamp: timestamp of response
     """
-    response = safe_get(port, "get_current_function")
+    # Use ONLY the new HATEOAS endpoint
+    response = safe_get(port, "programs/current/function")
     if isinstance(response, dict) and "success" in response:
         return response
+        
     return {
         "success": False,
-        "error": "Unexpected response format from Ghidra plugin",
+        "error": "Failed to get current function",
         "timestamp": int(time.time() * 1000),
         "port": port
     }
@@ -1116,7 +1190,7 @@ def disassemble_function(port: int = DEFAULT_GHIDRA_PORT, address: str = "") -> 
 
 
 @mcp.tool()
-def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
+def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> dict:
     """Add/edit decompiler comment at address
 
     Args:
@@ -1125,13 +1199,23 @@ def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", c
         comment: Comment text to add
 
     Returns:
-        str: Confirmation message or error
+        dict: Operation result with success status
     """
-    return safe_post(port, "set_decompiler_comment", {"address": address, "comment": comment})
+    if not address:
+        return {
+            "success": False,
+            "error": "Address parameter is required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # Use the HATEOAS endpoint
+    return safe_post(port, f"programs/current/memory/{address}/comments/decompiler", {
+        "comment": comment
+    })
 
 
 @mcp.tool()
-def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> str:
+def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", comment: str = "") -> dict:
     """Add/edit disassembly comment at address
 
     Args:
@@ -1140,13 +1224,23 @@ def set_disassembly_comment(port: int = DEFAULT_GHIDRA_PORT, address: str = "", 
         comment: Comment text to add
 
     Returns:
-        str: Confirmation message or error
+        dict: Operation result with success status
     """
-    return safe_post(port, "set_disassembly_comment", {"address": address, "comment": comment})
+    if not address:
+        return {
+            "success": False,
+            "error": "Address parameter is required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # Use the HATEOAS endpoint
+    return safe_post(port, f"programs/current/memory/{address}/comments/plate", {
+        "comment": comment
+    })
 
 
 @mcp.tool()
-def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", old_name: str = "", new_name: str = "") -> str:
+def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", old_name: str = "", new_name: str = "") -> dict:
     """Rename local variable in function
 
     Args:
@@ -1156,13 +1250,23 @@ def rename_local_variable(port: int = DEFAULT_GHIDRA_PORT, function_address: str
         new_name: New variable name
 
     Returns:
-        str: Confirmation message or error
+        dict: Operation result with success status
     """
-    return safe_post(port, "rename_local_variable", {"functionAddress": function_address, "oldName": old_name, "newName": new_name})
+    if not function_address or not old_name or not new_name:
+        return {
+            "success": False,
+            "error": "Function address, old name, and new name parameters are required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # Use the HATEOAS endpoint
+    return safe_patch(port, f"programs/current/functions/{function_address}/variables/{old_name}", {
+        "name": new_name
+    })
 
 
 @mcp.tool()
-def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", new_name: str = "") -> str:
+def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", new_name: str = "") -> dict:
     """Rename function at memory address
 
     Args:
@@ -1171,13 +1275,23 @@ def rename_function_by_address(port: int = DEFAULT_GHIDRA_PORT, function_address
         new_name: New function name
 
     Returns:
-        str: Confirmation message or error
+        dict: Operation result with success status
     """
-    return safe_post(port, "rename_function_by_address", {"functionAddress": function_address, "newName": new_name})
+    if not function_address or not new_name:
+        return {
+            "success": False,
+            "error": "Function address and new name parameters are required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # Use the HATEOAS endpoint
+    return safe_patch(port, f"programs/current/functions/{function_address}", {
+        "name": new_name
+    })
 
 
 @mcp.tool()
-def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", prototype: str = "") -> str:
+def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", prototype: str = "") -> dict:
     """Update function signature/prototype
 
     Args:
@@ -1186,13 +1300,23 @@ def set_function_prototype(port: int = DEFAULT_GHIDRA_PORT, function_address: st
         prototype: New prototype string (e.g. "int func(int param1)")
 
     Returns:
-        str: Confirmation message or error
+        dict: Operation result with success status
     """
-    return safe_post(port, "set_function_prototype", {"functionAddress": function_address, "prototype": prototype})
+    if not function_address or not prototype:
+        return {
+            "success": False,
+            "error": "Function address and prototype parameters are required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # Use the HATEOAS endpoint
+    return safe_patch(port, f"programs/current/functions/{function_address}", {
+        "signature": prototype
+    })
 
 
 @mcp.tool()
-def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", variable_name: str = "", new_type: str = "") -> str:
+def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: str = "", variable_name: str = "", new_type: str = "") -> dict:
     """Change local variable data type
 
     Args:
@@ -1202,9 +1326,19 @@ def set_local_variable_type(port: int = DEFAULT_GHIDRA_PORT, function_address: s
         new_type: New data type (e.g. "int", "char*")
 
     Returns:
-        str: Confirmation message or error
+        dict: Operation result with success status
     """
-    return safe_post(port, "set_local_variable_type", {"functionAddress": function_address, "variableName": variable_name, "newType": new_type})
+    if not function_address or not variable_name or not new_type:
+        return {
+            "success": False,
+            "error": "Function address, variable name, and new type parameters are required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # Use the HATEOAS endpoint
+    return safe_patch(port, f"programs/current/functions/{function_address}/variables/{variable_name}", {
+        "data_type": new_type
+    })
 
 
 @mcp.tool()
@@ -1218,13 +1352,24 @@ def list_variables(port: int = DEFAULT_GHIDRA_PORT, offset: int = 0, limit: int 
         search: Optional filter for variable names
 
     Returns:
-        dict: Contains variables list in 'result' field
+        dict: Contains variables list in 'result' field with pagination info
     """
     params = {"offset": offset, "limit": limit}
     if search:
-        params["search"] = search
+        params["name_contains"] = search
 
-    return safe_get(port, "variables", params)
+    # Use the HATEOAS endpoint
+    response = safe_get(port, "programs/current/variables", params)
+    if isinstance(response, dict) and "error" in response:
+        return response
+
+    return {
+        "result": response.get("result", []),
+        "size": response.get("size", len(response.get("result", []))),
+        "offset": offset,
+        "limit": limit,
+        "_links": response.get("_links", {})
+    }
 
 
 @mcp.tool()

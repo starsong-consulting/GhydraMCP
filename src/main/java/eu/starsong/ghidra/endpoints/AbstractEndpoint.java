@@ -7,7 +7,10 @@ import eu.starsong.ghidra.api.GhidraJsonEndpoint;
 import eu.starsong.ghidra.api.ResponseBuilder; // Import ResponseBuilder
 import eu.starsong.ghidra.util.GhidraUtil; // Import GhidraUtil
 import eu.starsong.ghidra.util.HttpUtil; // Import HttpUtil
+import ghidra.app.services.ProgramManager;
+import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.listing.Program;
+import ghidra.util.Msg;
 import java.io.IOException;
 import java.util.Map;
 
@@ -15,6 +18,11 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
     
     @Override
     public void handle(HttpExchange exchange) throws IOException {
+        // Handle OPTIONS requests
+        if (HttpUtil.handleOptionsRequest(exchange)) {
+            return;
+        }
+        
         // This method is required by HttpHandler interface
         // Each endpoint will register its own context handlers with specific paths
         // so this default implementation should never be called
@@ -31,9 +39,31 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
         this.port = port;
     }
     
-    // Simplified getCurrentProgram - assumes constructor sets it
+    // Get the current program - dynamically checks for program availability at runtime
     protected Program getCurrentProgram() {
-        return currentProgram; 
+        if (currentProgram != null) {
+            return currentProgram;
+        }
+        
+        // Try to get the program from the plugin tool if available
+        try {
+            PluginTool tool = getTool();
+            if (tool != null) {
+                ProgramManager programManager = tool.getService(ProgramManager.class);
+                if (programManager != null) {
+                    return programManager.getCurrentProgram();
+                }
+            }
+        } catch (Exception e) {
+            // Fall back to the stored program if dynamic lookup fails
+        }
+        
+        return null;
+    }
+    
+    // Can be overridden by subclasses that have a tool reference
+    protected PluginTool getTool() {
+        return null;
     }
 
     // --- Methods using HttpUtil ---
@@ -44,11 +74,8 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
     
     // Overload for sending success responses easily using ResponseBuilder
     protected void sendSuccessResponse(HttpExchange exchange, Object resultData) throws IOException {
-        // Check if program is required but not available
-        if (currentProgram == null && requiresProgram()) {
-            sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
-            return;
-        }
+        // No longer check if program is required here
+        // Each handler method should check for program availability at runtime if needed
         
         ResponseBuilder builder = new ResponseBuilder(exchange, port)
             .success(true)

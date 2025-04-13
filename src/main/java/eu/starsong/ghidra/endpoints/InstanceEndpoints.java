@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.api.ResponseBuilder;
     import eu.starsong.ghidra.GhydraMCPPlugin; // Need access to activeInstances
     import ghidra.program.model.listing.Program;
     import ghidra.util.Msg;
@@ -40,21 +41,46 @@ package eu.starsong.ghidra.endpoints;
     }
 
         private void handleInstances(HttpExchange exchange) throws IOException {
-             try {
-                 List<Map<String, Object>> instanceData = new ArrayList<>();
-                 // Accessing the static map directly - requires it to be accessible
-                 // or passed in constructor.
-                 for (Map.Entry<Integer, GhydraMCPPlugin> entry : activeInstances.entrySet()) {
+            try {
+                List<Map<String, Object>> instanceData = new ArrayList<>();
+                
+                // Accessing the static map directly - requires it to be accessible
+                // or passed in constructor.
+                for (Map.Entry<Integer, GhydraMCPPlugin> entry : activeInstances.entrySet()) {
                     Map<String, Object> instance = new HashMap<>();
-                    // Need a way to get isBaseInstance from the plugin instance - requires getter in GhydraMCPPlugin
-                    // instance.put("type", entry.getValue().isBaseInstance() ? "base" : "secondary"); // Placeholder access
+                    int instancePort = entry.getKey();
+                    instance.put("port", instancePort);
+                    instance.put("url", "http://localhost:" + instancePort);
                     instance.put("type", "unknown"); // Placeholder until isBaseInstance is accessible
+                    
+                    // Get program info if available
+                    Program program = entry.getValue().getCurrentProgram();
+                    if (program != null) {
+                        instance.put("project", program.getDomainFile().getParent().getName());
+                        instance.put("file", program.getName());
+                    } else {
+                        instance.put("project", "");
+                        instance.put("file", "");
+                    }
+                    
                     instanceData.add(instance);
                 }
-                sendSuccessResponse(exchange, instanceData); // Use helper from AbstractEndpoint
+                
+                // Build response with HATEOAS links
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(instanceData);
+                
+                // Add HATEOAS links
+                builder.addLink("self", "/instances");
+                builder.addLink("register", "/registerInstance", "POST");
+                builder.addLink("unregister", "/unregisterInstance", "POST");
+                builder.addLink("programs", "/programs");
+                
+                sendJsonResponse(exchange, builder.build(), 200);
             } catch (Exception e) {
-                 Msg.error(this, "Error in /instances endpoint", e);
-                 sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage()); // Use helper
+                Msg.error(this, "Error in /instances endpoint", e);
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         }
 

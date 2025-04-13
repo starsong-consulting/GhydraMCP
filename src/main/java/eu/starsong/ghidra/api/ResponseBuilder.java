@@ -3,6 +3,7 @@ package eu.starsong.ghidra.api;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -45,6 +46,20 @@ public class ResponseBuilder {
             error.addProperty("code", code);
         }
         response.add("error", error);
+        return this;
+    }
+
+    /**
+     * Add metadata to the response (e.g., pagination info)
+     * @param metadata Map of metadata key-value pairs
+     * @return this builder
+     */
+    public ResponseBuilder metadata(Map<String, Object> metadata) {
+        if (metadata != null) {
+            for (Map.Entry<String, Object> entry : metadata.entrySet()) {
+                response.add(entry.getKey(), gson.toJsonTree(entry.getValue()));
+            }
+        }
         return this;
     }
 

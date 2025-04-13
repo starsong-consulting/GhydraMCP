@@ -19,6 +19,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Standardized JSON response formats
 - Implemented `/plugin-version` endpoint for version checking
 - Added proper error handling for when no program is loaded
+- Implemented HATEOAS-driven API as described in GHIDRA_HTTP_API.md:
+  - Added `/programs` and `/programs/{program_id}` endpoints
+  - Implemented program-specific resource endpoints
+  - Added pagination support with metadata
+  - Added filtering capabilities (by name, address, etc.)
+  - Implemented proper resource linking with HATEOAS
+- Added disassembly endpoint for functions with HATEOAS links
+- Enhanced parameter validation in MCP bridge tools
 
 ### Changed
 - Unified all endpoints to use structured JSON
@@ -31,12 +39,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Implemented transaction management helpers
   - Added model classes for structured data representation
 - Removed `port` field from responses (bridge knows what instance it called)
+- Updated MCP bridge to use new HATEOAS API endpoints
+- Enhanced MCP bridge tools to validate input parameters
+- Improved response handling in MCP bridge for better error reporting
+- **Breaking**: Removed backward compatibility with legacy endpoints, all endpoints now require strict HATEOAS compliance:
+  - All responses must include _links object with at least self reference
+  - Standardized JSON structures for all resource types
+  - Created comprehensive requirements documentation in HATEOAS_API.md
 
 ### Fixed
 - Fixed endpoint registration in refactored code (all endpoints now working)
 - Improved handling of program-dependent endpoints when no program is loaded
 - Enhanced root endpoint to dynamically include links to available endpoints
 - Added proper HATEOAS links to all endpoints
+- Fixed URL encoding/decoding issues in program IDs
+- Fixed transaction management in function operations
+- Fixed inconsistent response formats in function-related endpoints
+- Improved error handling for missing parameters in MCP bridge tools
+- Fixed non-compliant endpoint responses:
+  - Added _links to /classes and /instances endpoints
+  - Updated /programs/current/segments to return list of segment objects
+  - Fixed decompile endpoint to return structured decompiled code
+  - Fixed disassembly endpoint to return structured instruction list
+  - Fixed variables endpoint to return proper variable structure
 
 ## [1.4.0] - 2025-04-08
 
