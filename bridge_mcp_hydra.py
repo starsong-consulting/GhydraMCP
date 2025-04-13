@@ -898,9 +898,18 @@ def list_xrefs(port: int = DEFAULT_GHIDRA_PORT,
             "result": list of xref objects with from_addr, to_addr, type, from_function, to_function fields,
             "size": total number of xrefs matching the filter,
             "offset": current offset for pagination,
-            "limit": current limit for pagination
+            "limit": current limit for pagination,
+            "xrefs": simplified array of cross-references for AI consumption
         }
     """
+    # At least one of the address parameters must be provided
+    if not to_addr and not from_addr:
+        return {
+            "success": False,
+            "error": "Either to_addr or from_addr parameter is required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
     params = {
         "offset": offset,
         "limit": limit
@@ -921,9 +930,55 @@ def list_xrefs(port: int = DEFAULT_GHIDRA_PORT,
         simplified.setdefault("offset", offset)
         simplified.setdefault("limit", limit)
         
-        # For AI consumption, make the references more directly accessible
+        # Create a simplified, flattened view of references for AI consumption
         if "result" in simplified and isinstance(simplified["result"], dict) and "references" in simplified["result"]:
-            simplified["xrefs"] = simplified["result"]["references"]
+            references = simplified["result"]["references"]
+            flat_refs = []
+            
+            for ref in references:
+                flat_ref = {
+                    "from_addr": ref.get("from_addr"),
+                    "to_addr": ref.get("to_addr"),
+                    "type": ref.get("refType")
+                }
+                
+                # Add source function info if available
+                if "from_function" in ref and isinstance(ref["from_function"], dict):
+                    flat_ref["from_function"] = ref["from_function"].get("name")
+                    flat_ref["from_function_addr"] = ref["from_function"].get("address")
+                
+                # Add target function info if available
+                if "to_function" in ref and isinstance(ref["to_function"], dict):
+                    flat_ref["to_function"] = ref["to_function"].get("name")
+                    flat_ref["to_function_addr"] = ref["to_function"].get("address")
+                
+                # Add symbol info if available
+                if "from_symbol" in ref:
+                    flat_ref["from_symbol"] = ref["from_symbol"]
+                if "to_symbol" in ref:
+                    flat_ref["to_symbol"] = ref["to_symbol"]
+                
+                # Add instruction text if available
+                if "from_instruction" in ref:
+                    flat_ref["from_instruction"] = ref["from_instruction"]
+                if "to_instruction" in ref:
+                    flat_ref["to_instruction"] = ref["to_instruction"]
+                
+                flat_refs.append(flat_ref)
+            
+            # Add the simplified references
+            simplified["xrefs"] = flat_refs
+            
+            # Create a text representation for easier consumption
+            text_refs = []
+            for ref in flat_refs:
+                from_func = f"[{ref.get('from_function', '??')}]" if "from_function" in ref else ""
+                to_func = f"[{ref.get('to_function', '??')}]" if "to_function" in ref else ""
+                
+                line = f"{ref.get('from_addr')} {from_func} -> {ref.get('to_addr')} {to_func} ({ref.get('type', '??')})"
+                text_refs.append(line)
+            
+            simplified["xrefs_text"] = "\n".join(text_refs)
     
     return simplified
 

@@ -1,7 +1,5 @@
 package eu.starsong.ghidra.endpoints;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
@@ -10,7 +8,12 @@ import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.Reference;
+import ghidra.program.model.symbol.ReferenceIterator;
 import ghidra.program.model.symbol.ReferenceManager;
+import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolTable;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.util.Msg;
 
@@ -44,8 +47,9 @@ public class XrefsEndpoints extends AbstractEndpoint {
         try {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> qparams = parseQueryParams(exchange);
-                String addressStr = qparams.get("address");
-                String type = qparams.get("type"); // "to" or "from"
+                String toAddrStr = qparams.get("to_addr");
+                String fromAddrStr = qparams.get("from_addr");
+                String refTypeStr = qparams.get("type");
                 int offset = parseIntOrDefault(qparams.get("offset"), 0);
                 int limit = parseIntOrDefault(qparams.get("limit"), 50);
                 
@@ -64,114 +68,107 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 // Add common links
                 builder.addLink("program", "/program");
                 
-                // If no address is provided, show current address (if any)
-                if (addressStr == null || addressStr.isEmpty()) {
-                    Address currentAddress = getCurrentAddress(program);
-                    if (currentAddress == null) {
-                        sendErrorResponse(exchange, 400, "Address parameter is required", "MISSING_PARAMETER");
-                        return;
-                    }
-                    addressStr = currentAddress.toString();
-                }
-                
-                // Parse address
-                AddressFactory addressFactory = program.getAddressFactory();
-                Address address;
-                try {
-                    address = addressFactory.getAddress(addressStr);
-                } catch (Exception e) {
-                    sendErrorResponse(exchange, 400, "Invalid address format", "INVALID_PARAMETER");
+                // At least one of to_addr or from_addr must be provided
+                if ((toAddrStr == null || toAddrStr.isEmpty()) && 
+                    (fromAddrStr == null || fromAddrStr.isEmpty())) {
+                    sendErrorResponse(exchange, 400, "Either to_addr or from_addr parameter is required", "MISSING_PARAMETER");
                     return;
                 }
                 
-                // Simplified cross-reference implementation due to API limitations
+                // Parse addresses
+                AddressFactory addressFactory = program.getAddressFactory();
+                Address toAddr = null;
+                Address fromAddr = null;
+                
+                if (toAddrStr != null && !toAddrStr.isEmpty()) {
+                    try {
+                        toAddr = addressFactory.getAddress(toAddrStr);
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid to_addr format: " + toAddrStr, "INVALID_PARAMETER");
+                        return;
+                    }
+                }
+                
+                if (fromAddrStr != null && !fromAddrStr.isEmpty()) {
+                    try {
+                        fromAddr = addressFactory.getAddress(fromAddrStr);
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid from_addr format: " + fromAddrStr, "INVALID_PARAMETER");
+                        return;
+                    }
+                }
+                
+                // Get reference manager
+                ReferenceManager refManager = program.getReferenceManager();
                 List<Map<String, Object>> referencesList = new ArrayList<>();
                 
-                // Get function at address if any
-                Function function = program.getFunctionManager().getFunctionAt(address);
-                if (function != null) {
-                    Map<String, Object> funcRef = new HashMap<>();
-                    funcRef.put("direction", "from");
-                    funcRef.put("name", function.getName());
-                    funcRef.put("address", function.getEntryPoint().toString());
-                    funcRef.put("signature", function.getSignature().toString());
-                    funcRef.put("type", "function");
-                    
-                    referencesList.add(funcRef);
-                }
-                
-                // Get related addresses as placeholders for xrefs
-                // Need to be careful with address arithmetic
-                Address prevAddr = null;
-                Address nextAddr = null;
-                
-                try {
-                    // Try to get addresses safely
-                    if (address.getOffset() > 0) {
-                        prevAddr = address.subtract(1);
+                // Get references to this address
+                if (toAddr != null) {
+                    ReferenceIterator refsTo = refManager.getReferencesTo(toAddr);
+                    while (refsTo.hasNext()) {
+                        Reference ref = refsTo.next();
+                        if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
+                            continue; // Skip if type filter doesn't match
+                        }
+                        
+                        Map<String, Object> refMap = createReferenceMap(program, ref, "to");
+                        referencesList.add(refMap);
                     }
-                    nextAddr = address.add(1);
-                } catch (Exception e) {
-                    Msg.error(this, "Error with address arithmetic: " + e.getMessage(), e);
                 }
                 
-                // Only add previous reference if we have a valid previous address
-                if (prevAddr != null) {
-                    Map<String, Object> prevRef = new HashMap<>();
-                    prevRef.put("direction", "to");
-                    prevRef.put("address", prevAddr.toString());
-                    prevRef.put("target", address.toString());
-                    prevRef.put("refType", "data");
-                    prevRef.put("isPrimary", true);
-                    referencesList.add(prevRef);
-                }
-                
-                // Only add next reference if we have a valid next address
-                if (nextAddr != null) {
-                    Map<String, Object> nextRef = new HashMap<>();
-                    nextRef.put("direction", "from");
-                    nextRef.put("address", address.toString());
-                    nextRef.put("target", nextAddr.toString());
-                    nextRef.put("refType", "flow");
-                    nextRef.put("isPrimary", true);
-                    referencesList.add(nextRef);
-                }
-                
-                // Add a self reference if nothing else is available
-                if (referencesList.isEmpty()) {
-                    Map<String, Object> selfRef = new HashMap<>();
-                    selfRef.put("direction", "self");
-                    selfRef.put("address", address.toString());
-                    selfRef.put("target", address.toString());
-                    selfRef.put("refType", "self");
-                    selfRef.put("isPrimary", true);
-                    referencesList.add(selfRef);
+                // Get references from this address
+                if (fromAddr != null) {
+                    ReferenceIterator refsFrom = refManager.getReferencesFrom(fromAddr);
+                    while (refsFrom.hasNext()) {
+                        Reference ref = refsFrom.next();
+                        if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
+                            continue; // Skip if type filter doesn't match
+                        }
+                        
+                        Map<String, Object> refMap = createReferenceMap(program, ref, "from");
+                        referencesList.add(refMap);
+                    }
                 }
                 
                 // Sort by type and address
                 Collections.sort(referencesList, (a, b) -> {
-                    int typeCompare = ((String)a.get("direction")).compareTo((String)b.get("direction"));
+                    // First sort by direction
+                    int directionCompare = ((String)a.get("direction")).compareTo((String)b.get("direction"));
+                    if (directionCompare != 0) return directionCompare;
+                    
+                    // Then by reference type
+                    int typeCompare = ((String)a.get("refType")).compareTo((String)b.get("refType"));
                     if (typeCompare != 0) return typeCompare;
-                    return ((String)a.get("address")).compareTo((String)b.get("address"));
+                    
+                    // Finally by from_address
+                    return ((String)a.get("from_addr")).compareTo((String)b.get("from_addr"));
                 });
                 
                 // Apply pagination
                 List<Map<String, Object>> paginatedRefs = 
                     applyPagination(referencesList, offset, limit, builder, "/xrefs",
-                        "address=" + addressStr + (type != null ? "&type=" + type : ""));
+                        buildQueryString(toAddrStr, fromAddrStr, refTypeStr));
                 
                 // Create result object
                 Map<String, Object> result = new HashMap<>();
-                result.put("address", address.toString());
+                if (toAddr != null) {
+                    result.put("to_addr", toAddrStr);
+                }
+                if (fromAddr != null) {
+                    result.put("from_addr", fromAddrStr);
+                }
                 result.put("references", paginatedRefs);
-                result.put("note", "This is a simplified cross-reference implementation due to API limitations");
                 
                 // Add the result to the builder
                 builder.result(result);
                 
                 // Add specific links
-                builder.addLink("refsFrom", "/xrefs?address=" + addressStr + "&type=from");
-                builder.addLink("refsTo", "/xrefs?address=" + addressStr + "&type=to");
+                if (toAddr != null) {
+                    builder.addLink("to_function", "/functions/" + toAddrStr);
+                }
+                if (fromAddr != null) {
+                    builder.addLink("from_function", "/functions/" + fromAddrStr);
+                }
                 
                 // Send the HATEOAS-compliant response
                 sendJsonResponse(exchange, builder.build(), 200);
@@ -185,6 +182,92 @@ public class XrefsEndpoints extends AbstractEndpoint {
         }
     }
     
+    private Map<String, Object> createReferenceMap(Program program, Reference ref, String direction) {
+        Map<String, Object> refMap = new HashMap<>();
+        
+        // Basic reference information
+        refMap.put("direction", direction);
+        refMap.put("from_addr", ref.getFromAddress().toString());
+        refMap.put("to_addr", ref.getToAddress().toString());
+        refMap.put("refType", ref.getReferenceType().getName());
+        refMap.put("isPrimary", ref.isPrimary());
+        
+        // Get source function (if any)
+        Function fromFunc = program.getFunctionManager().getFunctionContaining(ref.getFromAddress());
+        if (fromFunc != null) {
+            Map<String, Object> fromFuncMap = new HashMap<>();
+            fromFuncMap.put("name", fromFunc.getName());
+            fromFuncMap.put("address", fromFunc.getEntryPoint().toString());
+            fromFuncMap.put("offset", ref.getFromAddress().subtract(fromFunc.getEntryPoint()));
+            refMap.put("from_function", fromFuncMap);
+        }
+        
+        // Get target function (if any)
+        Function toFunc = program.getFunctionManager().getFunctionContaining(ref.getToAddress());
+        if (toFunc != null) {
+            Map<String, Object> toFuncMap = new HashMap<>();
+            toFuncMap.put("name", toFunc.getName());
+            toFuncMap.put("address", toFunc.getEntryPoint().toString());
+            toFuncMap.put("offset", ref.getToAddress().subtract(toFunc.getEntryPoint()));
+            refMap.put("to_function", toFuncMap);
+        }
+        
+        // Get source symbol (if any)
+        SymbolTable symbolTable = program.getSymbolTable();
+        Symbol[] fromSymbols = symbolTable.getSymbols(ref.getFromAddress());
+        if (fromSymbols != null && fromSymbols.length > 0) {
+            refMap.put("from_symbol", fromSymbols[0].getName());
+        }
+        
+        // Get target symbol (if any)
+        Symbol[] toSymbols = symbolTable.getSymbols(ref.getToAddress());
+        if (toSymbols != null && toSymbols.length > 0) {
+            refMap.put("to_symbol", toSymbols[0].getName());
+        }
+        
+        // Get the instruction/data at the from address (if applicable)
+        try {
+            CodeUnit codeUnit = program.getListing().getCodeUnitAt(ref.getFromAddress());
+            if (codeUnit != null) {
+                refMap.put("from_instruction", codeUnit.toString());
+            }
+        } catch (Exception e) {
+            // Ignore exceptions when getting code units
+        }
+        
+        // Get the instruction/data at the to address (if applicable)
+        try {
+            CodeUnit codeUnit = program.getListing().getCodeUnitAt(ref.getToAddress());
+            if (codeUnit != null) {
+                refMap.put("to_instruction", codeUnit.toString());
+            }
+        } catch (Exception e) {
+            // Ignore exceptions when getting code units
+        }
+        
+        return refMap;
+    }
+    
+    private String buildQueryString(String toAddr, String fromAddr, String refType) {
+        StringBuilder query = new StringBuilder();
+        
+        if (toAddr != null && !toAddr.isEmpty()) {
+            query.append("to_addr=").append(toAddr);
+        }
+        
+        if (fromAddr != null && !fromAddr.isEmpty()) {
+            if (query.length() > 0) query.append("&");
+            query.append("from_addr=").append(fromAddr);
+        }
+        
+        if (refType != null && !refType.isEmpty()) {
+            if (query.length() > 0) query.append("&");
+            query.append("type=").append(refType);
+        }
+        
+        return query.toString();
+    }
+    
     private Address getCurrentAddress(Program program) {
         if (program == null) return null;
         
@@ -192,8 +275,34 @@ public class XrefsEndpoints extends AbstractEndpoint {
         PluginTool tool = getTool();
         if (tool != null) {
             try {
-                // Fallback to program's min address
-                return program.getAddressFactory().getDefaultAddressSpace().getMinAddress();
+                // Get the current location service from the tool
+                ghidra.app.services.GoToService goToService = tool.getService(ghidra.app.services.GoToService.class);
+                if (goToService != null) {
+                    return goToService.getDefaultAddress(program);
+                }
+                
+                // Try to get the address from the code browser service
+                ghidra.app.services.CodeViewerService codeViewerService = 
+                    tool.getService(ghidra.app.services.CodeViewerService.class);
+                if (codeViewerService != null) {
+                    ghidra.app.nav.Navigatable navigatable = codeViewerService.getNavigatable();
+                    if (navigatable != null && navigatable.getProgram() == program) {
+                        Address addr = navigatable.getLocation().getAddress();
+                        if (addr != null) {
+                            return addr;
+                        }
+                    }
+                }
+                
+                // Try to get the address from the listing service
+                ghidra.app.services.ProgramManager programManager = 
+                    tool.getService(ghidra.app.services.ProgramManager.class);
+                if (programManager != null) {
+                    ghidra.program.util.ProgramLocation location = programManager.getCurrentLocation();
+                    if (location != null && location.getProgram() == program) {
+                        return location.getAddress();
+                    }
+                }
             } catch (Exception e) {
                 Msg.error(this, "Error getting current address from tool", e);
             }
