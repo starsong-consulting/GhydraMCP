@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
     import eu.starsong.ghidra.api.ResponseBuilder;
+    import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.symbol.Namespace;
     import ghidra.program.model.symbol.Symbol;
@@ -14,9 +15,21 @@ package eu.starsong.ghidra.endpoints;
 
     public class ClassEndpoints extends AbstractEndpoint {
 
+        private PluginTool tool;
+        
         // Updated constructor to accept port
         public ClassEndpoints(Program program, int port) {
             super(program, port); // Call super constructor
+        }
+        
+        public ClassEndpoints(Program program, int port, PluginTool tool) {
+            super(program, port);
+            this.tool = tool;
+        }
+        
+        @Override
+        protected PluginTool getTool() {
+            return tool;
         }
 
         @Override
@@ -31,14 +44,16 @@ package eu.starsong.ghidra.endpoints;
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
                     
-                    if (currentProgram == null) {
+                    // Always get the most current program from the tool
+                    Program program = getCurrentProgram();
+                    if (program == null) {
                         sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                         return;
                     }
                     
                     // Get all class names
                     Set<String> classNames = new HashSet<>();
-                    for (Symbol symbol : currentProgram.getSymbolTable().getAllSymbols(true)) {
+                    for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
                         Namespace ns = symbol.getParentNamespace();
                         // Check if namespace is not null, not global, and represents a class
                         if (ns != null && !ns.isGlobal() && ns.getSymbol().getSymbolType().isNamespace()) {
@@ -70,10 +85,26 @@ package eu.starsong.ghidra.endpoints;
                             classInfo.put("simpleName", className);
                         }
                         
+                        // Add HATEOAS links for each class
+                        Map<String, Object> links = new HashMap<>();
+                        Map<String, String> selfLink = new HashMap<>();
+                        selfLink.put("href", "/classes/" + className);
+                        links.put("self", selfLink);
+                        
+                        // Add link to program if relevant
+                        Map<String, String> programLink = new HashMap<>();
+                        programLink.put("href", "/program");
+                        links.put("program", programLink);
+                        
+                        classInfo.put("_links", links);
+                        
                         paginatedClasses.add(classInfo);
                     }
                     
-                    // Build response with pagination metadata
+                    // We need to separately create the full class objects with details
+                    // so we can't apply pagination directly to sorted list
+                    
+                    // Build response with HATEOAS links
                     ResponseBuilder builder = new ResponseBuilder(exchange, port)
                         .success(true)
                         .result(paginatedClasses);
@@ -87,7 +118,7 @@ package eu.starsong.ghidra.endpoints;
                     
                     // Add HATEOAS links
                     builder.addLink("self", "/classes?offset=" + offset + "&limit=" + limit);
-                    builder.addLink("programs", "/programs");
+                    builder.addLink("program", "/program");
                     
                     // Add next/prev links if applicable
                     if (end < sorted.size()) {

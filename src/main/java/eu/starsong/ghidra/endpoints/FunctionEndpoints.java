@@ -7,6 +7,7 @@ import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.model.FunctionInfo;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
+import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Function;
@@ -23,25 +24,186 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * Endpoints for managing functions within a program.
- * Implements the /programs/{program_id}/functions endpoints.
+ * Implements the /functions endpoints with HATEOAS pattern.
  */
 public class FunctionEndpoints extends AbstractEndpoint {
+
+    private PluginTool tool;
 
     public FunctionEndpoints(Program program, int port) {
         super(program, port);
     }
+    
+    public FunctionEndpoints(Program program, int port, PluginTool tool) {
+        super(program, port);
+        this.tool = tool;
+    }
+    
+    @Override
+    protected PluginTool getTool() {
+        return tool;
+    }
 
     @Override
     public void registerEndpoints(HttpServer server) {
-        // Register legacy endpoints to support existing callers
+        // Register endpoints in order from most specific to least specific to ensure proper URL path matching
+        
+        // Specifically handle sub-resource endpoints first (these are the most specific)
+        server.createContext("/functions/by-name/", this::handleFunctionByName);
+        
+        // Then handle address-based endpoints with clear pattern matching
+        server.createContext("/functions/", this::handleFunctionByAddress);
+        
+        // Base endpoint last as it's least specific
         server.createContext("/functions", this::handleFunctions);
-        server.createContext("/functions/", this::handleFunctionByPath);
+        
+        // Register function-specific endpoints
+        registerAdditionalEndpoints(server);
     }
-
+    
     /**
-     * Handle requests to the /functions endpoint
+     * Register additional convenience endpoints
      */
-    public void handleFunctions(HttpExchange exchange) throws IOException {
+    private void registerAdditionalEndpoints(HttpServer server) {
+        // NOTE: The /function endpoint is already registered in ProgramEndpoints
+        // We don't register it here to avoid duplicating functionality
+    }
+    
+    /**
+     * Handle requests to the /functions/{address} endpoint
+     */
+    private void handleFunctionByAddress(HttpExchange exchange) throws IOException {
+        try {
+            String path = exchange.getRequestURI().getPath();
+            
+            // Check if this is the base endpoint
+            if (path.equals("/functions") || path.equals("/functions/")) {
+                handleFunctions(exchange);
+                return;
+            }
+            
+            // Get the current program
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+                return;
+            }
+            
+            // Extract function address from path
+            String functionAddress = path.substring("/functions/".length());
+            
+            // Check for nested resources
+            if (functionAddress.contains("/")) {
+                String resource = functionAddress.substring(functionAddress.indexOf('/') + 1);
+                functionAddress = functionAddress.substring(0, functionAddress.indexOf('/'));
+                handleFunctionResource(exchange, functionAddress, resource);
+                return;
+            }
+            
+            Function function = findFunctionByAddress(functionAddress);
+            if (function == null) {
+                sendErrorResponse(exchange, 404, "Function not found at address: " + functionAddress, "FUNCTION_NOT_FOUND");
+                return;
+            }
+            
+            String method = exchange.getRequestMethod();
+            
+            if ("GET".equals(method)) {
+                // Get function details using RESTful response structure
+                FunctionInfo info = buildFunctionInfo(function);
+                
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(info);
+                
+                // Add HATEOAS links
+                String baseUrl = "/functions/" + functionAddress;
+                builder.addLink("self", baseUrl);
+                builder.addLink("program", "/program");
+                builder.addLink("decompile", baseUrl + "/decompile");
+                builder.addLink("disassembly", baseUrl + "/disassembly");
+                builder.addLink("variables", baseUrl + "/variables");
+                builder.addLink("by_name", "/functions/by-name/" + function.getName());
+                
+                // Add xrefs links
+                builder.addLink("xrefs_to", "/xrefs?to_addr=" + function.getEntryPoint());
+                builder.addLink("xrefs_from", "/xrefs?from_addr=" + function.getEntryPoint());
+                
+                sendJsonResponse(exchange, builder.build(), 200);
+            } else if ("PATCH".equals(method)) {
+                // Update function
+                handleUpdateFunctionRESTful(exchange, function);
+            } else if ("DELETE".equals(method)) {
+                // Delete function
+                handleDeleteFunctionRESTful(exchange, function);
+            } else {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error handling /functions/{address} endpoint", e);
+            sendErrorResponse(exchange, 500, "Internal Server Error: " + e.getMessage(), "INTERNAL_ERROR");
+        }
+    }
+    
+    /**
+     * Handle requests to the /functions/by-name/{name} endpoint
+     */
+    private void handleFunctionByName(HttpExchange exchange) throws IOException {
+        try {
+            String path = exchange.getRequestURI().getPath();
+            
+            // Extract function name from path (only supporting new format)
+            String functionName = path.substring("/functions/by-name/".length());
+            
+            // Check for nested resources
+            if (functionName.contains("/")) {
+                String resource = functionName.substring(functionName.indexOf('/') + 1);
+                functionName = functionName.substring(0, functionName.indexOf('/'));
+                handleFunctionResource(exchange, functionName, resource);
+                return;
+            }
+            
+            Function function = findFunctionByName(functionName);
+            if (function == null) {
+                sendErrorResponse(exchange, 404, "Function not found with name: " + functionName, "FUNCTION_NOT_FOUND");
+                return;
+            }
+            
+            String method = exchange.getRequestMethod();
+            
+            if ("GET".equals(method)) {
+                // Get function details using RESTful response structure
+                FunctionInfo info = buildFunctionInfo(function);
+                
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(info);
+                
+                // Add HATEOAS links
+                builder.addLink("self", "/functions/by-name/" + functionName);
+                builder.addLink("program", "/program");
+                builder.addLink("by_address", "/functions/" + function.getEntryPoint());
+                builder.addLink("decompile", "/functions/" + function.getEntryPoint() + "/decompile");
+                builder.addLink("disassembly", "/functions/" + function.getEntryPoint() + "/disassembly");
+                builder.addLink("variables", "/functions/by-name/" + functionName + "/variables");
+                
+                sendJsonResponse(exchange, builder.build(), 200);
+            } else if ("PATCH".equals(method)) {
+                // Update function
+                handleUpdateFunctionRESTful(exchange, function);
+            } else {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error handling /programs/current/functions/by-name/{name} endpoint", e);
+            sendErrorResponse(exchange, 500, "Internal Server Error: " + e.getMessage(), "INTERNAL_ERROR");
+        }
+    }
+    
+    /**
+     * Handle requests to all functions within the current program
+     */
+    private void handleProgramFunctions(HttpExchange exchange) throws IOException {
         try {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseQueryParams(exchange);
@@ -52,14 +214,13 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 String nameRegexFilter = params.get("name_matches_regex");
                 String addrFilter = params.get("addr");
                 
-                List<Map<String, Object>> functions = new ArrayList<>();
-                
-                // Get the current program at runtime instead of relying on the constructor-set program
                 Program program = getCurrentProgram();
                 if (program == null) {
-                    sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+                    sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
                     return;
                 }
+                
+                List<Map<String, Object>> functions = new ArrayList<>();
                 
                 // Get all functions
                 for (Function f : program.getFunctionManager().getFunctions(true)) {
@@ -87,11 +248,339 @@ public class FunctionEndpoints extends AbstractEndpoint {
                     // Add HATEOAS links
                     Map<String, Object> links = new HashMap<>();
                     Map<String, String> selfLink = new HashMap<>();
-                    selfLink.put("href", "/functions/" + f.getName());
+                    selfLink.put("href", "/programs/current/functions/" + f.getEntryPoint());
+                    links.put("self", selfLink);
+                    
+                    Map<String, String> byNameLink = new HashMap<>();
+                    byNameLink.put("href", "/programs/current/functions/by-name/" + f.getName());
+                    links.put("by_name", byNameLink);
+                    
+                    Map<String, String> decompileLink = new HashMap<>();
+                    decompileLink.put("href", "/programs/current/functions/" + f.getEntryPoint() + "/decompile");
+                    links.put("decompile", decompileLink);
+                    
+                    func.put("_links", links);
+                    
+                    functions.add(func);
+                }
+                
+                // Apply pagination
+                int endIndex = Math.min(functions.size(), offset + limit);
+                List<Map<String, Object>> paginatedFunctions = offset < functions.size() 
+                    ? functions.subList(offset, endIndex) 
+                    : new ArrayList<>();
+                
+                // Build response with pagination links
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(paginatedFunctions);
+                
+                // Add pagination metadata
+                Map<String, Object> metadata = new HashMap<>();
+                metadata.put("size", functions.size());
+                metadata.put("offset", offset);
+                metadata.put("limit", limit);
+                builder.metadata(metadata);
+                
+                // Add query parameters for self link
+                StringBuilder queryParams = new StringBuilder();
+                if (nameFilter != null) {
+                    queryParams.append("name=").append(nameFilter).append("&");
+                }
+                if (nameContainsFilter != null) {
+                    queryParams.append("name_contains=").append(nameContainsFilter).append("&");
+                }
+                if (nameRegexFilter != null) {
+                    queryParams.append("name_matches_regex=").append(nameRegexFilter).append("&");
+                }
+                if (addrFilter != null) {
+                    queryParams.append("addr=").append(addrFilter).append("&");
+                }
+                
+                String queryString = queryParams.toString();
+                
+                // Add HATEOAS links
+                builder.addLink("self", "/programs/current/functions?" + queryString + "offset=" + offset + "&limit=" + limit);
+                builder.addLink("program", "/programs/current");
+                
+                // Add next/prev links if applicable
+                if (endIndex < functions.size()) {
+                    builder.addLink("next", "/programs/current/functions?" + queryString + "offset=" + endIndex + "&limit=" + limit);
+                }
+                
+                if (offset > 0) {
+                    int prevOffset = Math.max(0, offset - limit);
+                    builder.addLink("prev", "/programs/current/functions?" + queryString + "offset=" + prevOffset + "&limit=" + limit);
+                }
+                
+                // Add link to create a new function
+                builder.addLink("create", "/programs/current/functions", "POST");
+                
+                sendJsonResponse(exchange, builder.build(), 200);
+            } else if ("POST".equals(exchange.getRequestMethod())) {
+                // Create a new function
+                handleCreateFunctionRESTful(exchange);
+            } else {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+            }
+        } catch (Exception e) {
+            Msg.error(this, "Error handling /programs/current/functions endpoint", e);
+            sendErrorResponse(exchange, 500, "Internal Server Error: " + e.getMessage(), "INTERNAL_ERROR");
+        }
+    }
+    
+    /**
+     * Handle requests to function resources like /programs/current/functions/{address}/decompile
+     */
+    private void handleFunctionResourceRESTful(HttpExchange exchange, String functionAddress, String resource) throws IOException {
+        Function function = findFunctionByAddress(functionAddress);
+        if (function == null) {
+            sendErrorResponse(exchange, 404, "Function not found at address: " + functionAddress, "FUNCTION_NOT_FOUND");
+            return;
+        }
+        
+        if (resource.equals("decompile")) {
+            handleDecompileFunction(exchange, function);
+        } else if (resource.equals("disassembly")) {
+            handleDisassembleFunction(exchange, function);
+        } else if (resource.equals("variables")) {
+            handleFunctionVariables(exchange, function);
+        } else {
+            sendErrorResponse(exchange, 404, "Function resource not found: " + resource, "RESOURCE_NOT_FOUND");
+        }
+    }
+    
+    /**
+     * Handle requests to function resources by name like /programs/current/functions/by-name/{name}/variables
+     */
+    private void handleFunctionResourceByNameRESTful(HttpExchange exchange, String functionName, String resource) throws IOException {
+        Function function = findFunctionByName(functionName);
+        if (function == null) {
+            sendErrorResponse(exchange, 404, "Function not found with name: " + functionName, "FUNCTION_NOT_FOUND");
+            return;
+        }
+        
+        if (resource.equals("variables")) {
+            handleFunctionVariables(exchange, function);
+        } else if (resource.equals("decompile")) {
+            handleDecompileFunction(exchange, function);
+        } else if (resource.equals("disassembly")) {
+            handleDisassembleFunction(exchange, function);
+        } else {
+            sendErrorResponse(exchange, 404, "Function resource not found: " + resource, "RESOURCE_NOT_FOUND");
+        }
+    }
+    
+    /**
+     * Handle PATCH requests to update a function using the RESTful endpoint
+     */
+    private void handleUpdateFunctionRESTful(HttpExchange exchange, Function function) throws IOException {
+        // Implementation similar to handleUpdateFunction but with RESTful response structure
+        Program program = getCurrentProgram();
+        if (program == null) {
+            sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
+            return;
+        }
+        
+        // Parse request body
+        Map<String, String> params = parseJsonPostParams(exchange);
+        String newName = params.get("name");
+        String signature = params.get("signature");
+        String comment = params.get("comment");
+        
+        // Apply changes
+        boolean changed = false;
+        
+        if (newName != null && !newName.isEmpty() && !newName.equals(function.getName())) {
+            // Rename function
+            try {
+                TransactionHelper.executeInTransaction(program, "Rename Function", () -> {
+                    function.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
+                    return null;
+                });
+                changed = true;
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Failed to rename function: " + e.getMessage(), "RENAME_FAILED");
+                return;
+            }
+        }
+        
+        if (signature != null && !signature.isEmpty()) {
+            // Update signature - placeholder
+            sendErrorResponse(exchange, 501, "Updating function signature not implemented", "NOT_IMPLEMENTED");
+            return;
+        }
+        
+        if (comment != null) {
+            // Update comment
+            try {
+                TransactionHelper.executeInTransaction(program, "Set Function Comment", () -> {
+                    function.setComment(comment);
+                    return null;
+                });
+                changed = true;
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Failed to set function comment: " + e.getMessage(), "COMMENT_FAILED");
+                return;
+            }
+        }
+        
+        if (!changed) {
+            sendErrorResponse(exchange, 400, "No changes specified", "NO_CHANGES");
+            return;
+        }
+        
+        // Return updated function with RESTful response structure
+        FunctionInfo info = buildFunctionInfo(function);
+        
+        ResponseBuilder builder = new ResponseBuilder(exchange, port)
+            .success(true)
+            .result(info);
+        
+        // Add HATEOAS links
+        builder.addLink("self", "/programs/current/functions/" + function.getEntryPoint());
+        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName());
+        builder.addLink("program", "/programs/current");
+        
+        sendJsonResponse(exchange, builder.build(), 200);
+    }
+    
+    /**
+     * Handle DELETE requests to delete a function using the RESTful endpoint
+     */
+    private void handleDeleteFunctionRESTful(HttpExchange exchange, Function function) throws IOException {
+        // Placeholder for function deletion
+        sendErrorResponse(exchange, 501, "Function deletion not implemented", "NOT_IMPLEMENTED");
+    }
+    
+    /**
+     * Handle POST requests to create a new function using the RESTful endpoint
+     */
+    private void handleCreateFunctionRESTful(HttpExchange exchange) throws IOException {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
+            return;
+        }
+        
+        // Parse request body
+        Map<String, String> params = parseJsonPostParams(exchange);
+        String addressStr = params.get("address");
+        
+        if (addressStr == null || addressStr.isEmpty()) {
+            sendErrorResponse(exchange, 400, "Missing address parameter", "MISSING_PARAMETER");
+            return;
+        }
+        
+        // Get address
+        AddressFactory addressFactory = program.getAddressFactory();
+        Address address;
+        
+        try {
+            address = addressFactory.getAddress(addressStr);
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
+            return;
+        }
+        
+        if (address == null) {
+            sendErrorResponse(exchange, 400, "Invalid address: " + addressStr, "INVALID_ADDRESS");
+            return;
+        }
+        
+        // Check if function already exists
+        if (program.getFunctionManager().getFunctionAt(address) != null) {
+            sendErrorResponse(exchange, 409, "Function already exists at address: " + addressStr, "FUNCTION_EXISTS");
+            return;
+        }
+        
+        // Create function
+        Function function;
+        try {
+            function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+                return program.getFunctionManager().createFunction(null, address, null, null);
+            });
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Failed to create function: " + e.getMessage(), "CREATE_FAILED");
+            return;
+        }
+        
+        if (function == null) {
+            sendErrorResponse(exchange, 500, "Failed to create function", "CREATE_FAILED");
+            return;
+        }
+        
+        // Return created function with RESTful response structure
+        FunctionInfo info = buildFunctionInfo(function);
+        
+        ResponseBuilder builder = new ResponseBuilder(exchange, port)
+            .success(true)
+            .result(info);
+        
+        // Add HATEOAS links
+        builder.addLink("self", "/programs/current/functions/" + function.getEntryPoint());
+        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName());
+        builder.addLink("program", "/programs/current");
+        builder.addLink("decompile", "/programs/current/functions/" + function.getEntryPoint() + "/decompile");
+        builder.addLink("disassembly", "/programs/current/functions/" + function.getEntryPoint() + "/disassembly");
+        
+        sendJsonResponse(exchange, builder.build(), 201);
+    }
+
+    /**
+     * Handle requests to the /functions endpoint
+     */
+    public void handleFunctions(HttpExchange exchange) throws IOException {
+        try {
+            // Always check for program availability first
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+                return;
+            }
+            
+            if ("GET".equals(exchange.getRequestMethod())) {
+                Map<String, String> params = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(params.get("offset"), 0);
+                int limit = parseIntOrDefault(params.get("limit"), 100);
+                String nameFilter = params.get("name");
+                String nameContainsFilter = params.get("name_contains");
+                String nameRegexFilter = params.get("name_matches_regex");
+                String addrFilter = params.get("addr");
+                
+                List<Map<String, Object>> functions = new ArrayList<>();
+                
+                // Get all functions
+                for (Function f : program.getFunctionManager().getFunctions(true)) {
+                    // Apply filters
+                    if (nameFilter != null && !f.getName().equals(nameFilter)) {
+                        continue;
+                    }
+                    
+                    if (nameContainsFilter != null && !f.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+                        continue;
+                    }
+                    
+                    if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
+                        continue;
+                    }
+                    
+                    if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
+                        continue;
+                    }
+                    
+                    Map<String, Object> func = new HashMap<>();
+                    func.put("name", f.getName());
+                    func.put("address", f.getEntryPoint().toString());
+                    
+                    // Add HATEOAS links (fixed to use proper URL paths)
+                    Map<String, Object> links = new HashMap<>();
+                    Map<String, String> selfLink = new HashMap<>();
+                    selfLink.put("href", "/functions/" + f.getEntryPoint());
                     links.put("self", selfLink);
                     
                     Map<String, String> programLink = new HashMap<>();
-                    programLink.put("href", "/programs/current");
+                    programLink.put("href", "/program");
                     links.put("program", programLink);
                     
                     func.put("_links", links);
@@ -224,11 +713,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
     /**
      * Handle requests to function resources like /functions/{name}/decompile
      */
-    private void handleFunctionResource(HttpExchange exchange, String functionPath) throws IOException {
-        int slashIndex = functionPath.indexOf('/');
-        String functionIdent = functionPath.substring(0, slashIndex);
-        String resource = functionPath.substring(slashIndex + 1);
-        
+    private void handleFunctionResource(HttpExchange exchange, String functionIdent, String resource) throws IOException {
         Function function = null;
         
         // Try to find function by address first
@@ -253,6 +738,18 @@ public class FunctionEndpoints extends AbstractEndpoint {
         } else {
             sendErrorResponse(exchange, 404, "Function resource not found: " + resource, "RESOURCE_NOT_FOUND");
         }
+    }
+    
+    private void handleFunctionResource(HttpExchange exchange, String functionPath) throws IOException {
+        int slashIndex = functionPath.indexOf('/');
+        if (slashIndex == -1) {
+            sendErrorResponse(exchange, 404, "Invalid function resource path: " + functionPath, "RESOURCE_NOT_FOUND");
+            return;
+        }
+        String functionIdent = functionPath.substring(0, slashIndex);
+        String resource = functionPath.substring(slashIndex + 1);
+        
+        handleFunctionResource(exchange, functionIdent, resource);
     }
 
     /**
@@ -467,7 +964,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             functionInfo.put("address", function.getEntryPoint().toString());
             functionInfo.put("name", function.getName());
             
-            // Create the result structure according to tests and MCP_BRIDGE_API.md
+            // Create the result structure according to GHIDRA_HTTP_API.md
             Map<String, Object> result = new HashMap<>();
             result.put("function", functionInfo);
             result.put("decompiled", decompilation != null ? decompilation : "// Decompilation failed");
@@ -481,15 +978,15 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 .success(true)
                 .result(result);
             
-            // Path for links
-            String functionPath = "/programs/current/functions/" + function.getEntryPoint().toString();
+            // Path for links (updated to use the correct paths)
+            String functionPath = "/functions/" + function.getEntryPoint().toString();
             
             // Add HATEOAS links
             builder.addLink("self", functionPath + "/decompile");
             builder.addLink("function", functionPath);
             builder.addLink("disassembly", functionPath + "/disassembly");
             builder.addLink("variables", functionPath + "/variables");
-            builder.addLink("program", "/programs/current");
+            builder.addLink("program", "/program");
             
             sendJsonResponse(exchange, builder.build(), 200);
         } else {
@@ -531,13 +1028,14 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 .success(true)
                 .result(result);
             
-            String functionPath = "/programs/current/functions/" + function.getEntryPoint().toString();
+            // Update to use the correct paths
+            String functionPath = "/functions/" + function.getEntryPoint().toString();
             
             builder.addLink("self", functionPath + "/disassembly");
             builder.addLink("function", functionPath);
             builder.addLink("decompile", functionPath + "/decompile");
             builder.addLink("variables", functionPath + "/variables");
-            builder.addLink("program", "/programs/current");
+            builder.addLink("program", "/program");
             
             sendJsonResponse(exchange, builder.build(), 200);
         } else {
@@ -566,8 +1064,9 @@ public class FunctionEndpoints extends AbstractEndpoint {
             result.put("function", functionInfo);
             result.put("variables", variables);
             
-            String functionPath = "/programs/current/functions/" + function.getEntryPoint().toString();
-            String functionByNamePath = "/programs/current/functions/by-name/" + function.getName();
+            // Update to use the correct paths
+            String functionPath = "/functions/" + function.getEntryPoint().toString();
+            String functionByNamePath = "/functions/by-name/" + function.getName();
             
             ResponseBuilder builder = new ResponseBuilder(exchange, port)
                 .success(true)
@@ -578,7 +1077,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             builder.addLink("by_name", functionByNamePath);
             builder.addLink("decompile", functionPath + "/decompile");
             builder.addLink("disassembly", functionPath + "/disassembly");
-            builder.addLink("program", "/programs/current");
+            builder.addLink("program", "/program");
             
             sendJsonResponse(exchange, builder.build(), 200);
         } else if ("PATCH".equals(exchange.getRequestMethod())) {

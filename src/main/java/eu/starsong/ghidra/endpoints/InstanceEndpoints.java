@@ -51,7 +51,7 @@ package eu.starsong.ghidra.endpoints;
                     int instancePort = entry.getKey();
                     instance.put("port", instancePort);
                     instance.put("url", "http://localhost:" + instancePort);
-                    instance.put("type", "unknown"); // Placeholder until isBaseInstance is accessible
+                    instance.put("type", entry.getValue().isBaseInstance() ? "base" : "standard");
                     
                     // Get program info if available
                     Program program = entry.getValue().getCurrentProgram();
@@ -62,6 +62,27 @@ package eu.starsong.ghidra.endpoints;
                         instance.put("project", "");
                         instance.put("file", "");
                     }
+                    
+                    // Add HATEOAS links for each instance
+                    Map<String, Object> links = new HashMap<>();
+                    
+                    // Self link for this instance
+                    Map<String, String> selfLink = new HashMap<>();
+                    selfLink.put("href", "/instances/" + instancePort);
+                    links.put("self", selfLink);
+                    
+                    // Info link for this instance
+                    Map<String, String> infoLink = new HashMap<>();
+                    infoLink.put("href", "http://localhost:" + instancePort + "/info");
+                    links.put("info", infoLink);
+                    
+                    // Connect link
+                    Map<String, String> connectLink = new HashMap<>();
+                    connectLink.put("href", "http://localhost:" + instancePort);
+                    links.put("connect", connectLink);
+                    
+                    // Add links to object
+                    instance.put("_links", links);
                     
                     instanceData.add(instance);
                 }

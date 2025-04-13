@@ -120,6 +120,9 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
      * Register all endpoints that require a program to function.
      * This method always registers all endpoints, even when no program is loaded.
      * The endpoints will check for program availability at runtime when they're called.
+     * 
+     * IMPORTANT: Endpoints are registered in order from most specific to least specific
+     * to ensure proper URL path matching.
      */
     private void registerProgramDependentEndpoints(HttpServer server) {
         // Register all endpoints without checking for a current program
@@ -129,16 +132,17 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         Program currentProgram = getCurrentProgram();
         Msg.info(this, "Current program at registration time: " + (currentProgram != null ? currentProgram.getName() : "none"));
         
-        // Register the core HATEOAS-compliant program endpoints
-        // Always register all endpoints with a tool reference so they can get the current program at runtime
+        new FunctionEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new VariableEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new ClassEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new SegmentEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new SymbolEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new NamespaceEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new DataEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new MemoryEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new XrefsEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new AnalysisEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new ProgramEndpoints(currentProgram, port, tool).registerEndpoints(server);
-        new FunctionEndpoints(currentProgram, port).registerEndpoints(server);
-        new VariableEndpoints(currentProgram, port).registerEndpoints(server);
-        new ClassEndpoints(currentProgram, port).registerEndpoints(server);
-        new SegmentEndpoints(currentProgram, port).registerEndpoints(server);
-        new SymbolEndpoints(currentProgram, port).registerEndpoints(server);
-        new NamespaceEndpoints(currentProgram, port).registerEndpoints(server);
-        new DataEndpoints(currentProgram, port).registerEndpoints(server);
         
         Msg.info(this, "Registered program-dependent endpoints. Programs will be checked at runtime.");
     }
@@ -215,7 +219,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 
                 // Add program link if available
                 if (program != null) {
-                    builder.addLink("program", "/programs/current");
+                    builder.addLink("program", "/program");
                 }
                 
                 HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);
@@ -365,17 +369,17 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                     Project project = tool.getProject();
                     String projectName = (project != null) ? project.getName() : "unknown";
                     
-                    builder.addLink("current-program", "/programs/current")
-                           .addLink("current-project", "/projects/" + projectName)
-                           .addLink("functions", "/programs/current/functions")
-                           .addLink("symbols", "/programs/current/symbols")
-                           .addLink("data", "/programs/current/data")
-                           .addLink("segments", "/programs/current/segments")
-                           .addLink("memory", "/programs/current/memory")
-                           .addLink("xrefs", "/programs/current/xrefs")
-                           .addLink("analysis", "/programs/current/analysis")
-                           .addLink("current-address", "/programs/current/address")
-                           .addLink("current-function", "/programs/current/function");
+                    builder.addLink("program", "/program")
+                           .addLink("project", "/projects/" + projectName)
+                           .addLink("functions", "/functions")
+                           .addLink("symbols", "/symbols")
+                           .addLink("data", "/data")
+                           .addLink("segments", "/segments")
+                           .addLink("memory", "/memory")
+                           .addLink("xrefs", "/xrefs")
+                           .addLink("analysis", "/analysis")
+                           .addLink("address", "/address")
+                           .addLink("function", "/function");
                 }
                 
                 HttpUtil.sendJsonResponse(exchange, builder.build(), 200, port);

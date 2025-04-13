@@ -14,6 +14,7 @@ package eu.starsong.ghidra.endpoints;
     import ghidra.program.model.listing.Parameter;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.listing.VariableStorage;
+    import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.pcode.HighFunction;
     import ghidra.program.model.pcode.HighFunctionDBUtil;
     import ghidra.program.model.pcode.HighSymbol;
@@ -25,6 +26,7 @@ package eu.starsong.ghidra.endpoints;
     import ghidra.program.model.symbol.SymbolType;
     import ghidra.util.Msg;
     import ghidra.util.task.ConsoleTaskMonitor;
+    import eu.starsong.ghidra.api.ResponseBuilder;
 
     import java.io.IOException;
     import java.nio.charset.StandardCharsets;
@@ -36,9 +38,21 @@ package eu.starsong.ghidra.endpoints;
 
     public class VariableEndpoints extends AbstractEndpoint {
 
+        private PluginTool tool;
+        
         // Updated constructor to accept port
         public VariableEndpoints(Program program, int port) {
             super(program, port); // Call super constructor
+        }
+        
+        public VariableEndpoints(Program program, int port, PluginTool tool) {
+            super(program, port);
+            this.tool = tool;
+        }
+        
+        @Override
+        protected PluginTool getTool() {
+            return tool;
         }
 
         @Override
@@ -57,18 +71,40 @@ package eu.starsong.ghidra.endpoints;
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
                     String search = qparams.get("search"); // Renamed from 'query' for clarity
 
-                    Object resultData;
+                    // Always get the most current program from the tool
+                    Program program = getCurrentProgram();
+                    if (program == null) {
+                        sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                        return;
+                    }
+                    
+                    // Create ResponseBuilder for HATEOAS-compliant response
+                    ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                        .success(true)
+                        .addLink("self", "/variables" + (exchange.getRequestURI().getRawQuery() != null ? 
+                            "?" + exchange.getRequestURI().getRawQuery() : ""));
+                    
+                    // Add common links
+                    builder.addLink("program", "/program");
+                    builder.addLink("search", "/variables?search={term}", "GET");
+                    
+                    List<Map<String, String>> variables;
                     if (search != null && !search.isEmpty()) {
-                        resultData = searchVariables(search, offset, limit);
+                        variables = searchVariables(program, search);
                     } else {
-                        resultData = listVariables(offset, limit);
+                        variables = listVariables(program);
                     }
-                    // Check if helper returned an error object
-                    if (resultData instanceof JsonObject && !((JsonObject)resultData).get("success").getAsBoolean()) {
-                         sendJsonResponse(exchange, (JsonObject)resultData, 400); // Use base sendJsonResponse
-                    } else {
-                         sendSuccessResponse(exchange, resultData); // Use success helper
-                    }
+                    
+                    // Apply pagination and get paginated result
+                    List<Map<String, String>> paginatedVars = 
+                        applyPagination(variables, offset, limit, builder, "/variables",
+                            search != null ? "search=" + search : null);
+                    
+                    // Add the result to the builder
+                    builder.result(paginatedVars);
+                    
+                    // Send the HATEOAS-compliant response
+                    sendJsonResponse(exchange, builder.build(), 200);
                 } else {
                     sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
@@ -78,17 +114,16 @@ package eu.starsong.ghidra.endpoints;
             }
         }
 
-        // --- Methods moved from GhydraMCPPlugin ---
-
-        private JsonObject listVariables(int offset, int limit) {
-            if (currentProgram == null) {
-                return createErrorResponse("No program loaded", 400);
-            }
-
+        // Updated to return List instead of JsonObject for HATEOAS compliance
+        private List<Map<String, String>> listVariables(Program program) {
             List<Map<String, String>> variables = new ArrayList<>();
 
+            if (program == null) {
+                return variables; // Return empty list if no program
+            }
+
             // Get global variables
-            SymbolTable symbolTable = currentProgram.getSymbolTable();
+            SymbolTable symbolTable = program.getSymbolTable();
             for (Symbol symbol : symbolTable.getDefinedSymbols()) {
                 if (symbol.isGlobal() && !symbol.isExternal() &&
                     symbol.getSymbolType() != SymbolType.FUNCTION &&
@@ -98,7 +133,7 @@ package eu.starsong.ghidra.endpoints;
                     varInfo.put("name", symbol.getName());
                     varInfo.put("address", symbol.getAddress().toString());
                     varInfo.put("type", "global");
-                    varInfo.put("dataType", getDataTypeName(currentProgram, symbol.getAddress()));
+                    varInfo.put("dataType", getDataTypeName(program, symbol.getAddress()));
                     variables.add(varInfo);
                 }
             }
@@ -107,10 +142,10 @@ package eu.starsong.ghidra.endpoints;
             DecompInterface decomp = null;
             try {
                 decomp = new DecompInterface();
-                if (!decomp.openProgram(currentProgram)) {
+                if (!decomp.openProgram(program)) {
                      Msg.error(this, "listVariables: Failed to open program with decompiler.");
                 } else {
-                    for (Function function : currentProgram.getFunctionManager().getFunctions(true)) {
+                    for (Function function : program.getFunctionManager().getFunctions(true)) {
                         try {
                             DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
                             if (results != null && results.decompileCompleted()) {
@@ -146,27 +181,20 @@ package eu.starsong.ghidra.endpoints;
             }
 
             Collections.sort(variables, Comparator.comparing(a -> a.get("name")));
-
-            int start = Math.max(0, offset);
-            int end = Math.min(variables.size(), offset + limit);
-            List<Map<String, String>> paginated = variables.subList(start, end);
-
-            return createSuccessResponse(paginated); // Keep using internal helper for now
+            return variables; // Return full list, pagination applied in handler
         }
 
-        private JsonObject searchVariables(String searchTerm, int offset, int limit) {
-             if (currentProgram == null) {
-                return createErrorResponse("No program loaded", 400); // Keep using internal helper
-            }
-            if (searchTerm == null || searchTerm.isEmpty()) {
-                return createErrorResponse("Search term is required", 400); // Keep using internal helper
+        // Updated to return List instead of JsonObject for HATEOAS compliance
+        private List<Map<String, String>> searchVariables(Program program, String searchTerm) {
+            if (program == null || searchTerm == null || searchTerm.isEmpty()) {
+                return new ArrayList<>(); // Return empty list
             }
 
             List<Map<String, String>> matchedVars = new ArrayList<>();
             String lowerSearchTerm = searchTerm.toLowerCase();
 
             // Search global variables
-            SymbolTable symbolTable = currentProgram.getSymbolTable();
+            SymbolTable symbolTable = program.getSymbolTable();
             SymbolIterator it = symbolTable.getSymbolIterator();
             while (it.hasNext()) {
                 Symbol symbol = it.next();
@@ -178,7 +206,7 @@ package eu.starsong.ghidra.endpoints;
                     varInfo.put("name", symbol.getName());
                     varInfo.put("address", symbol.getAddress().toString());
                     varInfo.put("type", "global");
-                    varInfo.put("dataType", getDataTypeName(currentProgram, symbol.getAddress()));
+                    varInfo.put("dataType", getDataTypeName(program, symbol.getAddress()));
                     matchedVars.add(varInfo);
                 }
             }
@@ -187,8 +215,8 @@ package eu.starsong.ghidra.endpoints;
             DecompInterface decomp = null;
             try {
                 decomp = new DecompInterface();
-                if (decomp.openProgram(currentProgram)) {
-                    for (Function function : currentProgram.getFunctionManager().getFunctions(true)) {
+                if (decomp.openProgram(program)) {
+                    for (Function function : program.getFunctionManager().getFunctions(true)) {
                         try {
                             DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
                             if (results != null && results.decompileCompleted()) {
@@ -226,15 +254,10 @@ package eu.starsong.ghidra.endpoints;
             }
 
             Collections.sort(matchedVars, Comparator.comparing(a -> a.get("name")));
-
-            int start = Math.max(0, offset);
-            int end = Math.min(matchedVars.size(), offset + limit);
-            List<Map<String, String>> paginated = matchedVars.subList(start, end);
-
-            return createSuccessResponse(paginated); // Keep using internal helper
+            return matchedVars;
         }
 
-        // --- Helper Methods (Keep internal for now, refactor later if needed) ---
+        // --- Helper Methods ---
 
         private String getDataTypeName(Program program, Address address) {
             // This might be better in GhidraUtil if used elsewhere
@@ -243,23 +266,4 @@ package eu.starsong.ghidra.endpoints;
             DataType dt = data.getDataType();
             return dt != null ? dt.getName() : "unknown";
         }
-
-        // Keep internal response helpers for now, as they differ slightly from AbstractEndpoint's
-        private JsonObject createSuccessResponse(Object resultData) {
-            JsonObject response = new JsonObject();
-            response.addProperty("success", true);
-            response.add("result", gson.toJsonTree(resultData));
-            // These helpers don't add id/instance/_links, unlike ResponseBuilder
-            return response;
-        }
-
-        private JsonObject createErrorResponse(String errorMessage, int statusCode) {
-            JsonObject response = new JsonObject();
-            response.addProperty("success", false);
-            response.addProperty("error", errorMessage);
-            response.addProperty("status_code", statusCode); 
-            return response;
-        }
-        
-        // parseIntOrDefault is inherited from AbstractEndpoint
     }

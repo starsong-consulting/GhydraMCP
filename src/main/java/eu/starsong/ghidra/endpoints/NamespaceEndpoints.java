@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.address.GlobalNamespace;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.symbol.Namespace;
@@ -14,9 +15,20 @@ package eu.starsong.ghidra.endpoints;
 
     public class NamespaceEndpoints extends AbstractEndpoint {
 
-        // Updated constructor to accept port
+        private PluginTool tool;
+        
         public NamespaceEndpoints(Program program, int port) {
-            super(program, port); // Call super constructor
+            super(program, port);
+        }
+        
+        public NamespaceEndpoints(Program program, int port, PluginTool tool) {
+            super(program, port);
+            this.tool = tool;
+        }
+        
+        @Override
+        protected PluginTool getTool() {
+            return tool;
         }
 
         @Override
@@ -24,70 +36,52 @@ package eu.starsong.ghidra.endpoints;
             server.createContext("/namespaces", this::handleNamespaces);
         }
 
-        private void handleNamespaces(HttpExchange exchange) throws IOException {
+        public void handleNamespaces(HttpExchange exchange) throws IOException {
             try {
                 if ("GET".equals(exchange.getRequestMethod())) {
                     Map<String, String> qparams = parseQueryParams(exchange);
-                    int offset = parseIntOrDefault(qparams.get("offset"), 0); // Inherited
-                    int limit = parseIntOrDefault(qparams.get("limit"), 100); // Inherited
-                    Object resultData = listNamespaces(offset, limit);
-                     // Check if helper returned an error object
-                    if (resultData instanceof JsonObject && !((JsonObject)resultData).get("success").getAsBoolean()) {
-                         sendJsonResponse(exchange, (JsonObject)resultData, 400); // Use base sendJsonResponse
-                    } else {
-                         sendSuccessResponse(exchange, resultData); // Use success helper
+                    int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                    int limit = parseIntOrDefault(qparams.get("limit"), 100);
+                    
+                    Program program = getCurrentProgram();
+                    if (program == null) {
+                        sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                        return;
                     }
+                    
+                    Set<String> namespaces = new HashSet<>();
+                    for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
+                        Namespace ns = symbol.getParentNamespace();
+                        if (ns != null && !(ns instanceof GlobalNamespace)) {
+                            namespaces.add(ns.getName(true)); // Get fully qualified name
+                        }
+                    }
+                    
+                    List<String> sorted = new ArrayList<>(namespaces);
+                    Collections.sort(sorted);
+                    
+                    // Build response with HATEOAS links
+                    eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
+                        .success(true);
+                    
+                    // Apply pagination and get paginated items
+                    List<String> paginated = applyPagination(sorted, offset, limit, builder, "/namespaces");
+                    
+                    // Set the paginated result
+                    builder.result(paginated);
+                    
+                    // Add program link
+                    builder.addLink("program", "/program");
+                    
+                    sendJsonResponse(exchange, builder.build(), 200);
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed"); // Inherited
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /namespaces endpoint", e);
-                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage()); // Inherited
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
             }
         }
 
-        // --- Method moved from GhydraMCPPlugin ---
-
-        private JsonObject listNamespaces(int offset, int limit) {
-            if (currentProgram == null) {
-                return createErrorResponse("No program loaded", 400);
-            }
-
-            Set<String> namespaces = new HashSet<>();
-            for (Symbol symbol : currentProgram.getSymbolTable().getAllSymbols(true)) {
-                Namespace ns = symbol.getParentNamespace();
-                if (ns != null && !(ns instanceof GlobalNamespace)) {
-                    namespaces.add(ns.getName(true)); // Get fully qualified name
-                }
-            }
-
-            List<String> sorted = new ArrayList<>(namespaces);
-            Collections.sort(sorted);
-
-            // Apply pagination
-            int start = Math.max(0, offset);
-            int end = Math.min(sorted.size(), offset + limit);
-            List<String> paginated = sorted.subList(start, end);
-
-            return createSuccessResponse(paginated); // Keep internal helper for now
-        }
-
-        // --- Helper Methods (Keep internal for now) ---
-
-        private JsonObject createSuccessResponse(Object resultData) {
-            JsonObject response = new JsonObject();
-            response.addProperty("success", true);
-            response.add("result", gson.toJsonTree(resultData));
-            return response;
-        }
-
-        private JsonObject createErrorResponse(String errorMessage, int statusCode) {
-            JsonObject response = new JsonObject();
-            response.addProperty("success", false);
-            response.addProperty("error", errorMessage);
-            response.addProperty("status_code", statusCode);
-            return response;
-        }
-        
         // parseIntOrDefault is inherited from AbstractEndpoint
     }

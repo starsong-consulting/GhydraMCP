@@ -8,6 +8,7 @@ import requests
 import time
 import unittest
 import os
+import sys
 
 # Default Ghidra server port
 DEFAULT_PORT = 8192
@@ -19,6 +20,13 @@ if GHYDRAMCP_TEST_HOST and GHYDRAMCP_TEST_HOST.strip():
 else:
     BASE_URL = f"http://localhost:{DEFAULT_PORT}"
 
+# Command line arguments handling
+DISPLAY_RESPONSES = False
+if len(sys.argv) > 1 and sys.argv[1] == "--show-responses":
+    DISPLAY_RESPONSES = True
+    # Remove the flag so unittest doesn't try to use it
+    sys.argv.pop(1)
+
 """
 STRICT HATEOAS COMPLIANCE REQUIREMENTS:
 
@@ -26,16 +34,16 @@ All endpoints must follow these requirements:
 1. Include success, id, instance, and result fields in response
 2. Include _links with at least a "self" link
 3. Use consistent result structures for the same resource types
-4. Follow standard RESTful URL patterns (e.g., /programs/current/functions/{address})
+4. Follow standard RESTful URL patterns (e.g., /functions/{address})
 5. Include pagination metadata (offset, limit, size) for collection endpoints
 
 Endpoints requiring HATEOAS updates:
 - /classes: Missing _links field
 - /instances: Missing _links field
 - /segments: Result should be a list, not an object
-- /programs/current/functions/{address}/decompile: Result should include "decompiled" field
-- /programs/current/functions/{address}/disassembly: Result should include "instructions" list
-- /programs/current/functions/by-name/{name}/variables: Result should include "variables" and "function" fields
+- /functions/{address}/decompile: Result should include "decompiled" field
+- /functions/{address}/disassembly: Result should include "instructions" list
+- /functions/by-name/{name}/variables: Result should include "variables" and "function" fields
 
 This test suite enforces strict HATEOAS compliance with no backward compatibility.
 """
@@ -107,38 +115,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # Check standard response structure for HATEOAS API
         self.assertStandardSuccessResponse(data)
 
-    def test_programs_endpoint(self):
-        """Test the /programs endpoint"""
-        response = requests.get(f"{BASE_URL}/programs")
-        self.assertEqual(response.status_code, 200)
-        
-        # Verify response is valid JSON
-        data = response.json()
-        
-        # Check standard response structure
-        self.assertStandardSuccessResponse(data)
-        
-        # Check for pagination metadata
-        self.assertIn("size", data)
-        self.assertIn("offset", data)
-        self.assertIn("limit", data)
-        
-        # Check for HATEOAS links
-        self.assertIn("_links", data)
-        links = data["_links"]
-        self.assertIn("self", links)
-        
-        # Additional check for program structure if result is not empty
-        result = data["result"]
-        if result:
-            program = result[0]
-            self.assertIn("programId", program)
-            self.assertIn("name", program)
-            self.assertIn("isOpen", program)
-
     def test_current_program_endpoint(self):
-        """Test the /programs/current endpoint"""
-        response = requests.get(f"{BASE_URL}/programs/current")
+        """Test the /program endpoint"""
+        response = requests.get(f"{BASE_URL}/program")
         
         # This might return 404 if no program is loaded, which is fine
         if response.status_code == 404:
@@ -171,8 +150,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("analysis", links)
 
     def test_functions_endpoint(self):
-        """Test the /programs/current/functions endpoint"""
-        response = requests.get(f"{BASE_URL}/programs/current/functions")
+        """Test the /functions endpoint"""
+        response = requests.get(f"{BASE_URL}/functions")
         
         # This might return 404 if no program is loaded, which is fine
         if response.status_code == 404:
@@ -211,8 +190,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.assertIn("address", result)
 
     def test_functions_with_pagination(self):
-        """Test the /programs/current/functions endpoint with pagination"""
-        response = requests.get(f"{BASE_URL}/programs/current/functions?offset=0&limit=5")
+        """Test the /functions endpoint with pagination"""
+        response = requests.get(f"{BASE_URL}/functions?offset=0&limit=5")
         
         # This might return 404 if no program is loaded, which is fine
         if response.status_code == 404:
@@ -254,9 +233,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.assertIn("address", result)
             
     def test_functions_with_filtering(self):
-        """Test the /programs/current/functions endpoint with filtering"""
+        """Test the /functions endpoint with filtering"""
         # First get a function to use for filtering
-        response = requests.get(f"{BASE_URL}/programs/current/functions?limit=1")
+        response = requests.get(f"{BASE_URL}/functions?limit=1")
         if response.status_code != 200:
             self.skipTest("No functions available to test filtering")
             
@@ -274,7 +253,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.skipTest("Unexpected result format, cannot test filtering")
         
         # Test filtering by name
-        response = requests.get(f"{BASE_URL}/programs/current/functions?name={name}")
+        response = requests.get(f"{BASE_URL}/functions?name={name}")
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -319,26 +298,29 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.assertIn("name", result)
 
     def test_segments_endpoint(self):
-        """Test the /programs/current/segments endpoint"""
-        response = requests.get(f"{BASE_URL}/programs/current/segments?offset=0&limit=10")
+        """Test the /segments endpoint"""
+        response = requests.get(f"{BASE_URL}/segments?offset=0&limit=10")
         
         # This might return 400 or 404 if no program is loaded, which is fine
         if response.status_code == 400 or response.status_code == 404:
-            print(f"DEBUG: Segments endpoint returned {response.status_code}")
+            if DISPLAY_RESPONSES:
+                print(f"Segments endpoint returned {response.status_code}")
             return
             
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
         data = response.json()
-        print(f"DEBUG: Segments response: {data}")
+        if DISPLAY_RESPONSES:
+            print(f"Segments response: {json.dumps(data, indent=2)}")
         
         # Check standard response structure for HATEOAS API
         self.assertStandardSuccessResponse(data)
         
         # Check result structure - in HATEOAS API, result can be an object or an array
         result = data["result"]
-        print(f"DEBUG: Segments result type: {type(result)}")
+        if DISPLAY_RESPONSES:
+            print(f"Segments result type: {type(result)}")
         
         # HATEOAS-compliant segments endpoint should return a list
         self.assertIsInstance(result, list, "Result must be a list of segments")
@@ -360,8 +342,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.assertIn("self", seg_links, "Segment links missing 'self' reference")
 
     def test_variables_endpoint(self):
-        """Test the /programs/current/variables endpoint"""
-        response = requests.get(f"{BASE_URL}/programs/current/variables")
+        """Test the /variables endpoint"""
+        response = requests.get(f"{BASE_URL}/variables")
         
         # This might return 400 or 404 if no program is loaded, which is fine
         if response.status_code == 400 or response.status_code == 404:
@@ -376,9 +358,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertStandardSuccessResponse(data)
 
     def test_function_by_address_endpoint(self):
-        """Test the /programs/current/functions/{address} endpoint"""
+        """Test the /functions/{address} endpoint"""
         # First get a function address from the functions endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions?offset=0&limit=1")
+        response = requests.get(f"{BASE_URL}/functions?offset=0&limit=1")
         
         # This might return 404 if no program is loaded, which is fine
         if response.status_code == 404:
@@ -404,7 +386,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.skipTest("Unexpected result format, cannot test function by address")
         
         # Now test the function by address endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions/{func_address}")
+        response = requests.get(f"{BASE_URL}/functions/{func_address}")
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
@@ -428,9 +410,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("variables", links)
 
     def test_decompile_function_endpoint(self):
-        """Test the /programs/current/functions/{address}/decompile endpoint"""
+        """Test the /functions/{address}/decompile endpoint"""
         # First get a function address from the functions endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions?offset=0&limit=1")
+        response = requests.get(f"{BASE_URL}/functions?offset=0&limit=1")
         
         # This might return 404 if no program is loaded, which is fine
         if response.status_code == 404:
@@ -456,7 +438,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.skipTest("Unexpected result format, cannot test decompile function")
         
         # Now test the decompile function endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions/{func_address}/decompile")
+        response = requests.get(f"{BASE_URL}/functions/{func_address}/decompile")
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
@@ -481,9 +463,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("function", result, "Result missing 'function' field")
         
     def test_disassemble_function_endpoint(self):
-        """Test the /programs/current/functions/{address}/disassembly endpoint"""
+        """Test the /functions/{address}/disassembly endpoint"""
         # First get a function address from the functions endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions?offset=0&limit=1")
+        response = requests.get(f"{BASE_URL}/functions?offset=0&limit=1")
         
         # This might return 404 if no program is loaded, which is fine
         if response.status_code == 404:
@@ -509,7 +491,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.skipTest("Unexpected result format, cannot test disassemble function")
         
         # Now test the disassemble function endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions/{func_address}/disassembly")
+        response = requests.get(f"{BASE_URL}/functions/{func_address}/disassembly")
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
@@ -541,9 +523,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("function", result, "Result missing 'function' field")
         
     def test_function_variables_endpoint(self):
-        """Test the /programs/current/functions/by-name/{name}/variables endpoint"""
+        """Test the /functions/by-name/{name}/variables endpoint"""
         # First get a function name from the functions endpoint
-        response = requests.get(f"{BASE_URL}/programs/current/functions?offset=0&limit=1")
+        response = requests.get(f"{BASE_URL}/functions?offset=0&limit=1")
         
         # This might return 404 or other error if no program is loaded, which is fine
         if response.status_code != 200:
@@ -566,8 +548,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         else:
             self.skipTest("Unexpected result format, cannot test function variables")
         
-        # Now test the function variables endpoint (using new HATEOAS path)
-        response = requests.get(f"{BASE_URL}/programs/current/functions/by-name/{func_name}/variables")
+        # Now test the function variables endpoint (using HATEOAS path)
+        response = requests.get(f"{BASE_URL}/functions/by-name/{func_name}/variables")
         self.assertEqual(response.status_code, 200)
         
         # Verify response is valid JSON
@@ -609,8 +591,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertNotEqual(response.status_code, 200)
 
     def test_get_current_address(self):
-        """Test the /programs/current/address endpoint"""
-        response = requests.get(f"{BASE_URL}/programs/current/address")
+        """Test the /address endpoint"""
+        response = requests.get(f"{BASE_URL}/address")
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -637,8 +619,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
                 self.assertTrue(found_address, "No field with address found in result")
 
     def test_get_current_function(self):
-        """Test the /programs/current/function endpoint"""
-        response = requests.get(f"{BASE_URL}/programs/current/function")
+        """Test the /function endpoint"""
+        response = requests.get(f"{BASE_URL}/function")
         self.assertEqual(response.status_code, 200)
         
         data = response.json()
@@ -667,5 +649,81 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
                 "Function result missing required fields"
             )
 
+def test_all_read_endpoints():
+    """Function to exercise all read endpoints and display their responses.
+    This is called separately from the unittest framework when requested."""
+    
+    print("\n--- TESTING ALL READ ENDPOINTS ---\n")
+    print(f"Base URL: {BASE_URL}")
+    
+    # List of all endpoints to test
+    endpoints = [
+        "/",                                          # Root endpoint
+        "/info",                                      # Server info
+        "/plugin-version",                            # Plugin version
+        "/projects",                                  # All projects
+        "/instances",                                 # All instances
+        "/program",                                   # Current program
+        "/functions",                                 # All functions
+        "/functions?limit=3",                         # Functions with pagination
+        "/functions?name_contains=main",              # Functions with name filter
+        "/variables?limit=3",                         # Variables
+        "/symbols?limit=3",                           # Symbols
+        "/data?limit=3",                              # Data
+        "/segments?limit=3",                          # Memory segments
+        "/memory?address=0x00100000&length=16",       # Memory access
+        "/xrefs?limit=3",                             # Cross references
+        "/analysis",                                  # Analysis status
+        "/address",                                   # Current address
+        "/function",                                  # Current function
+        "/classes?limit=3"                            # Classes
+    ]
+    
+    # Function to test a specific endpoint
+    def test_endpoint(endpoint):
+        print(f"\n=== Testing endpoint: {endpoint} ===")
+        try:
+            response = requests.get(f"{BASE_URL}{endpoint}", timeout=10)
+            print(f"Status: {response.status_code}")
+            if response.status_code == 200:
+                data = response.json()
+                print(f"Response: {json.dumps(data, indent=2)}")
+                
+                # Test for a specific function and its sub-resources if we get functions
+                if endpoint == "/functions?limit=3" and data.get("success") and data.get("result"):
+                    functions = data.get("result", [])
+                    if functions:
+                        # Get first function
+                        func = functions[0]
+                        if isinstance(func, dict) and "address" in func:
+                            addr = func["address"]
+                            # Test function-specific endpoints
+                            test_endpoint(f"/functions/{addr}")
+                            test_endpoint(f"/functions/{addr}/decompile")
+                            test_endpoint(f"/functions/{addr}/disassembly")
+                            test_endpoint(f"/functions/{addr}/variables")
+                        
+                        # Test by-name endpoint if name exists
+                        if isinstance(func, dict) and "name" in func:
+                            name = func["name"]
+                            test_endpoint(f"/functions/by-name/{name}")
+                
+            else:
+                print(f"Error response: {response.text}")
+        except Exception as e:
+            print(f"Exception testing {endpoint}: {e}")
+    
+    # Test each endpoint
+    for endpoint in endpoints:
+        test_endpoint(endpoint)
+    
+    print("\n--- END OF API TEST ---\n")
+
 if __name__ == "__main__":
+    # If --test-api flag is provided, run the test_all_read_endpoints function
+    if len(sys.argv) > 1 and sys.argv[1] == "--test-api":
+        test_all_read_endpoints()
+        sys.exit(0)
+    
+    # Otherwise run the unittest suite
     unittest.main()

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This API provides a Hypermedia-driven interface (HATEOAS) to interact with Ghidra's CodeBrowser, enabling AI-driven and automated reverse engineering workflows. It allows interaction with Ghidra projects, programs (binaries), functions, symbols, data, memory segments, cross-references, and analysis features. Programs are addressed by their unique identifier within Ghidra (`project:/path/to/file`).
+This API provides a Hypermedia-driven interface (HATEOAS) to interact with Ghidra's CodeBrowser, enabling AI-driven and automated reverse engineering workflows. It allows interaction with Ghidra projects, programs (binaries), functions, symbols, data, memory segments, cross-references, and analysis features. Each program open in Ghidra will have its own instance, so all resources are specific to that program.
 
 ## General Concepts
 
@@ -55,9 +55,9 @@ List results (arrays in `result`) will typically include pagination information 
   "offset": 0,
   "limit": 50,
   "_links": {
-    "self": { "href": "/programs/proj:/file.bin/functions?offset=0&limit=50" },
-    "next": { "href": "/programs/proj:/file.bin/functions?offset=50&limit=50" }, // Present if more items exist
-    "prev": { "href": "/programs/proj:/file.bin/functions?offset=0&limit=50" }  // Present if not the first page
+    "self": { "href": "/functions?offset=0&limit=50" },
+    "next": { "href": "/functions?offset=50&limit=50" }, // Present if more items exist
+    "prev": { "href": "/functions?offset=0&limit=50" }  // Present if not the first page
   }
 }
 ```
@@ -92,10 +92,10 @@ Common HTTP Status Codes:
 
 ### Addressing and Searching
 
-Resources like functions, data, and symbols often exist at specific memory addresses and may have names. The primary identifier for a program is its Ghidra path, e.g., `myproject:/path/to/mybinary.exe`.
+Resources like functions, data, and symbols often exist at specific memory addresses and may have names.
 
 - **By Address:** Use the resource's path with the address (hexadecimal, e.g., `0x401000` or `08000004`).
-  - Example: `GET /programs/myproject:/mybinary.exe/functions/0x401000`
+  - Example: `GET /functions/0x401000`
 - **Querying Lists:** List endpoints (e.g., `/functions`, `/symbols`, `/data`) support filtering via query parameters:
   - `?addr=[address in hex]`: Find item at a specific address.
   - `?name=[full_name]`: Find item(s) with an exact name match (case-sensitive).
@@ -118,8 +118,8 @@ Returns the version of the running Ghidra plugin and its API. Essential for comp
   "instance": "http://localhost:1337",
   "success": true,
   "result": {
-    "plugin_version": "v1.4.0", // Example plugin build version
-    "api_version": 1           // Ordinal API version
+    "plugin_version": "v2.0.0", // Example plugin build version
+    "api_version": 2            // Ordinal API version
   },
   "_links": {
     "self": { "href": "/plugin-version" }
@@ -129,27 +129,22 @@ Returns the version of the running Ghidra plugin and its API. Essential for comp
 
 ## Resource Types
 
-Base path for all program-specific resources: `/programs/{program_id}` where `program_id` is the URL-encoded Ghidra identifier (e.g., `myproject%3A%2Fpath%2Fto%2Fmybinary.exe`).
+Each Ghidra plugin instance runs in the context of a single program, so all resources are relative to the current program. The program's details are available through the `GET /info` and `GET /programs/current` endpoints.
 
 ### 1. Projects
 
 Represents Ghidra projects, containers for programs.
 
-- **`GET /projects`**: List all available Ghidra projects.
-- **`POST /projects`**: Create a new Ghidra project. Request body should specify `name` and optionally `directory`.
-- **`GET /projects/{project_name}`**: Get details about a specific project (e.g., location, list of open programs within it via links).
+- **`GET /project`**: Get details about the current project (e.g., location, list of open programs within it via links).
 
 ### 2. Programs
 
 Represents individual binaries loaded in Ghidra projects.
 
-- **`GET /programs`**: List all programs across all projects. Can be filtered by project (`?project={project_name}`).
-- **`POST /programs`**: Load/import a new binary into a specified project. Request body needs `project_name`, `file_path`, and optionally `language_id`, `compiler_spec_id`, and loader options. Returns the newly created program resource details upon successful import and analysis (which might take time).
-- **`GET /programs/{program_id}`**: Get metadata for a specific program (e.g., name, architecture, memory layout, analysis status).
+- **`GET /program`**: Get metadata for the current program (e.g., name, architecture, memory layout, analysis status).
   ```json
-  // Example Response Fragment for GET /programs/myproject%3A%2Fmybinary.exe
+  // Example Response Fragment for GET /program
   "result": {
-    "program_id": "myproject:/mybinary.exe",
     "name": "mybinary.exe",
     "project": "myproject",
     "language_id": "x86:LE:64:default",
@@ -161,36 +156,34 @@ Represents individual binaries loaded in Ghidra projects.
     // ... other metadata
   },
   "_links": {
-    "self": { "href": "/programs/myproject%3A%2Fmybinary.exe" },
-    "project": { "href": "/projects/myproject" },
-    "functions": { "href": "/programs/myproject%3A%2Fmybinary.exe/functions" },
-    "symbols": { "href": "/programs/myproject%3A%2Fmybinary.exe/symbols" },
-    "data": { "href": "/programs/myproject%3A%2Fmybinary.exe/data" },
-    "segments": { "href": "/programs/myproject%3A%2Fmybinary.exe/segments" },
-    "memory": { "href": "/programs/myproject%3A%2Fmybinary.exe/memory" },
-    "xrefs": { "href": "/programs/myproject%3A%2Fmybinary.exe/xrefs" },
-    "analysis": { "href": "/programs/myproject%3A%2Fmybinary.exe/analysis" }
-    // Potentially actions like "close", "analyze"
+    "self": { "href": "/program" },
+    "project": { "href": "/project" },
+    "functions": { "href": "/functions" },
+    "symbols": { "href": "/symbols" },
+    "data": { "href": "/data" },
+    "segments": { "href": "/segments" },
+    "memory": { "href": "/memory" },
+    "xrefs": { "href": "/xrefs" },
+    "analysis": { "href": "/analysis" }
   }
   ```
-- **`DELETE /programs/{program_id}`**: Close and potentially remove a program from its project (behavior depends on Ghidra state).
 
 ### 3. Functions
 
-Represents functions within a program. Base path: `/programs/{program_id}/functions`.
+Represents functions within the current program.
 
 - **`GET /functions`**: List functions. Supports searching (by name/address/regex) and pagination.
   ```json
   // Example Response Fragment
   "result": [
-    { "name": "FUN_08000004", "address": "08000004", "_links": { "self": { "href": "/programs/proj%3A%2Ffile.bin/functions/08000004" } } },
-    { "name": "init_peripherals", "address": "08001cf0", "_links": { "self": { "href": "/programs/proj%3A%2Ffile.bin/functions/08001cf0" } } }
+    { "name": "FUN_08000004", "address": "08000004", "_links": { "self": { "href": "/functions/08000004" } } },
+    { "name": "init_peripherals", "address": "08001cf0", "_links": { "self": { "href": "/functions/08001cf0" } } }
   ]
   ```
 - **`POST /functions`**: Create a function at a specific address. Requires `address` in the request body. Returns the created function resource.
 - **`GET /functions/{address}`**: Get details for a specific function (name, signature, size, stack info, etc.).
   ```json
-  // Example Response Fragment for GET /programs/proj%3A%2Ffile.bin/functions/0x4010a0
+  // Example Response Fragment for GET /functions/0x4010a0
   "result": {
     "name": "process_data",
     "address": "0x4010a0",
@@ -202,12 +195,12 @@ Represents functions within a program. Base path: `/programs/{program_id}/functi
     // ... other details
   },
   "_links": {
-    "self": { "href": "/programs/proj%3A%2Ffile.bin/functions/0x4010a0" },
-    "decompile": { "href": "/programs/proj%3A%2Ffile.bin/functions/0x4010a0/decompile" },
-    "disassembly": { "href": "/programs/proj%3A%2Ffile.bin/functions/0x4010a0/disassembly" },
-    "variables": { "href": "/programs/proj%3A%2Ffile.bin/functions/0x4010a0/variables" },
-    "xrefs_to": { "href": "/programs/proj%3A%2Ffile.bin/xrefs?to_addr=0x4010a0" },
-    "xrefs_from": { "href": "/programs/proj%3A%2Ffile.bin/xrefs?from_addr=0x4010a0" }
+    "self": { "href": "/functions/0x4010a0" },
+    "decompile": { "href": "/functions/0x4010a0/decompile" },
+    "disassembly": { "href": "/functions/0x4010a0/disassembly" },
+    "variables": { "href": "/functions/0x4010a0/variables" },
+    "xrefs_to": { "href": "/xrefs?to_addr=0x4010a0" },
+    "xrefs_from": { "href": "/xrefs?from_addr=0x4010a0" }
   }
   ```
 - **`PATCH /functions/{address}`**: Modify a function. Addressable only by address. Payload can contain:
@@ -248,7 +241,7 @@ Represents functions within a program. Base path: `/programs/{program_id}/functi
 
 ### 4. Symbols & Labels
 
-Represents named locations (functions, data, labels). Base path: `/programs/{program_id}/symbols`.
+Represents named locations (functions, data, labels).
 
 - **`GET /symbols`**: List all symbols in the program. Supports searching (by name/address/regex) and pagination. Can filter by type (`?type=function`, `?type=data`, `?type=label`).
 - **`POST /symbols`**: Create or rename a symbol at a specific address. Requires `address` and `name` in the payload. If a symbol exists, it's renamed; otherwise, a new label is created.
@@ -258,7 +251,7 @@ Represents named locations (functions, data, labels). Base path: `/programs/{pro
 
 ### 5. Data
 
-Represents defined data items in memory. Base path: `/programs/{program_id}/data`.
+Represents defined data items in memory.
 
 - **`GET /data`**: List defined data items. Supports searching (by name/address/regex) and pagination. Can filter by type (`?type=string`, `?type=dword`, etc.).
 - **`POST /data`**: Define a new data item. Requires `address`, `type`, and optionally `size` or `length` in the payload.
@@ -268,14 +261,14 @@ Represents defined data items in memory. Base path: `/programs/{program_id}/data
 
 ### 6. Memory Segments
 
-Represents memory blocks/sections defined in the program. Base path: `/programs/{program_id}/segments`.
+Represents memory blocks/sections defined in the program. 
 
 - **`GET /segments`**: List all memory segments (e.g., `.text`, `.data`, `.bss`).
 - **`GET /segments/{segment_name}`**: Get details for a specific segment (address range, permissions, size).
 
 ### 7. Memory Access
 
-Provides raw memory access. Base path: `/programs/{program_id}/memory`.
+Provides raw memory access. 
 
 - **`GET /memory/{address}`**: Read bytes from memory.
   - Query Parameters:
@@ -294,7 +287,7 @@ Provides raw memory access. Base path: `/programs/{program_id}/memory`.
 
 ### 8. Cross-References (XRefs)
 
-Provides information about references to/from addresses. Base path: `/programs/{program_id}/xrefs`.
+Provides information about references to/from addresses.
 
 - **`GET /xrefs`**: Search for cross-references. Supports pagination.
   - Query Parameters (at least one required):
@@ -305,7 +298,7 @@ Provides information about references to/from addresses. Base path: `/programs/{
 
 ### 9. Analysis
 
-Provides access to Ghidra's analysis results. Base path: `/programs/{program_id}/analysis`.
+Provides access to Ghidra's analysis results.
 
 - **`GET /analysis/callgraph`**: Retrieve the function call graph (potentially filtered or paginated). Format might be nodes/edges JSON or a standard graph format like DOT.
 - **`GET /analysis/dataflow/{address}`**: Perform data flow analysis starting from a specific address or instruction. Requires parameters specifying forward/backward, context, etc. (Details TBD).

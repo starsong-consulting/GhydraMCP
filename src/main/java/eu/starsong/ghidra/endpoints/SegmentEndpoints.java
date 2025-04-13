@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
     import eu.starsong.ghidra.api.ResponseBuilder;
+    import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.mem.MemoryBlock;
     import ghidra.util.Msg;
@@ -13,9 +14,21 @@ package eu.starsong.ghidra.endpoints;
 
     public class SegmentEndpoints extends AbstractEndpoint {
 
+        private PluginTool tool;
+        
         // Updated constructor to accept port
         public SegmentEndpoints(Program program, int port) {
             super(program, port); // Call super constructor
+        }
+        
+        public SegmentEndpoints(Program program, int port, PluginTool tool) {
+            super(program, port);
+            this.tool = tool;
+        }
+        
+        @Override
+        protected PluginTool getTool() {
+            return tool;
         }
 
         @Override
@@ -23,7 +36,7 @@ package eu.starsong.ghidra.endpoints;
             server.createContext("/segments", this::handleSegments);
         }
 
-        private void handleSegments(HttpExchange exchange) throws IOException {
+        public void handleSegments(HttpExchange exchange) throws IOException {
             try {
                 if ("GET".equals(exchange.getRequestMethod())) {
                     Map<String, String> qparams = parseQueryParams(exchange);
@@ -59,11 +72,11 @@ package eu.starsong.ghidra.endpoints;
                         // Add HATEOAS links for this segment
                         Map<String, Object> links = new HashMap<>();
                         Map<String, String> selfLink = new HashMap<>();
-                        selfLink.put("href", "/programs/current/segments/" + block.getName());
+                        selfLink.put("href", "/segments/" + block.getName());
                         links.put("self", selfLink);
                         
                         Map<String, String> memoryLink = new HashMap<>();
-                        memoryLink.put("href", "/programs/current/memory/" + block.getStart());
+                        memoryLink.put("href", "/memory/" + block.getStart());
                         links.put("memory", memoryLink);
                         
                         segment.put("_links", links);
@@ -71,37 +84,22 @@ package eu.starsong.ghidra.endpoints;
                         segments.add(segment);
                     }
                     
-                    // Apply pagination
-                    int start = Math.max(0, offset);
-                    int end = Math.min(segments.size(), offset + limit);
-                    List<Map<String, Object>> paginatedSegments = segments.subList(start, end);
-                    
-                    // Build response with pagination metadata
+                    // Build response with HATEOAS links
                     ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                        .success(true)
-                        .result(paginatedSegments);
+                        .success(true);
                     
-                    // Add pagination metadata
-                    Map<String, Object> metadata = new HashMap<>();
-                    metadata.put("size", segments.size());
-                    metadata.put("offset", offset);
-                    metadata.put("limit", limit);
-                    builder.metadata(metadata);
+                    // Handle optional name filter
+                    String queryParams = nameFilter != null ? "name=" + nameFilter : null;
                     
-                    // Add HATEOAS links
-                    String queryParams = nameFilter != null ? "name=" + nameFilter + "&" : "";
-                    builder.addLink("self", "/programs/current/segments?" + queryParams + "offset=" + offset + "&limit=" + limit);
-                    builder.addLink("program", "/programs/current");
+                    // Apply pagination and get paginated items
+                    List<Map<String, Object>> paginatedSegments = applyPagination(
+                        segments, offset, limit, builder, "/segments", queryParams);
                     
-                    // Add next/prev links if applicable
-                    if (end < segments.size()) {
-                        builder.addLink("next", "/programs/current/segments?" + queryParams + "offset=" + end + "&limit=" + limit);
-                    }
+                    // Set the paginated result
+                    builder.result(paginatedSegments);
                     
-                    if (offset > 0) {
-                        int prevOffset = Math.max(0, offset - limit);
-                        builder.addLink("prev", "/programs/current/segments?" + queryParams + "offset=" + prevOffset + "&limit=" + limit);
-                    }
+                    // Add program link
+                    builder.addLink("program", "/program");
                     
                     sendJsonResponse(exchange, builder.build(), 200);
                 } else {

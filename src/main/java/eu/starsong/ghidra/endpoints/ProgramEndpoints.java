@@ -44,52 +44,18 @@ public class ProgramEndpoints extends AbstractEndpoint {
 
     @Override
     public void registerEndpoints(HttpServer server) {
-        // Register the /programs endpoint
-        server.createContext("/programs", this::handlePrograms);
+        server.createContext("/program", this::handleProgramInfo);
         
-        // Register the most specific function endpoints first (order matters for URL routing)
-        server.createContext("/programs/current/functions/by-name/", this::handleFunctionByName);
-        server.createContext("/programs/current/functions/", this::handleFunctionByAddress);
+        // Register address and function endpoints
+        server.createContext("/address", this::handleCurrentAddress);
+        server.createContext("/function", this::handleCurrentFunction);
         
-        // Register other specific program resource endpoints
-        server.createContext("/programs/current/segments", this::handleCurrentSegments);
-        server.createContext("/programs/current/functions", this::handleCurrentFunctions);
-        server.createContext("/programs/current/address", this::handleCurrentAddress);
-        server.createContext("/programs/current/function", this::handleCurrentFunction);
-        
-        // Register the /programs/current endpoint
-        server.createContext("/programs/current", this::handleCurrentProgram);
-        
-        // Register the /programs/{program_id} endpoint (catch-all)
-        server.createContext("/programs/", this::handleProgramById);
     }
 
     @Override
     protected boolean requiresProgram() {
         // Some operations (like listing programs) don't require a program
         return false;
-    }
-
-    /**
-     * Handle requests to the /programs endpoint
-     */
-    private void handlePrograms(HttpExchange exchange) throws IOException {
-        try {
-            String method = exchange.getRequestMethod();
-            
-            if ("GET".equals(method)) {
-                // List all programs
-                handleListPrograms(exchange);
-            } else if ("POST".equals(method)) {
-                // Import a new program
-                handleImportProgram(exchange);
-            } else {
-                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
-            }
-        } catch (Exception e) {
-            Msg.error(this, "Error handling /programs endpoint", e);
-            sendErrorResponse(exchange, 500, "Internal Server Error: " + e.getMessage(), "INTERNAL_ERROR");
-        }
     }
 
     /**
@@ -190,7 +156,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
             
             // Check if this is a request for the current program
             if (path.equals("/programs/current")) {
-                handleCurrentProgram(exchange);
+                handleProgramInfo(exchange);
                 return;
             }
             
@@ -300,7 +266,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
     /**
      * Handle requests to the /programs/current endpoint
      */
-    private void handleCurrentProgram(HttpExchange exchange) throws IOException {
+    public void handleProgramInfo(HttpExchange exchange) throws IOException {
         try {
             String method = exchange.getRequestMethod();
             
@@ -322,7 +288,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
                     .result(info);
                 
                 // Add HATEOAS links
-                builder.addLink("self", "/programs/current");
+                builder.addLink("self", "/program");
                 
                 Project project = tool.getProject();
                 if (project != null) {
@@ -330,13 +296,13 @@ public class ProgramEndpoints extends AbstractEndpoint {
                 }
                 
                 // Add links to program resources
-                builder.addLink("functions", "/programs/current/functions");
-                builder.addLink("symbols", "/programs/current/symbols");
-                builder.addLink("data", "/programs/current/data");
-                builder.addLink("segments", "/programs/current/segments");
-                builder.addLink("memory", "/programs/current/memory");
-                builder.addLink("xrefs", "/programs/current/xrefs");
-                builder.addLink("analysis", "/programs/current/analysis");
+                builder.addLink("functions", "/functions");
+                builder.addLink("symbols", "/symbols");
+                builder.addLink("data", "/data");
+                builder.addLink("segments", "/segments");
+                builder.addLink("memory", "/memory");
+                builder.addLink("xrefs", "/xrefs");
+                builder.addLink("analysis", "/analysis");
                 
                 sendJsonResponse(exchange, builder.build(), 200);
             } else {
@@ -1336,7 +1302,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
      * @param exchange The HTTP exchange
      * @throws IOException If an I/O error occurs
      */
-    private void handleCurrentAddress(HttpExchange exchange) throws IOException {
+    public void handleCurrentAddress(HttpExchange exchange) throws IOException {
         try {
             if (!"GET".equals(exchange.getRequestMethod())) {
                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
@@ -1370,20 +1336,20 @@ public class ProgramEndpoints extends AbstractEndpoint {
                 .result(result);
             
             // Add HATEOAS links
-            builder.addLink("self", "/programs/current/address");
-            builder.addLink("program", "/programs/current");
+            builder.addLink("self", "/address");
+            builder.addLink("program", "/program");
             
             // If we have a current program, add a link to get memory at this address
             if (program != null) {
-                builder.addLink("memory", "/programs/current/memory/" + currentAddress + "?length=16");
+                builder.addLink("memory", "/memory/" + currentAddress + "?length=16");
                 
                 // Check if this address is within a function
                 ghidra.program.model.listing.Function function = program.getFunctionManager().getFunctionContaining(
                     program.getAddressFactory().getAddress(currentAddress));
                 
                 if (function != null) {
-                    builder.addLink("function", "/programs/current/functions/" + function.getEntryPoint().toString());
-                    builder.addLink("decompile", "/programs/current/functions/" + function.getEntryPoint().toString() + "/decompile");
+                    builder.addLink("function", "/functions/" + function.getEntryPoint().toString());
+                    builder.addLink("decompile", "/functions/" + function.getEntryPoint().toString() + "/decompile");
                 }
             }
             
@@ -1399,7 +1365,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
      * @param exchange The HTTP exchange
      * @throws IOException If an I/O error occurs
      */
-    private void handleCurrentFunction(HttpExchange exchange) throws IOException {
+    public void handleCurrentFunction(HttpExchange exchange) throws IOException {
         try {
             if (!"GET".equals(exchange.getRequestMethod())) {
                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
@@ -1430,17 +1396,17 @@ public class ProgramEndpoints extends AbstractEndpoint {
                 .result(functionInfo);
             
             // Add HATEOAS links
-            builder.addLink("self", "/programs/current/function");
-            builder.addLink("program", "/programs/current");
+            builder.addLink("self", "/function");
+            builder.addLink("program", "/program");
             
             // Add links to function-specific resources
             if (functionInfo.containsKey("address")) {
                 String functionAddress = (String) functionInfo.get("address");
-                builder.addLink("function", "/programs/current/functions/" + functionAddress);
-                builder.addLink("decompile", "/programs/current/functions/" + functionAddress + "/decompile");
-                builder.addLink("disassembly", "/programs/current/functions/" + functionAddress + "/disassembly");
-                builder.addLink("variables", "/programs/current/functions/" + functionAddress + "/variables");
-                builder.addLink("xrefs", "/programs/current/xrefs?to_addr=" + functionAddress);
+                builder.addLink("function", "/functions/" + functionAddress);
+                builder.addLink("decompile", "/functions/" + functionAddress + "/decompile");
+                builder.addLink("disassembly", "/functions/" + functionAddress + "/disassembly");
+                builder.addLink("variables", "/functions/" + functionAddress + "/variables");
+                builder.addLink("xrefs", "/xrefs?to_addr=" + functionAddress);
             }
             
             sendJsonResponse(exchange, builder.build(), 200);

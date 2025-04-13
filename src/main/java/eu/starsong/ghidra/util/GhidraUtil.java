@@ -327,6 +327,7 @@ public class GhidraUtil {
         return result;
     }
     
+    
     /**
      * Helper method to decompile a function.
      * @param function The function to decompile.

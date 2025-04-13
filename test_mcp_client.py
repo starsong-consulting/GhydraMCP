@@ -22,23 +22,34 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("mcp_client_test")
 
 async def assert_standard_mcp_success_response(response_content, expected_result_type=None):
-    """Helper to assert the standard success response structure for MCP tool calls."""
+    """Helper to assert the standard HATEOAS response structure for MCP tool calls.
+    
+    HATEOAS API responses must include:
+    - id: A UUID for the request
+    - instance: The URL of the responding instance
+    - success: Boolean indicating success or failure
+    - result: The actual response data
+    - _links: HATEOAS navigation links
+    """
     assert response_content, "Response content is empty"
     try:
         data = json.loads(response_content[0].text)
     except (json.JSONDecodeError, IndexError) as e:
         assert False, f"Failed to parse JSON response: {e} - Content: {response_content}"
 
+    # Check for required HATEOAS fields
+    assert "id" in data, "Response missing 'id' field"
+    assert "instance" in data, "Response missing 'instance' field"
     assert "success" in data, "Response missing 'success' field"
     assert data["success"] is True, f"API call failed: {data.get('error', 'Unknown error')}"
-    assert "timestamp" in data, "Response missing 'timestamp' field"
-    assert isinstance(data["timestamp"], (int, float)), "'timestamp' should be a number"
-    assert "port" in data, "Response missing 'port' field"
-    # We don't strictly check port number here as it might vary in MCP tests
     assert "result" in data, "Response missing 'result' field"
+    assert "_links" in data, "Response missing '_links' field for HATEOAS navigation"
+    
+    # Check result type if specified
     if expected_result_type:
         assert isinstance(data["result"], expected_result_type), \
             f"'result' field type mismatch: expected {expected_result_type}, got {type(data['result'])}"
+            
     return data # Return parsed data for further checks if needed
 
 async def test_bridge():
