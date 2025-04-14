@@ -1695,22 +1695,26 @@ def set_decompiler_comment(port: int = DEFAULT_GHIDRA_PORT,
             "timestamp": int(time.time() * 1000)
         }
     
-    # Decompiler comments are typically "plate" comments in Ghidra
-    payload = {
-        "comment": comment
-    }
-    
-    # First try to post to the more specific decompiler endpoint if it exists
+    # In Ghidra, function comments need to be set on the function itself, not as plate comments
+    # Let's first try to get the function at this address
     try:
-        response = safe_post(port, f"functions/{address}/comments", payload)
-        if response.get("success", False):
+        func_response = safe_get(port, f"functions/{address}")
+        if func_response.get("success", True):
+            # We have a function, let's use the function comment endpoint
+            payload = {
+                "comment": comment
+            }
+            
+            # Use the function update endpoint with just the comment field
+            response = safe_patch(port, f"functions/{address}", payload)
             return simplify_response(response)
     except Exception as e:
-        # Fall back to the general memory comments endpoint
+        logger.error(f"Error setting function comment: {e}")
+        # Fall back to plate comment if function-specific approach fails
         pass
     
-    # Fall back to the normal comment mechanism with "plate" type
-    return set_comment(port, address, comment, "plate")
+    # If we couldn't set a function comment, fall back to plate comment as before
+    return set_comment(port, address, comment, "pre")
 
 
 def handle_sigint(signum, frame):
