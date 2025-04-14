@@ -328,11 +328,18 @@ public class XrefsEndpoints extends AbstractEndpoint {
                     if (program.equals(programManager.getCurrentProgram())) {
                         ghidra.program.model.listing.Listing listing = program.getListing();
                         if (listing != null) {
-                            // Return the first defined address we can find
-                            ghidra.program.model.address.AddressIterator definedAddresses = 
-                                listing.getDefinedAddresses();
-                            if (definedAddresses.hasNext()) {
-                                return definedAddresses.next();
+                            // Return the first instruction or defined data we can find
+                            ghidra.program.model.listing.InstructionIterator instructions = 
+                                listing.getInstructions(true);
+                            if (instructions.hasNext()) {
+                                return instructions.next().getAddress();
+                            }
+                            
+                            // Or try defined data
+                            ghidra.program.model.listing.DataIterator data = 
+                                listing.getDefinedData(true);
+                            if (data.hasNext()) {
+                                return data.next().getAddress();
                             }
                         }
                     }
