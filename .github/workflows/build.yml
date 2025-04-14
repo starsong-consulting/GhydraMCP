@@ -2,7 +2,7 @@ name: Build Ghidra Plugin
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'api-*', 'feature/*', 'bugfix/*' ]
     tags:
       - 'v*'
   pull_request:
