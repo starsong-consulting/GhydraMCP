@@ -1541,6 +1541,34 @@ def create_data(port: int = DEFAULT_GHIDRA_PORT,
 
 
 @mcp.tool()
+def delete_data(port: int = DEFAULT_GHIDRA_PORT,
+               address: str = "") -> dict:
+    """Delete data at the specified address
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address in hex format
+        
+    Returns:
+        dict: Operation result
+    """
+    if not address:
+        return {
+            "success": False,
+            "error": "Address parameter is required",
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    payload = {
+        "address": address,
+        "action": "delete"
+    }
+    
+    response = safe_post(port, "data/delete", payload)
+    return simplify_response(response)
+
+
+@mcp.tool()
 def rename_data(port: int = DEFAULT_GHIDRA_PORT,
                address: str = "",
                name: str = "") -> dict:
