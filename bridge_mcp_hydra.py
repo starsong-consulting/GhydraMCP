@@ -33,13 +33,17 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
+# Version information
+BRIDGE_VERSION = "v2.0.0-beta.1"
+REQUIRED_API_VERSION = 2
+
 instructions = """
 GhydraMCP allows interacting with multiple Ghidra SRE instances. Ghidra SRE is a tool for reverse engineering and analyzing binaries, e.g. malware.
 
 First, run `discover_instances` to find open Ghidra instances. List tools to see what GhydraMCP can do.
 """
 
-mcp = FastMCP("GhydraMCP", instructions=instructions)
+mcp = FastMCP("GhydraMCP", version=BRIDGE_VERSION, instructions=instructions)
 
 ghidra_host = os.environ.get("GHIDRA_HYDRA_HOST", DEFAULT_GHIDRA_HOST)
 
@@ -391,8 +395,19 @@ def register_instance(port: int, url: str = None) -> str:
                 if "result" in version_data:
                     result = version_data["result"]
                     if isinstance(result, dict):
-                        project_info["plugin_version"] = result.get("plugin_version", "")
-                        project_info["api_version"] = result.get("api_version", 0)
+                        plugin_version = result.get("plugin_version", "")
+                        api_version = result.get("api_version", 0)
+                        
+                        project_info["plugin_version"] = plugin_version
+                        project_info["api_version"] = api_version
+                        
+                        # Verify API version compatibility
+                        if api_version != REQUIRED_API_VERSION:
+                            error_msg = f"API version mismatch: Plugin reports version {api_version}, but bridge requires version {REQUIRED_API_VERSION}"
+                            print(error_msg, file=sys.stderr)
+                            return error_msg
+                        
+                        print(f"Connected to Ghidra plugin version {plugin_version} with API version {api_version}")
             except Exception as e:
                 print(f"Error parsing plugin version: {e}", file=sys.stderr)
             
