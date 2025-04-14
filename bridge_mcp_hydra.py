@@ -1541,6 +1541,159 @@ def create_data(port: int = DEFAULT_GHIDRA_PORT,
 
 
 @mcp.tool()
+def rename_data(port: int = DEFAULT_GHIDRA_PORT,
+               address: str = "",
+               name: str = "") -> dict:
+    """Rename a data item
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address in hex format
+        name: New name for the data item
+        
+    Returns:
+        dict: Operation result with the updated data information
+    """
+    if not address or not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address and name parameters are required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    payload = {
+        "address": address,
+        "newName": name
+    }
+    
+    response = safe_post(port, "data", payload)
+    return simplify_response(response)
+
+
+@mcp.tool()
+def update_data(port: int = DEFAULT_GHIDRA_PORT,
+               address: str = "",
+               name: str = None,
+               data_type: str = None) -> dict:
+    """Update a data item's name and/or type
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address in hex format
+        name: New name for the data item
+        data_type: New data type (e.g. "uint32_t *", "char[10]", "struct point")
+        
+    Returns:
+        dict: Operation result with the updated data information
+    """
+    if not address or (name is None and data_type is None):
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address parameter and at least one of name or data_type are required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    payload = {
+        "address": address
+    }
+    
+    if name:
+        payload["newName"] = name
+        
+    if data_type:
+        payload["dataType"] = data_type
+    
+    # Handle the cases separately for maximum reliability
+    if name and data_type is None:
+        # If only renaming, use the existing data endpoint that's already tested
+        name_payload = {"address": address, "newName": name}
+        response = safe_post(port, "data", name_payload)
+        return simplify_response(response)
+    
+    if data_type and name is None:
+        # If only changing type, use the data/type endpoint
+        type_payload = {"address": address, "dataType": data_type}
+        response = safe_post(port, "data/type", type_payload)
+        return simplify_response(response)
+    
+    # If both, handle sequentially (rename first, then type)
+    if name and data_type:
+        # First rename
+        name_payload = {"address": address, "newName": name}
+        rename_response = safe_post(port, "data", name_payload)
+        
+        # Then set type
+        type_payload = {"address": address, "dataType": data_type}
+        type_response = safe_post(port, "data/type", type_payload)
+        
+        # Return the most recent response which should include updated info
+        return simplify_response(type_response)
+        
+    # This shouldn't be reached due to earlier checks
+    return {
+        "success": False,
+        "error": {
+            "code": "INVALID_REQUEST",
+            "message": "Neither name nor data_type specified"
+        },
+        "timestamp": int(time.time() * 1000)
+    }
+
+
+@mcp.tool()
+def set_data_type(port: int = DEFAULT_GHIDRA_PORT,
+                 address: str = "",
+                 data_type: str = "") -> dict:
+    """Set the data type of a data item
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        address: Memory address in hex format
+        data_type: Data type name (e.g. "uint32_t", "char[10]")
+        
+    Returns:
+        dict: Operation result with the updated data information
+    """
+    if not address or not data_type:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address and data_type parameters are required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+    
+    # We'll implement a more direct approach first by creating the data directly
+    # First get info about the current data to use its name
+    try:
+        # Try to use the built-in data types - simplified approach
+        payload = {
+            "address": address,
+            "type": data_type
+        }
+        
+        # This uses the create_data endpoint which has robust support
+        response = safe_post(port, "data", payload)
+        return simplify_response(response)
+    except Exception as e:
+        return {
+            "success": False,
+            "error": {
+                "code": "DATA_TYPE_ERROR",
+                "message": f"Failed to set data type: {str(e)}"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+
+@mcp.tool()
 def list_namespaces(port: int = DEFAULT_GHIDRA_PORT,
                    offset: int = 0,
                    limit: int = 100) -> dict:
