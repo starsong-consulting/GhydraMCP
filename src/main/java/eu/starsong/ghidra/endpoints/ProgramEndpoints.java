@@ -50,6 +50,8 @@ public class ProgramEndpoints extends AbstractEndpoint {
         server.createContext("/address", this::handleCurrentAddress);
         server.createContext("/function", this::handleCurrentFunction);
         
+        // Register direct analysis endpoints according to HATEOAS API
+        server.createContext("/analysis/callgraph", this::handleCallGraph);
     }
 
     @Override
@@ -1283,8 +1285,8 @@ public class ProgramEndpoints extends AbstractEndpoint {
                     sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
                 }
             } else if (path.equals("/callgraph") || path.startsWith("/callgraph/")) {
-                // Handle call graph generation
-                handleCallGraph(exchange, program, path);
+                // Handle call graph generation - for backward compatibility 
+                handleCallGraph(exchange);
             } else if (path.equals("/dataflow") || path.startsWith("/dataflow/")) {
                 // Handle data flow analysis
                 handleDataFlow(exchange, program, path);
@@ -1460,7 +1462,14 @@ public class ProgramEndpoints extends AbstractEndpoint {
     /**
      * Handle call graph generation
      */
-    private void handleCallGraph(HttpExchange exchange, Program program, String path) throws IOException {
+    private void handleCallGraph(HttpExchange exchange) throws IOException {
+        Program program = getCurrentProgram();
+        if (program == null) {
+            sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+            return;
+        }
+        
+        String path = "";
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             return;

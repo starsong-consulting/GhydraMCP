@@ -13,8 +13,10 @@ import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Parameter;
+import ghidra.program.model.listing.ParameterImpl;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.Variable;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.HighVariable;
 import ghidra.program.model.pcode.PcodeOp;
@@ -396,5 +398,88 @@ public class GhidraUtil {
         }
         
         return variables;
+    }
+    
+    /**
+     * Applies a function signature to an existing function.
+     * @param function The function to update
+     * @param signatureStr The C-style function signature string
+     * @return true if successful, false otherwise
+     */
+    public static boolean setFunctionSignature(Function function, String signatureStr) {
+        if (function == null || signatureStr == null || signatureStr.isEmpty()) {
+            return false;
+        }
+        
+        Program program = function.getProgram();
+        if (program == null) {
+            return false;
+        }
+        
+        try {
+            // Create a function signature parser
+            ghidra.app.util.parser.FunctionSignatureParser parser = 
+                new ghidra.app.util.parser.FunctionSignatureParser(
+                    program.getDataTypeManager(), null);
+            
+            // Parse the signature string
+            ghidra.program.model.data.FunctionDefinitionDataType functionDef = 
+                parser.parse(function.getSignature(), signatureStr);
+            
+            if (functionDef == null) {
+                return false;
+            }
+            
+            // Get source type for update
+            ghidra.program.model.symbol.SourceType sourceType = 
+                ghidra.program.model.symbol.SourceType.USER_DEFINED;
+                
+            // Get the parameters from the function definition
+            ghidra.program.model.data.ParameterDefinition[] paramDefs = 
+                functionDef.getArguments();
+            
+            try {
+                // Get return type from the function definition
+                ghidra.program.model.data.DataType returnType = functionDef.getReturnType();
+                
+                // Set the return type
+                function.setReturnType(returnType, sourceType);
+                
+                // Get calling convention if available
+                if (functionDef.getCallingConvention() != null) {
+                    String callingConvention = functionDef.getCallingConvention().getName();
+                    function.setCallingConvention(callingConvention);
+                }
+                
+                // Remove all existing parameters
+                while (function.getParameterCount() > 0) {
+                    function.removeParameter(0);
+                }
+                
+                // Add each parameter
+                if (paramDefs != null) {
+                    for (int i = 0; i < paramDefs.length; i++) {
+                        ghidra.program.model.data.ParameterDefinition paramDef = paramDefs[i];
+                        String name = paramDef.getName();
+                        ghidra.program.model.data.DataType dataType = paramDef.getDataType();
+                        
+                        // Create parameter and then add it
+                        Parameter param = new ParameterImpl(name, dataType, program);
+                        function.addParameter(param, sourceType);
+                    }
+                }
+                
+                return true;
+            } catch (ghidra.util.exception.InvalidInputException e) {
+                ghidra.util.Msg.error(GhidraUtil.class, 
+                    "Error setting function parameters: " + e.getMessage(), e);
+                return false;
+            }
+        }
+        catch (Exception e) {
+            ghidra.util.Msg.error(GhidraUtil.class, 
+                "Error setting function signature: " + e.getMessage(), e);
+            return false;
+        }
     }
 }

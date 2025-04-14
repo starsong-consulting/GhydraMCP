@@ -406,9 +406,21 @@ public class FunctionEndpoints extends AbstractEndpoint {
         }
         
         if (signature != null && !signature.isEmpty()) {
-            // Update signature - placeholder
-            sendErrorResponse(exchange, 501, "Updating function signature not implemented", "NOT_IMPLEMENTED");
-            return;
+            // Update function signature using our utility method
+            try {
+                boolean success = TransactionHelper.executeInTransaction(program, "Set Function Signature", () -> {
+                    return GhidraUtil.setFunctionSignature(function, signature);
+                });
+                
+                if (!success) {
+                    sendErrorResponse(exchange, 400, "Failed to set function signature: invalid signature format", "SIGNATURE_FAILED");
+                    return;
+                }
+                changed = true;
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Failed to set function signature: " + e.getMessage(), "SIGNATURE_FAILED");
+                return;
+            }
         }
         
         if (comment != null) {
@@ -830,9 +842,21 @@ public class FunctionEndpoints extends AbstractEndpoint {
         }
         
         if (signature != null && !signature.isEmpty()) {
-            // Update signature
-            sendErrorResponse(exchange, 501, "Updating function signature not implemented", "NOT_IMPLEMENTED");
-            return;
+            // Update function signature using our utility method
+            try {
+                boolean success = TransactionHelper.executeInTransaction(program, "Set Function Signature", () -> {
+                    return GhidraUtil.setFunctionSignature(function, signature);
+                });
+                
+                if (!success) {
+                    sendErrorResponse(exchange, 400, "Failed to set function signature: invalid signature format", "SIGNATURE_FAILED");
+                    return;
+                }
+                changed = true;
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Failed to set function signature: " + e.getMessage(), "SIGNATURE_FAILED");
+                return;
+            }
         }
         
         if (comment != null) {

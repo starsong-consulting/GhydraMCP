@@ -33,6 +33,9 @@ public class AnalysisEndpoints extends AbstractEndpoint {
     @Override
     public void registerEndpoints(HttpServer server) {
         server.createContext("/analysis", this::handleAnalysisRequest);
+        
+        // NOTE: The callgraph endpoint is now registered in ProgramEndpoints
+        // This comment is to avoid confusion during future maintenance
     }
     
     private void handleAnalysisRequest(HttpExchange exchange) throws IOException {
