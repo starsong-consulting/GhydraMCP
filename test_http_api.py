@@ -661,18 +661,17 @@ def test_all_read_endpoints():
         "/",                                          # Root endpoint
         "/info",                                      # Server info
         "/plugin-version",                            # Plugin version
-        "/projects",                                  # All projects
+        "/project",                                   # Current project
         "/instances",                                 # All instances
         "/program",                                   # Current program
-        "/functions",                                 # All functions
         "/functions?limit=3",                         # Functions with pagination
         "/functions?name_contains=main",              # Functions with name filter
         "/variables?limit=3",                         # Variables
         "/symbols?limit=3",                           # Symbols
         "/data?limit=3",                              # Data
         "/segments?limit=3",                          # Memory segments
-        "/memory?address=0x00100000&length=16",       # Memory access
-        "/xrefs?limit=3",                             # Cross references
+        "/memory?address=08000000&length=16",         # Memory access
+        "/xrefs?to_addr=08000200&limit=3",             # Cross references
         "/analysis",                                  # Analysis status
         "/address",                                   # Current address
         "/function",                                  # Current function
