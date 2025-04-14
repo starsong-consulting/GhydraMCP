@@ -37,6 +37,24 @@ public class XrefsEndpoints extends AbstractEndpoint {
     protected PluginTool getTool() {
         return tool;
     }
+    
+    /**
+     * Helper method to convert ReferenceIterator to an iterable collection
+     */
+    private List<Reference> collectReferences(ReferenceIterator iterator) {
+        List<Reference> references = new ArrayList<>();
+        while (iterator.hasNext()) {
+            references.add(iterator.next());
+        }
+        return references;
+    }
+    
+    /**
+     * Helper method to convert Reference[] to a list
+     */
+    private List<Reference> collectReferences(Reference[] refs) {
+        return Arrays.asList(refs);
+    }
 
     @Override
     public void registerEndpoints(HttpServer server) {
@@ -104,9 +122,8 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 
                 // Get references to this address
                 if (toAddr != null) {
-                    ReferenceIterator refsTo = refManager.getReferencesTo(toAddr);
-                    while (refsTo.hasNext()) {
-                        Reference ref = refsTo.next();
+                    // Get references to this address - must manually convert array
+                    for (Reference ref : collectReferences(refManager.getReferencesTo(toAddr))) {
                         if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
                             continue; // Skip if type filter doesn't match
                         }
@@ -118,9 +135,8 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 
                 // Get references from this address
                 if (fromAddr != null) {
-                    ReferenceIterator refsFrom = refManager.getReferencesFrom(fromAddr);
-                    while (refsFrom.hasNext()) {
-                        Reference ref = refsFrom.next();
+                    // Get references from this address - must manually convert array
+                    for (Reference ref : collectReferences(refManager.getReferencesFrom(fromAddr))) {
                         if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
                             continue; // Skip if type filter doesn't match
                         }
@@ -292,23 +308,32 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 ghidra.app.services.ProgramManager programManager = 
                     tool.getService(ghidra.app.services.ProgramManager.class);
                 if (programManager != null && programManager.getCurrentProgram() == program) {
-                    // In Ghidra 11+, use the current cursor location
-                    ghidra.app.services.LocationService locationService = 
-                        tool.getService(ghidra.app.services.LocationService.class);
-                    if (locationService != null) {
-                        ghidra.program.util.ProgramLocation location = locationService.getLocation();
-                        if (location != null && location.getProgram() == program) {
-                            return location.getAddress();
+                        // Try to get the current location using CurrentLocation service
+                    try {
+                        // Try to find the current location from the program manager
+                        java.lang.reflect.Method getCurrentLocationMethod = 
+                            programManager.getClass().getMethod("getCurrentLocation");
+                        if (getCurrentLocationMethod != null) {
+                            ghidra.program.util.ProgramLocation location = 
+                                (ghidra.program.util.ProgramLocation)getCurrentLocationMethod.invoke(programManager);
+                            if (location != null && location.getProgram() == program) {
+                                return location.getAddress();
+                            }
                         }
+                    } catch (Exception e) {
+                        // Method doesn't exist, ignore and continue with other approaches
                     }
                     
-                    // Try selection service as a last resort
-                    ghidra.app.services.SelectionService selectionService = 
-                        tool.getService(ghidra.app.services.SelectionService.class);
-                    if (selectionService != null) {
-                        ghidra.program.util.ProgramSelection selection = selectionService.getCurrentSelection();
-                        if (selection != null && !selection.isEmpty()) {
-                            return selection.getMinAddress();
+                    // If program is selected, use its memory address as a fallback
+                    if (program.equals(programManager.getCurrentProgram())) {
+                        ghidra.program.model.listing.Listing listing = program.getListing();
+                        if (listing != null) {
+                            // Return the first defined address we can find
+                            ghidra.program.model.address.AddressIterator definedAddresses = 
+                                listing.getDefinedAddresses();
+                            if (definedAddresses.hasNext()) {
+                                return definedAddresses.next();
+                            }
                         }
                     }
                 }
