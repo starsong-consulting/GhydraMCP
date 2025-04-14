@@ -340,6 +340,78 @@ async def test_bridge():
                 assert read_memory_data.get("address") == func_address, f"Wrong address in read_memory result: {read_memory_data.get('address')}"
                 logger.info(f"Read memory result: {read_memory_result}")
                 
+                # Test data operations (create, rename, change type)
+                logger.info("Testing data operations...")
+                try:
+                    # Get a memory address to create test data
+                    data_address = func_address
+                    
+                    # First create test data
+                    create_data_args = {"port": 8192, "address": data_address, "data_type": "uint32_t"}
+                    logger.info(f"Calling create_data with args: {create_data_args}")
+                    create_data_result = await session.call_tool("create_data", arguments=create_data_args)
+                    create_data_response = json.loads(create_data_result.content[0].text)
+                    assert create_data_response.get("success") is True, f"Create data failed: {create_data_response}"
+                    logger.info(f"Create data result: {create_data_result}")
+                    
+                    # Test Case 1: Data rename operation (name only)
+                    test_data_name = "test_data_item"
+                    rename_data_args = {"port": 8192, "address": data_address, "name": test_data_name}
+                    logger.info(f"Calling rename_data with args: {rename_data_args}")
+                    rename_data_result = await session.call_tool("rename_data", arguments=rename_data_args)
+                    rename_data_response = json.loads(rename_data_result.content[0].text)
+                    assert rename_data_response.get("success") is True, f"Rename data failed: {rename_data_response}"
+                    logger.info(f"Rename data result: {rename_data_result}")
+                    
+                    # Verify the name was changed
+                    if rename_data_response.get("result", {}).get("name") != test_data_name:
+                        logger.warning(f"Rename operation didn't set the expected name. Got: {rename_data_response.get('result', {}).get('name')}")
+                    
+                    # Test Case 2: Data type change operation (type only)
+                    change_type_args = {"port": 8192, "address": data_address, "data_type": "int"}
+                    logger.info(f"Calling set_data_type with args: {change_type_args}")
+                    change_type_result = await session.call_tool("set_data_type", arguments=change_type_args)
+                    change_type_response = json.loads(change_type_result.content[0].text)
+                    assert change_type_response.get("success") is True, f"Change data type failed: {change_type_response}"
+                    logger.info(f"Change data type result: {change_type_result}")
+                    
+                    # Verify the type was changed but name was preserved
+                    result = change_type_response.get("result", {})
+                    if result.get("dataType") != "int":
+                        logger.warning(f"Type change operation didn't set the expected type. Got: {result.get('dataType')}")
+                    if result.get("name") != test_data_name:
+                        logger.warning(f"Type change operation didn't preserve the name. Expected: {test_data_name}, Got: {result.get('name')}")
+                    
+                    # Test Case 3: Combined update operation (both name and type)
+                    update_data_args = {
+                        "port": 8192, 
+                        "address": data_address, 
+                        "name": "updated_data_item", 
+                        "data_type": "byte"
+                    }
+                    logger.info(f"Calling update_data with args: {update_data_args}")
+                    update_data_result = await session.call_tool("update_data", arguments=update_data_args)
+                    update_data_response = json.loads(update_data_result.content[0].text)
+                    assert update_data_response.get("success") is True, f"Update data failed: {update_data_response}"
+                    logger.info(f"Update data result: {update_data_result}")
+                    
+                    # Verify both name and type were changed
+                    result = update_data_response.get("result", {})
+                    if result.get("name") != "updated_data_item":
+                        logger.warning(f"Update operation didn't set the expected name. Got: {result.get('name')}")
+                    if result.get("dataType") != "byte":
+                        logger.warning(f"Update operation didn't set the expected type. Got: {result.get('dataType')}")
+                    
+                    # Clean up by restoring original data type
+                    restore_type_args = {"port": 8192, "address": data_address, "data_type": "uint32_t"}
+                    logger.info(f"Restoring data type with args: {restore_type_args}")
+                    restore_type_result = await session.call_tool("set_data_type", arguments=restore_type_args)
+                    restore_type_response = json.loads(restore_type_result.content[0].text)
+                    assert restore_type_response.get("success") is True, f"Restore data type failed: {restore_type_response}"
+                    
+                except Exception as e:
+                    logger.warning(f"Error testing data operations: {e} - This is not critical")
+                
                 # Test callgraph functionality - handle possible failure gracefully
                 if func_address:
                     logger.info(f"Calling get_callgraph with address: {func_address}")

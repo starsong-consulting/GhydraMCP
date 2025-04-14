@@ -127,6 +127,10 @@ public class HttpUtil {
     public static Map<String, String> parseJsonPostParams(HttpExchange exchange) throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
+        
+        // Debug - log raw request body
+        ghidra.util.Msg.info(HttpUtil.class, "DEBUG Raw request body: " + bodyStr);
+        
         Map<String, String> params = new HashMap<>();
 
         try {

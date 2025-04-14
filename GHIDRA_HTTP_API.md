@@ -1,8 +1,8 @@
-# GhydraMCP Ghidra Plugin HTTP API v1
+# GhydraMCP Ghidra Plugin HTTP API v2
 
 ## Overview
 
-This API provides a Hypermedia-driven interface (HATEOAS) to interact with Ghidra's CodeBrowser, enabling AI-driven and automated reverse engineering workflows. It allows interaction with Ghidra projects, programs (binaries), functions, symbols, data, memory segments, cross-references, and analysis features. Each program open in Ghidra will have its own instance, so all resources are specific to that program.
+This API provides a Hypermedia-driven interface (HATEOAS) to interact with Ghidra's CodeBrowser, enabling AI-driven and automated reverse engineering workflows. It allows interaction with Ghidra projects, programs (binaries), functions, symbols, data, memory segments, cross-references, and analysis features. Each program open in Ghidra will have its own plugin instance, so all resources are specific to that program.
 
 ## General Concepts
 
@@ -48,7 +48,7 @@ List results (arrays in `result`) will typically include pagination information 
 ```json
 {
   "id": "req-123",
-  "instance": "http://localhost:1337",
+  "instance": "http://localhost:8192",
   "success": true,
   "result": [ ... objects ... ],
   "size": 150, // Total number of items matching the query across all pages
@@ -115,45 +115,117 @@ Returns the version of the running Ghidra plugin and its API. Essential for comp
 ```json
 {
   "id": "req-meta-ver",
-  "instance": "http://localhost:1337",
+  "instance": "http://localhost:8192",
   "success": true,
   "result": {
     "plugin_version": "v2.0.0", // Example plugin build version
     "api_version": 2            // Ordinal API version
   },
   "_links": {
-    "self": { "href": "/plugin-version" }
+    "self": { "href": "/plugin-version" },
+    "root": { "href": "/" }
+  }
+}
+```
+
+### `GET /info`
+Returns information about the current plugin instance, including details about the loaded program and project.
+```json
+{
+  "id": "req-info",
+  "instance": "http://localhost:8192",
+  "success": true,
+  "result": {
+    "isBaseInstance": true,
+    "file": "example.exe",
+    "architecture": "x86:LE:64:default",
+    "processor": "x86",
+    "addressSize": 64,
+    "creationDate": "2023-01-01T12:00:00Z",
+    "executable": "/path/to/example.exe",
+    "project": "MyProject",
+    "projectLocation": "/path/to/MyProject",
+    "serverPort": 8192,
+    "serverStartTime": 1672531200000,
+    "instanceCount": 1
+  },
+  "_links": {
+    "self": { "href": "/info" },
+    "root": { "href": "/" },
+    "instances": { "href": "/instances" },
+    "program": { "href": "/program" }
+  }
+}
+```
+
+### `GET /instances`
+Returns information about all active GhydraMCP plugin instances.
+```json
+{
+  "id": "req-instances",
+  "instance": "http://localhost:8192",
+  "success": true,
+  "result": [
+    {
+      "port": 8192,
+      "url": "http://localhost:8192",
+      "type": "base",
+      "project": "MyProject",
+      "file": "example.exe",
+      "_links": {
+        "self": { "href": "/instances/8192" },
+        "info": { "href": "http://localhost:8192/info" },
+        "connect": { "href": "http://localhost:8192" }
+      }
+    },
+    {
+      "port": 8193,
+      "url": "http://localhost:8193",
+      "type": "standard",
+      "project": "MyProject",
+      "file": "library.dll",
+      "_links": {
+        "self": { "href": "/instances/8193" },
+        "info": { "href": "http://localhost:8193/info" },
+        "connect": { "href": "http://localhost:8193" }
+      }
+    }
+  ],
+  "_links": {
+    "self": { "href": "/instances" },
+    "register": { "href": "/registerInstance", "method": "POST" },
+    "unregister": { "href": "/unregisterInstance", "method": "POST" },
+    "programs": { "href": "/programs" }
   }
 }
 ```
 
 ## Resource Types
 
-Each Ghidra plugin instance runs in the context of a single program, so all resources are relative to the current program. The program's details are available through the `GET /info` and `GET /programs/current` endpoints.
+Each Ghidra plugin instance runs in the context of a single program, so all resources are relative to the current program. The program's details are available through the `GET /info` and `GET /program` endpoints.
 
-### 1. Projects
+### 1. Project
 
-Represents Ghidra projects, containers for programs.
+Represents the current Ghidra project, which is a container for programs.
 
 - **`GET /project`**: Get details about the current project (e.g., location, list of open programs within it via links).
 
-### 2. Programs
+### 2. Program
 
-Represents individual binaries loaded in Ghidra projects.
+Represents the current binary loaded in Ghidra.
 
 - **`GET /program`**: Get metadata for the current program (e.g., name, architecture, memory layout, analysis status).
   ```json
   // Example Response Fragment for GET /program
   "result": {
+    "programId": "myproject:/path/to/mybinary.exe",
     "name": "mybinary.exe",
-    "project": "myproject",
-    "language_id": "x86:LE:64:default",
-    "compiler_spec_id": "gcc",
-    "image_base": "0x400000",
-    "memory_size": 1048576,
-    "is_open": true,
-    "analysis_complete": true
-    // ... other metadata
+    "isOpen": true,
+    "languageId": "x86:LE:64:default",
+    "compilerSpecId": "gcc",
+    "imageBase": "0x400000",
+    "memorySize": 1048576,
+    "analysisComplete": true
   },
   "_links": {
     "self": { "href": "/program" },
@@ -168,7 +240,47 @@ Represents individual binaries loaded in Ghidra projects.
   }
   ```
 
-### 3. Functions
+### 3. Current Location
+
+Provides information about the current cursor position and function in Ghidra's CodeBrowser.
+
+- **`GET /address`**: Get the current cursor position.
+  ```json
+  // Example Response
+  "result": {
+    "address": "0x401000",
+    "program": "mybinary.exe"
+  },
+  "_links": {
+    "self": { "href": "/address" },
+    "program": { "href": "/program" },
+    "memory": { "href": "/memory/0x401000?length=16" },
+    "function": { "href": "/functions/0x401000" },
+    "decompile": { "href": "/functions/0x401000/decompile" }
+  }
+  ```
+
+- **`GET /function`**: Get information about the function at the current cursor position.
+  ```json
+  // Example Response
+  "result": {
+    "name": "main",
+    "address": "0x401000",
+    "signature": "int main(int argc, char** argv)",
+    "size": 256
+  },
+  "_links": {
+    "self": { "href": "/function" },
+    "program": { "href": "/program" },
+    "function": { "href": "/functions/0x401000" },
+    "decompile": { "href": "/functions/0x401000/decompile" },
+    "disassembly": { "href": "/functions/0x401000/disassembly" },
+    "variables": { "href": "/functions/0x401000/variables" },
+    "xrefs": { "href": "/xrefs?to_addr=0x401000" }
+  }
+  ```
+
+### 4. Functions
 
 Represents functions within the current program.
 
@@ -239,7 +351,7 @@ Represents functions within the current program.
 - **`GET /functions/{address}/variables`**: List local variables defined within the function. Supports searching by name.
 - **`PATCH /functions/{address}/variables/{variable_name}`**: Modify a local variable (rename, change type). Requires `name` and/or `type` in the payload.
 
-### 4. Symbols & Labels
+### 5. Symbols & Labels
 
 Represents named locations (functions, data, labels).
 
@@ -249,7 +361,7 @@ Represents named locations (functions, data, labels).
 - **`PATCH /symbols/{address}`**: Modify properties of the symbol (e.g., set as primary, change namespace). Payload specifies changes.
 - **`DELETE /symbols/{address}`**: Remove the symbol at the specified address.
 
-### 5. Data
+### 6. Data
 
 Represents defined data items in memory.
 
@@ -259,14 +371,14 @@ Represents defined data items in memory.
 - **`PATCH /data/{address}`**: Modify a data item (e.g., change `name`, `type`, `comment`). Payload specifies changes.
 - **`DELETE /data/{address}`**: Undefine the data item at the specified address.
 
-### 6. Memory Segments
+### 7. Memory Segments
 
 Represents memory blocks/sections defined in the program. 
 
 - **`GET /segments`**: List all memory segments (e.g., `.text`, `.data`, `.bss`).
 - **`GET /segments/{segment_name}`**: Get details for a specific segment (address range, permissions, size).
 
-### 7. Memory Access
+### 8. Memory Access
 
 Provides raw memory access. 
 
@@ -285,7 +397,7 @@ Provides raw memory access.
   ```
 - **`PATCH /memory/{address}`**: Write bytes to memory. Requires `bytes` (in specified `format`) and `format` in the payload. Use with extreme caution.
 
-### 8. Cross-References (XRefs)
+### 9. Cross-References (XRefs)
 
 Provides information about references to/from addresses.
 
@@ -296,13 +408,99 @@ Provides information about references to/from addresses.
     - `?type=[CALL|READ|WRITE|DATA|POINTER|...]`: Filter by reference type.
 - **`GET /functions/{address}/xrefs`**: Convenience endpoint, equivalent to `GET /xrefs?to_addr={address}` and potentially `GET /xrefs?from_addr={address}` combined or linked.
 
-### 9. Analysis
+### 10. Analysis
 
 Provides access to Ghidra's analysis results.
 
-- **`GET /analysis/callgraph`**: Retrieve the function call graph (potentially filtered or paginated). Format might be nodes/edges JSON or a standard graph format like DOT.
-- **`GET /analysis/dataflow/{address}`**: Perform data flow analysis starting from a specific address or instruction. Requires parameters specifying forward/backward, context, etc. (Details TBD).
-- **`POST /analysis/analyze`**: Trigger a full or partial re-analysis of the program.
+- **`GET /analysis`**: Get information about the analysis status and available analyzers.
+  ```json
+  // Example Response
+  "result": {
+    "program": "mybinary.exe",
+    "analysis_enabled": true,
+    "available_analyzers": [
+      "Function Start Analyzer",
+      "Basic Block Model Analyzer",
+      "Reference Analyzer",
+      "Call Convention Analyzer",
+      "Data Reference Analyzer",
+      "Decompiler Parameter ID",
+      "Stack Analyzer"
+    ]
+  },
+  "_links": {
+    "self": { "href": "/analysis" },
+    "program": { "href": "/program" },
+    "analyze": { "href": "/analysis", "method": "POST" },
+    "callgraph": { "href": "/analysis/callgraph" }
+  }
+  ```
+
+- **`POST /analysis`**: Trigger a full or partial re-analysis of the program.
+  ```json
+  // Example Response
+  "result": {
+    "program": "mybinary.exe",
+    "analysis_triggered": true,
+    "message": "Analysis initiated on program"
+  }
+  ```
+
+- **`GET /analysis/callgraph`**: Retrieve the function call graph.
+  - Query Parameters:
+    - `?function=[function_name]`: Start the call graph from this function (default: entry point).
+    - `?max_depth=[int]`: Maximum depth of the call graph (default: 3).
+  ```json
+  // Example Response
+  "result": {
+    "root": "main",
+    "root_address": "0x401000",
+    "max_depth": 3,
+    "nodes": [
+      {
+        "id": "0x401000",
+        "name": "main",
+        "address": "0x401000",
+        "depth": 0,
+        "_links": {
+          "self": { "href": "/functions/0x401000" }
+        }
+      },
+      // ... more nodes
+    ],
+    "edges": [
+      {
+        "from": "0x401000",
+        "to": "0x401100",
+        "type": "call",
+        "call_site": "0x401050"
+      },
+      // ... more edges
+    ]
+  }
+  ```
+
+- **`GET /analysis/dataflow`**: Perform data flow analysis starting from a specific address.
+  - Query Parameters:
+    - `?address=[address]`: Starting address for data flow analysis (required).
+    - `?direction=[forward|backward]`: Direction of data flow analysis (default: forward).
+    - `?max_steps=[int]`: Maximum number of steps to analyze (default: 50).
+  ```json
+  // Example Response
+  "result": {
+    "start_address": "0x401050",
+    "direction": "forward",
+    "max_steps": 50,
+    "steps": [
+      {
+        "address": "0x401050",
+        "instruction": "MOV EAX, [RBP+0x8]",
+        "description": "Starting point of data flow analysis"
+      },
+      // ... more steps
+    ]
+  }
+  ```
 
 ## Design Considerations for AI Usage
 

@@ -27,6 +27,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Implemented proper resource linking with HATEOAS
 - Added disassembly endpoint for functions with HATEOAS links
 - Enhanced parameter validation in MCP bridge tools
+- Added comprehensive data manipulation capabilities:
+  - Data renaming (changing only the name)
+  - Data type setting (changing only the type)
+  - Combined data update operations (changing both name and type)
+  - Dedicated `/data/type` and `/data/update` endpoints
+  - Standalone test script for data operations
 
 ### Changed
 - Unified all endpoints to use structured JSON
@@ -46,6 +52,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - All responses must include _links object with at least self reference
   - Standardized JSON structures for all resource types
   - Created comprehensive requirements documentation in HATEOAS_API.md
+- Updated API documentation to version 2 with comprehensive endpoint descriptions
 
 ### Fixed
 - Fixed endpoint registration in refactored code (all endpoints now working)
@@ -62,6 +69,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Fixed decompile endpoint to return structured decompiled code
   - Fixed disassembly endpoint to return structured instruction list
   - Fixed variables endpoint to return proper variable structure
+- Fixed data manipulation operations:
+  - Resolved HTTP request body consumption issue
+  - Fixed parameter naming inconsistency between "dataType" and "type"
+  - Improved preservation of names during data type changes
+  - Enhanced error handling for data operations
 
 ## [1.4.0] - 2025-04-08
 

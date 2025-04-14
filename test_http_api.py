@@ -649,6 +649,81 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
                 "Function result missing required fields"
             )
 
+    def test_data_operations(self):
+        """Test data update operations including renaming and type changes"""
+        # First find a suitable data item to test with
+        response = requests.get(f"{BASE_URL}/data?limit=1")
+        if response.status_code != 200:
+            self.skipTest("No data items available to test operations")
+            
+        data = response.json()
+        self.assertTrue(data.get("success", False), "API call failed")
+        
+        result = data.get("result", [])
+        if not result or not isinstance(result, list) or not result[0].get("address"):
+            self.skipTest("No data items found or invalid response format")
+            
+        address = result[0]["address"]
+        original_name = result[0].get("label", "unnamed")
+        original_type = result[0].get("dataType", "undefined")
+        
+        try:
+            # Test 1: Rename Only
+            test_name = "TEST_DATA_RENAME"
+            payload = {
+                "address": address,
+                "newName": test_name
+            }
+            
+            response = requests.post(f"{BASE_URL}/data", json=payload)
+            self.assertEqual(response.status_code, 200)
+            
+            data = response.json()
+            self.assertStandardSuccessResponse(data)
+            self.assertEqual(data["result"]["name"], test_name)
+            self.assertEqual(data["result"]["address"], address)
+            
+            # Test 2: Type Change Only
+            payload = {
+                "address": address,
+                "type": "int"
+            }
+            
+            response = requests.post(f"{BASE_URL}/data/type", json=payload)
+            self.assertEqual(response.status_code, 200)
+            
+            data = response.json()
+            self.assertStandardSuccessResponse(data)
+            self.assertEqual(data["result"]["dataType"], "int")
+            self.assertEqual(data["result"]["address"], address)
+            
+            # Test 3: Both Name and Type Change
+            payload = {
+                "address": address,
+                "newName": "TEST_DATA_BOTH",
+                "type": "byte"
+            }
+            
+            response = requests.post(f"{BASE_URL}/data/update", json=payload)
+            self.assertEqual(response.status_code, 200)
+            
+            data = response.json()
+            self.assertStandardSuccessResponse(data)
+            self.assertEqual(data["result"]["name"], "TEST_DATA_BOTH")
+            self.assertEqual(data["result"]["dataType"], "byte")
+            self.assertEqual(data["result"]["address"], address)
+            
+            # Restore original values
+            if original_type != "undefined" and original_name != "unnamed":
+                payload = {
+                    "address": address,
+                    "newName": original_name,
+                    "type": original_type
+                }
+                requests.post(f"{BASE_URL}/data", json=payload)
+        except Exception as e:
+            self.fail(f"Data operations test failed: {str(e)}")
+
 def test_all_read_endpoints():
     """Function to exercise all read endpoints and display their responses.
     This is called separately from the unittest framework when requested."""
