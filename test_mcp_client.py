@@ -466,8 +466,9 @@ async def test_bridge():
                     if not original_signature:
                         logger.warning("Could not get original signature - skipping signature test")
                     else:
-                        # Create test signature by adding parameters - ensure correct spacing
-                        modified_signature = f"int {func_name}(uint32_t * mcp_data, int mcp_count, uint32_t * mcp_key)"
+                        # Create test signature by changing types to ensure it's actually different
+                        # Using 'uint' instead of 'unsigned int' to match Ghidra's normalized type naming
+                        modified_signature = f"byte {func_name}(uint * mcp_data, short mcp_count, int * mcp_key)"
                         logger.info(f"Original signature: {original_signature}")
                         logger.info(f"Setting function signature to: {modified_signature}")
 
