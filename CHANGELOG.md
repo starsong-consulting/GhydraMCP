@@ -7,73 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Complete Ghidra HTTP API implementation:
-  - Memory operations (read/write)
-  - Cross-reference analysis
-  - Program analysis (callgraph, dataflow)
-- Enhanced decompiler controls:
-  - Raw output vs clean pseudocode
-  - Syntax tree visibility
-  - Multiple simplification styles
-- Comprehensive API documentation (GHIDRA_HTTP_API.md, MCP_BRIDGE_API.md)
-- Standardized JSON response formats
-- Implemented `/plugin-version` endpoint for version checking
-- Added proper error handling for when no program is loaded
-- Implemented HATEOAS-driven API as described in GHIDRA_HTTP_API.md:
-  - Added `/programs` and `/programs/{program_id}` endpoints
-  - Implemented program-specific resource endpoints
-  - Added pagination support with metadata
-  - Added filtering capabilities (by name, address, etc.)
-  - Implemented proper resource linking with HATEOAS
-- Added disassembly endpoint for functions with HATEOAS links
-- Enhanced parameter validation in MCP bridge tools
-- Added comprehensive data manipulation capabilities:
-  - Data renaming (changing only the name)
-  - Data type setting (changing only the type)
-  - Combined data update operations (changing both name and type)
-  - Dedicated `/data/type` and `/data/update` endpoints
-  - Standalone test script for data operations
+- **Comprehensive Data Manipulation:** Added tools/endpoints for creating (`create_data`), deleting (`delete_data`), renaming (`rename_data`), changing type (`set_data_type`), and combined updates (`update_data`) for data items. Supports common types (byte, word, dword, string, etc.). (6c28553, 5797fb3, 28870e9)
+- **Enhanced Cross-Reference (Xrefs) Analysis:** Implemented accurate xref tools (`get_references_to`, `get_references_from`) using Ghidra's ReferenceManager. Features include detailed info, bi-directional search, type filtering, and simplified bridge output. (96788f3)
+- **Memory Operations:** Added tools/endpoints for reading (`read_memory`) and writing (`write_memory`) to program memory. (454c739)
+- **Function Addressing Flexibility:** MCP bridge now supports addressing functions by name or address. (4f3042f)
+- **API Version Check:** Bridge script now verifies compatibility with the Java plugin (expects API v2). (fedd2d0)
+- **Enhanced Decompiler Controls:** Added options for raw vs. clean pseudocode output and multiple simplification styles. (454c739)
 
 ### Changed
-- Unified all endpoints to use structured JSON
-- Improved error handling and response metadata
-- Simplified bridge code and added type hints
-- Updated port discovery to use DEFAULT_GHIDRA_PORT
-- Refactored Java plugin into modular architecture:
-  - Separated concerns into api, endpoints, util, and model packages
-  - Created standardized response builders and error handlers
-  - Implemented transaction management helpers
-  - Added model classes for structured data representation
-- Removed `port` field from responses (bridge knows what instance it called)
-- Updated MCP bridge to use new HATEOAS API endpoints
-- Enhanced MCP bridge tools to validate input parameters
-- Improved response handling in MCP bridge for better error reporting
-- **Breaking**: Removed backward compatibility with legacy endpoints, all endpoints now require strict HATEOAS compliance:
-  - All responses must include _links object with at least self reference
-  - Standardized JSON structures for all resource types
-  - Created comprehensive requirements documentation in HATEOAS_API.md
-- Updated API documentation to version 2 with comprehensive endpoint descriptions
+- **Breaking: HATEOAS API v2 & Bridge Update:** Migrated fully to a HATEOAS-driven API (v2). The Python bridge (`bridge_mcp_hydra.py`) now *exclusively* uses this API, removing legacy support. Responses are simplified for AI agents, including text representations for structured data (e.g., disassembly). All endpoints require HATEOAS compliance (e.g., `_links`). (4bc2267, 4f3042f)
+- **Optimized Variable Listing:** Improved performance of the `/variables` endpoint with efficient pagination and a `globalOnly` filter. (6c865c4)
+- **Standardized Responses:** Unified all endpoints to use structured JSON and standardized HATEOAS links. (454c739, 4bc2267)
+- **Improved Error Handling:** Enhanced error reporting and parameter validation across the API and bridge. (454c739, 4f3042f, 3df129f)
+- **API Documentation:** Updated documentation to reflect the HATEOAS v2 API and new features. (28870e9, 3fd0cf4)
 
 ### Fixed
-- Fixed endpoint registration in refactored code (all endpoints now working)
-- Improved handling of program-dependent endpoints when no program is loaded
-- Enhanced root endpoint to dynamically include links to available endpoints
-- Added proper HATEOAS links to all endpoints
-- Fixed URL encoding/decoding issues in program IDs
-- Fixed transaction management in function operations
-- Fixed inconsistent response formats in function-related endpoints
-- Improved error handling for missing parameters in MCP bridge tools
-- Fixed non-compliant endpoint responses:
-  - Added _links to /classes and /instances endpoints
-  - Updated /programs/current/segments to return list of segment objects
-  - Fixed decompile endpoint to return structured decompiled code
-  - Fixed disassembly endpoint to return structured instruction list
-  - Fixed variables endpoint to return proper variable structure
-- Fixed data manipulation operations:
-  - Resolved HTTP request body consumption issue
-  - Fixed parameter naming inconsistency between "dataType" and "type"
-  - Improved preservation of names during data type changes
-  - Enhanced error handling for data operations
+- **Real Instruction Disassembly:** The `/disassembly` endpoint now provides actual instruction disassembly instead of placeholders. (3df129f)
+- **Ghidra 11+ Compatibility:** Resolved various API compatibility issues, particularly for cross-references (`XrefsEndpoints`). (5dc59ce, 2b1fe6c, 0eaa19a, 9443101)
+- **Data Operations:** Fixed issues with HTTP request body consumption, parameter naming (`type` vs `dataType`), and name preservation during type changes. (28870e9)
+- **Function Commenting:** Corrected `set_decompiler_comment` to apply comments at the function level. (2a1607c)
+- **Endpoint Functionality:** Addressed various issues including endpoint registration, handling of program-dependent endpoints, URL encoding, transaction management, and inconsistent response formats. (various commits, e.g., 4bc2267)
 
 ## [1.4.0] - 2025-04-08
 
