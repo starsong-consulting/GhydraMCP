@@ -6,7 +6,8 @@
 # ]
 # ///
 # GhydraMCP Bridge for Ghidra HATEOAS API - Refactored for MCP optimization
-# This provides a revised implementation with namespaced tools
+# This provides a revised implementation without tool_group
+
 import os
 import signal
 import sys
@@ -1528,66 +1529,6 @@ def data_rename(address: str, name: str, port: int = None) -> dict:
     }
     
     response = safe_post(port, "data", payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def data_delete(address: str, port: int = None) -> dict:
-    """Delete data at the specified address
-    
-    Args:
-        address: Memory address in hex format
-        port: Specific Ghidra instance port (optional)
-        
-    Returns:
-        dict: Operation result
-    """
-    if not address:
-        return {
-            "success": False,
-            "error": "Address parameter is required",
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "action": "delete"
-    }
-    
-    response = safe_post(port, "data/delete", payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def data_set_type(address: str, data_type: str, port: int = None) -> dict:
-    """Set the data type of a data item
-    
-    Args:
-        address: Memory address in hex format
-        data_type: Data type name (e.g. "uint32_t", "char[10]")
-        port: Specific Ghidra instance port (optional)
-        
-    Returns:
-        dict: Operation result with the updated data information
-    """
-    if not address or not data_type:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Address and data_type parameters are required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "type": data_type
-    }
-    
-    response = safe_post(port, "data/type", payload)
     return simplify_response(response)
 
 # Analysis tools

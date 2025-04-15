@@ -6,7 +6,8 @@
 # ]
 # ///
 # GhydraMCP Bridge for Ghidra HATEOAS API - Refactored for MCP optimization
-# This provides a revised implementation with namespaced tools
+# This provides a sample implementation of the refactoring proposal
+
 import os
 import signal
 import sys
@@ -14,7 +15,7 @@ import threading
 import time
 from threading import Lock
 from typing import Dict, List, Optional, Union, Any
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, urlencode
 
 import requests
 from mcp.server.fastmcp import FastMCP
@@ -44,15 +45,7 @@ current_instance_port = DEFAULT_GHIDRA_PORT
 instructions = """
 GhydraMCP allows interacting with multiple Ghidra SRE instances. Ghidra SRE is a tool for reverse engineering and analyzing binaries, e.g. malware.
 
-First, run `instances_discover()` to find open Ghidra instances. Then use `instances_use(port)` to set your working instance.
-
-The API is organized into namespaces for different types of operations:
-- instances_* : For managing Ghidra instances
-- functions_* : For working with functions
-- data_* : For working with data items
-- memory_* : For memory access
-- xrefs_* : For cross-references
-- analysis_* : For program analysis
+First, run `instances.discover()` to find open Ghidra instances. Then use `instances.use(port)` to set your working instance.
 """
 
 mcp = FastMCP("GhydraMCP", version=BRIDGE_VERSION, instructions=instructions)
@@ -71,7 +64,7 @@ def _get_instance_port(port=None):
             raise ValueError(f"No active Ghidra instance on port {port}")
     return port
 
-# The rest of the utility functions (HTTP helpers, etc.) remain the same...
+# HTTP request helpers
 def get_instance_url(port: int) -> str:
     """Get URL for a Ghidra instance by port"""
     with instances_lock:
@@ -356,6 +349,8 @@ def simplify_response(response: dict) -> dict:
     
     return result
 
+# ================= Legacy Instance Management =================
+
 def register_instance(port: int, url: str = None) -> str:
     """Register a new Ghidra instance
     
@@ -572,9 +567,6 @@ def periodic_discovery():
             print(f"Error in periodic discovery: {e}")
 
         time.sleep(30)
-
-def handle_sigint(signum, frame):
-    os._exit(0)
 
 # ================= MCP Resources =================
 # Resources provide information that can be loaded directly into context
@@ -868,796 +860,410 @@ def identify_vulnerabilities_prompt(name: str = None, address: str = None, port:
         }
     }
 
-# ================= MCP Tools =================
-# Since we can't use tool groups, we'll use namespaces in the function names
+# ================= MCP Tool Groups =================
+# Tools are organized into logical domains
 
-# Instance management tools
-@mcp.tool()
-def instances_list() -> dict:
-    """List all active Ghidra instances"""
-    with instances_lock:
-        return {
-            "instances": [
-                {
-                    "port": port,
-                    "url": info["url"],
-                    "project": info.get("project", ""),
-                    "file": info.get("file", "")
-                }
-                for port, info in active_instances.items()
-            ]
-        }
-
-@mcp.tool()
-def instances_discover(host: str = None) -> dict:
-    """Discover available Ghidra instances by scanning ports
+@mcp.tool_group("instances")
+class InstanceTools:
+    """Tools for managing Ghidra instances"""
     
-    Args:
-        host: Optional host to scan (default: configured ghidra_host)
+    @mcp.tool()
+    def list() -> dict:
+        """List all active Ghidra instances"""
+        with instances_lock:
+            return {
+                "instances": [
+                    {
+                        "port": port,
+                        "url": info["url"],
+                        "project": info.get("project", ""),
+                        "file": info.get("file", "")
+                    }
+                    for port, info in active_instances.items()
+                ]
+            }
     
-    Returns:
-        dict: Contains 'found' count and 'instances' list with discovery results
-    """
-    return _discover_instances(QUICK_DISCOVERY_RANGE, host=host, timeout=0.5)
-
-@mcp.tool()
-def instances_register(port: int, url: str = None) -> str:
-    """Register a new Ghidra instance
-    
-    Args:
-        port: Port number of the Ghidra instance
-        url: Optional URL if different from default http://host:port
-    
-    Returns:
-        str: Confirmation message or error
-    """
-    return register_instance(port, url)
-
-@mcp.tool()
-def instances_unregister(port: int) -> str:
-    """Unregister a Ghidra instance
-    
-    Args:
-        port: Port number of the instance to unregister
-    
-    Returns:
-        str: Confirmation message or error
-    """
-    with instances_lock:
-        if port in active_instances:
-            del active_instances[port]
-            return f"Unregistered instance on port {port}"
-        return f"No instance found on port {port}"
-
-@mcp.tool()
-def instances_use(port: int) -> str:
-    """Set the current working Ghidra instance
-    
-    Args:
-        port: Port number of the instance to use
+    @mcp.tool()
+    def discover(host: str = None) -> dict:
+        """Discover available Ghidra instances by scanning ports
         
-    Returns:
-        str: Confirmation message or error
-    """
-    global current_instance_port
-    
-    # First validate that the instance exists and is active
-    if port not in active_instances:
-        # Try to register it if not found
-        register_instance(port)
-        if port not in active_instances:
-            return f"Error: No active Ghidra instance found on port {port}"
-    
-    # Set as current instance
-    current_instance_port = port
-    
-    # Return information about the selected instance
-    with instances_lock:
-        info = active_instances[port]
-        program = info.get("file", "unknown program")
-        project = info.get("project", "unknown project")
-        return f"Now using Ghidra instance on port {port} with {program} in project {project}"
-
-@mcp.tool()
-def instances_current() -> dict:
-    """Get information about the current working Ghidra instance
-    
-    Returns:
-        dict: Details about the current instance and program
-    """
-    return ghidra_instance(port=current_instance_port)
-
-# Function tools
-@mcp.tool()
-def functions_list(offset: int = 0, limit: int = 100, 
-                  name_contains: str = None, 
-                  name_matches_regex: str = None,
-                  port: int = None) -> dict:
-    """List functions with filtering and pagination
-    
-    Args:
-        offset: Pagination offset (default: 0)
-        limit: Maximum items to return (default: 100)
-        name_contains: Substring name filter (case-insensitive)
-        name_matches_regex: Regex name filter
-        port: Specific Ghidra instance port (optional)
+        Args:
+            host: Optional host to scan (default: configured ghidra_host)
         
-    Returns:
-        dict: List of functions with pagination information
-    """
-    port = _get_instance_port(port)
+        Returns:
+            dict: Contains 'found' count and 'instances' list with discovery results
+        """
+        return _discover_instances(QUICK_DISCOVERY_RANGE, host=host, timeout=0.5)
     
-    params = {
-        "offset": offset,
-        "limit": limit
-    }
-    if name_contains:
-        params["name_contains"] = name_contains
-    if name_matches_regex:
-        params["name_matches_regex"] = name_matches_regex
-
-    response = safe_get(port, "functions", params)
-    simplified = simplify_response(response)
-    
-    # Ensure we maintain pagination metadata
-    if isinstance(simplified, dict) and "error" not in simplified:
-        simplified.setdefault("size", len(simplified.get("result", [])))
-        simplified.setdefault("offset", offset)
-        simplified.setdefault("limit", limit)
-    
-    return simplified
-
-@mcp.tool()
-def functions_get(name: str = None, address: str = None, port: int = None) -> dict:
-    """Get detailed information about a function
-    
-    Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with name)
-        port: Specific Ghidra instance port (optional)
+    @mcp.tool()
+    def register(port: int, url: str = None) -> str:
+        """Register a new Ghidra instance
         
-    Returns:
-        dict: Detailed function information
-    """
-    if not name and not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Either name or address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    if address:
-        endpoint = f"functions/{address}"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}"
-    
-    response = safe_get(port, endpoint)
-    return simplify_response(response)
-
-@mcp.tool()
-def functions_decompile(name: str = None, address: str = None, 
-                        syntax_tree: bool = False, style: str = "normalize",
-                        port: int = None) -> dict:
-    """Get decompiled code for a function
-    
-    Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with name)
-        syntax_tree: Include syntax tree (default: False)
-        style: Decompiler style (default: "normalize")
-        port: Specific Ghidra instance port (optional)
+        Args:
+            port: Port number of the Ghidra instance
+            url: Optional URL if different from default http://host:port
         
-    Returns:
-        dict: Contains function information and decompiled code
-    """
-    if not name and not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Either name or address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
+        Returns:
+            str: Confirmation message or error
+        """
+        return register_instance(port, url)
     
-    port = _get_instance_port(port)
-    
-    params = {
-        "syntax_tree": str(syntax_tree).lower(),
-        "style": style
-    }
-    
-    if address:
-        endpoint = f"functions/{address}/decompile"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}/decompile"
-    
-    response = safe_get(port, endpoint, params)
-    simplified = simplify_response(response)
-    
-    # For AI consumption, make the decompiled code more directly accessible
-    if "result" in simplified and isinstance(simplified["result"], dict):
-        if "decompiled" in simplified["result"]:
-            simplified["decompiled_code"] = simplified["result"]["decompiled"]
-        elif "ccode" in simplified["result"]:
-            simplified["decompiled_code"] = simplified["result"]["ccode"]
-        elif "decompiled_text" in simplified["result"]:
-            simplified["decompiled_code"] = simplified["result"]["decompiled_text"]
-    
-    return simplified
-
-@mcp.tool()
-def functions_disassemble(name: str = None, address: str = None, port: int = None) -> dict:
-    """Get disassembly for a function
-    
-    Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with name)
-        port: Specific Ghidra instance port (optional)
+    @mcp.tool()
+    def unregister(port: int) -> str:
+        """Unregister a Ghidra instance
         
-    Returns:
-        dict: Contains function information and disassembly text
-    """
-    if not name and not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Either name or address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    if address:
-        endpoint = f"functions/{address}/disassembly"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}/disassembly"
-    
-    response = safe_get(port, endpoint)
-    return simplify_response(response)
-
-@mcp.tool()
-def functions_create(address: str, port: int = None) -> dict:
-    """Create a new function at the specified address
-    
-    Args:
-        address: Memory address in hex format where function starts
-        port: Specific Ghidra instance port (optional)
+        Args:
+            port: Port number of the instance to unregister
         
-    Returns:
-        dict: Operation result with the created function information
-    """
-    if not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
+        Returns:
+            str: Confirmation message or error
+        """
+        with instances_lock:
+            if port in active_instances:
+                del active_instances[port]
+                return f"Unregistered instance on port {port}"
+            return f"No instance found on port {port}"
     
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address
-    }
-    
-    response = safe_post(port, "functions", payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def functions_rename(old_name: str = None, address: str = None, new_name: str = "", port: int = None) -> dict:
-    """Rename a function
-    
-    Args:
-        old_name: Current function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with name)
-        new_name: New function name
-        port: Specific Ghidra instance port (optional)
+    @mcp.tool()
+    def use(port: int) -> str:
+        """Set the current working Ghidra instance
         
-    Returns:
-        dict: Operation result with the updated function information
-    """
-    if not (old_name or address) or not new_name:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Either old_name or address, and new_name parameters are required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "name": new_name
-    }
-    
-    if address:
-        endpoint = f"functions/{address}"
-    else:
-        endpoint = f"functions/by-name/{quote(old_name)}"
-    
-    response = safe_patch(port, endpoint, payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def functions_set_signature(name: str = None, address: str = None, signature: str = "", port: int = None) -> dict:
-    """Set function signature/prototype
-    
-    Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with name)
-        signature: New function signature (e.g., "int func(char *data, int size)")
-        port: Specific Ghidra instance port (optional)
-        
-    Returns:
-        dict: Operation result with the updated function information
-    """
-    if not (name or address) or not signature:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Either name or address, and signature parameters are required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "signature": signature
-    }
-    
-    if address:
-        endpoint = f"functions/{address}"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}"
-    
-    response = safe_patch(port, endpoint, payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def functions_get_variables(name: str = None, address: str = None, port: int = None) -> dict:
-    """Get variables for a function
-    
-    Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with name)
-        port: Specific Ghidra instance port (optional)
-        
-    Returns:
-        dict: Contains function information and list of variables
-    """
-    if not name and not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Either name or address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    if address:
-        endpoint = f"functions/{address}/variables"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}/variables"
-    
-    response = safe_get(port, endpoint)
-    return simplify_response(response)
-
-# Memory tools
-@mcp.tool()
-def memory_read(address: str, length: int = 16, format: str = "hex", port: int = None) -> dict:
-    """Read bytes from memory
-    
-    Args:
-        address: Memory address in hex format
-        length: Number of bytes to read (default: 16)
-        format: Output format - "hex", "base64", or "string" (default: "hex")
-        port: Specific Ghidra instance port (optional)
-    
-    Returns:
-        dict: {
-            "address": original address,
-            "length": bytes read,
-            "format": output format,
-            "hexBytes": the memory contents as hex string,
-            "rawBytes": the memory contents as base64 string,
-            "timestamp": response timestamp
-        }
-    """
-    if not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-
-    port = _get_instance_port(port)
-    
-    # Use query parameters instead of path parameters for more reliable handling
-    params = {
-        "address": address,
-        "length": length,
-        "format": format
-    }
-    
-    response = safe_get(port, "memory", params)
-    simplified = simplify_response(response)
-    
-    # Ensure the result is simple and directly usable
-    if "result" in simplified and isinstance(simplified["result"], dict):
-        result = simplified["result"]
-        
-        # Pass through all representations of the bytes
-        memory_info = {
-            "success": True, 
-            "address": result.get("address", address),
-            "length": result.get("bytesRead", length),
-            "format": format,
-            "timestamp": simplified.get("timestamp", int(time.time() * 1000))
-        }
-        
-        # Include all the different byte representations
-        if "hexBytes" in result:
-            memory_info["hexBytes"] = result["hexBytes"]
-        if "rawBytes" in result:
-            memory_info["rawBytes"] = result["rawBytes"]
+        Args:
+            port: Port number of the instance to use
             
-        return memory_info
+        Returns:
+            str: Confirmation message or error
+        """
+        global current_instance_port
+        
+        # First validate that the instance exists and is active
+        if port not in active_instances:
+            # Try to register it if not found
+            register_instance(port)
+            if port not in active_instances:
+                return f"Error: No active Ghidra instance found on port {port}"
+        
+        # Set as current instance
+        current_instance_port = port
+        
+        # Return information about the selected instance
+        with instances_lock:
+            info = active_instances[port]
+            program = info.get("file", "unknown program")
+            project = info.get("project", "unknown project")
+            return f"Now using Ghidra instance on port {port} with {program} in project {project}"
     
-    return simplified
+    @mcp.tool()
+    def current() -> dict:
+        """Get information about the current working Ghidra instance
+        
+        Returns:
+            dict: Details about the current instance and program
+        """
+        return ghidra_instance(port=current_instance_port)
 
-@mcp.tool()
-def memory_write(address: str, bytes_data: str, format: str = "hex", port: int = None) -> dict:
-    """Write bytes to memory (use with caution)
+@mcp.tool_group("functions")
+class FunctionTools:
+    """Tools for working with functions"""
     
-    Args:
-        address: Memory address in hex format
-        bytes_data: Data to write (format depends on 'format' parameter)
-        format: Input format - "hex", "base64", or "string" (default: "hex")
-        port: Specific Ghidra instance port (optional)
-    
-    Returns:
-        dict: Operation result with success status
-    """
-    if not address:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Address parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    if not bytes_data:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Bytes parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-
-    port = _get_instance_port(port)
-    
-    payload = {
-        "bytes": bytes_data,
-        "format": format
-    }
-    
-    response = safe_patch(port, f"memory/{address}", payload)
-    return simplify_response(response)
-
-# Xrefs tools
-@mcp.tool()
-def xrefs_list(to_addr: str = None, from_addr: str = None, type: str = None,
-              offset: int = 0, limit: int = 100, port: int = None) -> dict:
-    """List cross-references with filtering and pagination
-    
-    Args:
-        to_addr: Filter references to this address (hexadecimal)
-        from_addr: Filter references from this address (hexadecimal)  
-        type: Filter by reference type (e.g. "CALL", "READ", "WRITE")
-        offset: Pagination offset (default: 0)
-        limit: Maximum items to return (default: 100)
-        port: Specific Ghidra instance port (optional)
-    
-    Returns:
-        dict: Cross-references matching the filters
-    """
-    # At least one of the address parameters must be provided
-    if not to_addr and not from_addr:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER", 
-                "message": "Either to_addr or from_addr parameter is required"
-            },
-            "timestamp": int(time.time() * 1000)
-        }
-    
-    port = _get_instance_port(port)
-    
-    params = {
-        "offset": offset,
-        "limit": limit
-    }
-    if to_addr:
-        params["to_addr"] = to_addr
-    if from_addr:
-        params["from_addr"] = from_addr
-    if type:
-        params["type"] = type
-
-    response = safe_get(port, "xrefs", params)
-    simplified = simplify_response(response)
-    
-    # Ensure we maintain pagination metadata
-    if isinstance(simplified, dict) and "error" not in simplified:
-        simplified.setdefault("size", len(simplified.get("result", [])))
-        simplified.setdefault("offset", offset)
-        simplified.setdefault("limit", limit)
-    
-    return simplified
-
-# Data tools
-@mcp.tool()
-def data_list(offset: int = 0, limit: int = 100, addr: str = None,
-            name: str = None, name_contains: str = None, type: str = None,
+    @mcp.tool()
+    def list(offset: int = 0, limit: int = 100, 
+            name_contains: str = None, 
+            name_matches_regex: str = None,
             port: int = None) -> dict:
-    """List defined data items with filtering and pagination
-    
-    Args:
-        offset: Pagination offset (default: 0)
-        limit: Maximum items to return (default: 100)
-        addr: Filter by address (hexadecimal)
-        name: Exact name match filter (case-sensitive)
-        name_contains: Substring name filter (case-insensitive)
-        type: Filter by data type (e.g. "string", "dword")
-        port: Specific Ghidra instance port (optional)
-    
-    Returns:
-        dict: Data items matching the filters
-    """
-    port = _get_instance_port(port)
-    
-    params = {
-        "offset": offset,
-        "limit": limit
-    }
-    if addr:
-        params["addr"] = addr
-    if name:
-        params["name"] = name
-    if name_contains:
-        params["name_contains"] = name_contains
-    if type:
-        params["type"] = type
-
-    response = safe_get(port, "data", params)
-    simplified = simplify_response(response)
-    
-    # Ensure we maintain pagination metadata
-    if isinstance(simplified, dict) and "error" not in simplified:
-        simplified.setdefault("size", len(simplified.get("result", [])))
-        simplified.setdefault("offset", offset)
-        simplified.setdefault("limit", limit)
-    
-    return simplified
-
-@mcp.tool()
-def data_create(address: str, data_type: str, size: int = None, port: int = None) -> dict:
-    """Define a new data item at the specified address
-    
-    Args:
-        address: Memory address in hex format
-        data_type: Data type (e.g. "string", "dword", "byte")
-        size: Optional size in bytes for the data item
-        port: Specific Ghidra instance port (optional)
+        """List functions with filtering and pagination
         
-    Returns:
-        dict: Operation result with the created data information
-    """
-    if not address or not data_type:
-        return {
-            "success": False,
-            "error": "Address and data_type parameters are required",
-            "timestamp": int(time.time() * 1000)
+        Args:
+            offset: Pagination offset (default: 0)
+            limit: Maximum items to return (default: 100)
+            name_contains: Substring name filter (case-insensitive)
+            name_matches_regex: Regex name filter
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: List of functions with pagination information
+        """
+        port = _get_instance_port(port)
+        
+        params = {
+            "offset": offset,
+            "limit": limit
         }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "type": data_type
-    }
-    
-    if size is not None:
-        payload["size"] = size
-    
-    response = safe_post(port, "data", payload)
-    return simplify_response(response)
+        if name_contains:
+            params["name_contains"] = name_contains
+        if name_matches_regex:
+            params["name_matches_regex"] = name_matches_regex
 
-@mcp.tool()
-def data_rename(address: str, name: str, port: int = None) -> dict:
-    """Rename a data item
-    
-    Args:
-        address: Memory address in hex format
-        name: New name for the data item
-        port: Specific Ghidra instance port (optional)
+        response = safe_get(port, "functions", params)
+        simplified = simplify_response(response)
         
-    Returns:
-        dict: Operation result with the updated data information
-    """
-    if not address or not name:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Address and name parameters are required"
-            },
-            "timestamp": int(time.time() * 1000)
+        # Ensure we maintain pagination metadata
+        if isinstance(simplified, dict) and "error" not in simplified:
+            simplified.setdefault("size", len(simplified.get("result", [])))
+            simplified.setdefault("offset", offset)
+            simplified.setdefault("limit", limit)
+        
+        return simplified
+    
+    @mcp.tool()
+    def get(name: str = None, address: str = None, port: int = None) -> dict:
+        """Get detailed information about a function
+        
+        Args:
+            name: Function name (mutually exclusive with address)
+            address: Function address in hex format (mutually exclusive with name)
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Detailed function information
+        """
+        if not name and not address:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Either name or address parameter is required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        if address:
+            endpoint = f"functions/{address}"
+        else:
+            endpoint = f"functions/by-name/{quote(name)}"
+        
+        response = safe_get(port, endpoint)
+        return simplify_response(response)
+    
+    @mcp.tool()
+    def decompile(name: str = None, address: str = None, 
+                syntax_tree: bool = False, style: str = "normalize",
+                port: int = None) -> dict:
+        """Get decompiled code for a function
+        
+        Args:
+            name: Function name (mutually exclusive with address)
+            address: Function address in hex format (mutually exclusive with name)
+            syntax_tree: Include syntax tree (default: False)
+            style: Decompiler style (default: "normalize")
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Contains function information and decompiled code
+        """
+        if not name and not address:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Either name or address parameter is required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        params = {
+            "syntax_tree": str(syntax_tree).lower(),
+            "style": style
         }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "newName": name
-    }
-    
-    response = safe_post(port, "data", payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def data_delete(address: str, port: int = None) -> dict:
-    """Delete data at the specified address
-    
-    Args:
-        address: Memory address in hex format
-        port: Specific Ghidra instance port (optional)
         
-    Returns:
-        dict: Operation result
-    """
-    if not address:
-        return {
-            "success": False,
-            "error": "Address parameter is required",
-            "timestamp": int(time.time() * 1000)
+        if address:
+            endpoint = f"functions/{address}/decompile"
+        else:
+            endpoint = f"functions/by-name/{quote(name)}/decompile"
+        
+        response = safe_get(port, endpoint, params)
+        simplified = simplify_response(response)
+        
+        # For AI consumption, make the decompiled code more directly accessible
+        if "result" in simplified and isinstance(simplified["result"], dict):
+            if "decompiled" in simplified["result"]:
+                simplified["decompiled_code"] = simplified["result"]["decompiled"]
+            elif "ccode" in simplified["result"]:
+                simplified["decompiled_code"] = simplified["result"]["ccode"]
+            elif "decompiled_text" in simplified["result"]:
+                simplified["decompiled_code"] = simplified["result"]["decompiled_text"]
+        
+        return simplified
+    
+    @mcp.tool()
+    def disassemble(name: str = None, address: str = None, port: int = None) -> dict:
+        """Get disassembly for a function
+        
+        Args:
+            name: Function name (mutually exclusive with address)
+            address: Function address in hex format (mutually exclusive with name)
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Contains function information and disassembly text
+        """
+        if not name and not address:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Either name or address parameter is required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        if address:
+            endpoint = f"functions/{address}/disassembly"
+        else:
+            endpoint = f"functions/by-name/{quote(name)}/disassembly"
+        
+        response = safe_get(port, endpoint)
+        return simplify_response(response)
+    
+    @mcp.tool()
+    def create(address: str, port: int = None) -> dict:
+        """Create a new function at the specified address
+        
+        Args:
+            address: Memory address in hex format where function starts
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Operation result with the created function information
+        """
+        if not address:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Address parameter is required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        payload = {
+            "address": address
         }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "action": "delete"
-    }
-    
-    response = safe_post(port, "data/delete", payload)
-    return simplify_response(response)
-
-@mcp.tool()
-def data_set_type(address: str, data_type: str, port: int = None) -> dict:
-    """Set the data type of a data item
-    
-    Args:
-        address: Memory address in hex format
-        data_type: Data type name (e.g. "uint32_t", "char[10]")
-        port: Specific Ghidra instance port (optional)
         
-    Returns:
-        dict: Operation result with the updated data information
-    """
-    if not address or not data_type:
-        return {
-            "success": False,
-            "error": {
-                "code": "MISSING_PARAMETER",
-                "message": "Address and data_type parameters are required"
-            },
-            "timestamp": int(time.time() * 1000)
+        response = safe_post(port, "functions", payload)
+        return simplify_response(response)
+    
+    @mcp.tool()
+    def rename(old_name: str = None, address: str = None, new_name: str = "", port: int = None) -> dict:
+        """Rename a function
+        
+        Args:
+            old_name: Current function name (mutually exclusive with address)
+            address: Function address in hex format (mutually exclusive with name)
+            new_name: New function name
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Operation result with the updated function information
+        """
+        if not (old_name or address) or not new_name:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Either old_name or address, and new_name parameters are required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        payload = {
+            "name": new_name
         }
-    
-    port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "type": data_type
-    }
-    
-    response = safe_post(port, "data/type", payload)
-    return simplify_response(response)
-
-# Analysis tools
-@mcp.tool()
-def analysis_run(port: int = None, analysis_options: dict = None) -> dict:
-    """Run analysis on the current program
-    
-    Args:
-        analysis_options: Dictionary of analysis options to enable/disable
-                         (e.g. {"functionRecovery": True, "dataRefs": False})
-        port: Specific Ghidra instance port (optional)
-    
-    Returns:
-        dict: Analysis operation result with status
-    """
-    port = _get_instance_port(port)
-    response = safe_post(port, "analysis", analysis_options or {})
-    return simplify_response(response)
-
-@mcp.tool()
-def analysis_get_callgraph(function: str = None, max_depth: int = 3, port: int = None) -> dict:
-    """Get function call graph visualization data
-    
-    Args:
-        function: Starting function name or address (None starts from entry point)
-        max_depth: Maximum call depth to analyze (default: 3)
-        port: Specific Ghidra instance port (optional)
         
-    Returns:
-        dict: Graph data with nodes and edges
-    """
-    port = _get_instance_port(port)
-    
-    params = {"max_depth": max_depth}
-    if function:
-        params["function"] = function
-    
-    response = safe_get(port, "analysis/callgraph", params)
-    return simplify_response(response)
-
-@mcp.tool()
-def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: int = 50, port: int = None) -> dict:
-    """Perform data flow analysis from an address
-    
-    Args:
-        address: Starting address in hex format
-        direction: "forward" or "backward" (default: "forward")
-        max_steps: Maximum analysis steps (default: 50)
-        port: Specific Ghidra instance port (optional)
+        if address:
+            endpoint = f"functions/{address}"
+        else:
+            endpoint = f"functions/by-name/{quote(old_name)}"
         
-    Returns:
-        dict: Data flow analysis results
-    """
-    if not address:
-        return {
-            "success": False,
-            "error": "Address parameter is required",
-            "timestamp": int(time.time() * 1000)
+        response = safe_patch(port, endpoint, payload)
+        return simplify_response(response)
+    
+    @mcp.tool()
+    def set_signature(name: str = None, address: str = None, signature: str = "", port: int = None) -> dict:
+        """Set function signature/prototype
+        
+        Args:
+            name: Function name (mutually exclusive with address)
+            address: Function address in hex format (mutually exclusive with name)
+            signature: New function signature (e.g., "int func(char *data, int size)")
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Operation result with the updated function information
+        """
+        if not (name or address) or not signature:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Either name or address, and signature parameters are required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        payload = {
+            "signature": signature
         }
+        
+        if address:
+            endpoint = f"functions/{address}"
+        else:
+            endpoint = f"functions/by-name/{quote(name)}"
+        
+        response = safe_patch(port, endpoint, payload)
+        return simplify_response(response)
     
-    port = _get_instance_port(port)
-    
-    params = {
-        "address": address,
-        "direction": direction,
-        "max_steps": max_steps
-    }
-    
-    response = safe_get(port, "analysis/dataflow", params)
-    return simplify_response(response)
+    @mcp.tool()
+    def get_variables(name: str = None, address: str = None, port: int = None) -> dict:
+        """Get variables for a function
+        
+        Args:
+            name: Function name (mutually exclusive with address)
+            address: Function address in hex format (mutually exclusive with name)
+            port: Specific Ghidra instance port (optional)
+            
+        Returns:
+            dict: Contains function information and list of variables
+        """
+        if not name and not address:
+            return {
+                "success": False,
+                "error": {
+                    "code": "MISSING_PARAMETER",
+                    "message": "Either name or address parameter is required"
+                },
+                "timestamp": int(time.time() * 1000)
+            }
+        
+        port = _get_instance_port(port)
+        
+        if address:
+            endpoint = f"functions/{address}/variables"
+        else:
+            endpoint = f"functions/by-name/{quote(name)}/variables"
+        
+        response = safe_get(port, endpoint)
+        return simplify_response(response)
+
+# Additional tool groups would be defined here for other domains:
+# @mcp.tool_group("data")
+# @mcp.tool_group("memory")
+# @mcp.tool_group("analysis")
+# @mcp.tool_group("xrefs")
+# @mcp.tool_group("symbols")
+# @mcp.tool_group("variables")
 
 # ================= Startup =================
 
