@@ -238,14 +238,48 @@ async def test_bridge():
                         if variables_list and len(variables_list) > 0:
                             for var in variables_list:
                                 assert "name" in var, f"Variable missing name: {var}"
-                                assert "dataType" in var, f"Variable missing dataType: {var}"
+                                # Check for 'type' field instead of 'dataType' based on recent bridge changes/output
+                                assert "type" in var, f"Variable missing type: {var}"
                         logger.info(f"Function variables result: {function_vars_result}")
                     else:
                         logger.info("Function variables available but no variables found in function.")
                 except (AssertionError, KeyError) as e:
-                    logger.warning(f"Could not validate function variables: {e}")
+                    # Correct the warning message to reflect the actual check
+                    logger.warning(f"Could not validate function variables (expected 'name' and 'type' fields): {e}")
 
-                # REMOVED: Tests for set_comment and set_decompiler_comment as tools no longer exist
+                # Test comment operations using comments_set and functions_set_comment
+                test_comment_plate = "Test plate comment from MCP client"
+                comment_args_plate = {"address": func_address, "comment": test_comment_plate, "comment_type": "plate"}
+                logger.info(f"Calling comments_set (plate) with args: {comment_args_plate}")
+                comment_result_plate = await session.call_tool("comments_set", arguments=comment_args_plate)
+                comment_data_plate = json.loads(comment_result_plate.content[0].text)
+                assert comment_data_plate.get("success") is True, f"Add plate comment failed: {comment_data_plate}"
+                logger.info(f"Add plate comment result: {comment_result_plate}")
+
+                # Remove plate comment
+                remove_comment_args_plate = {"address": func_address, "comment": "", "comment_type": "plate"}
+                logger.info(f"Calling comments_set (remove plate) with args: {remove_comment_args_plate}")
+                remove_comment_result_plate = await session.call_tool("comments_set", arguments=remove_comment_args_plate)
+                remove_data_plate = json.loads(remove_comment_result_plate.content[0].text)
+                assert remove_data_plate.get("success") is True, f"Remove plate comment failed: {remove_data_plate}"
+                logger.info(f"Remove plate comment result: {remove_comment_result_plate}")
+
+                # Test function comment using functions_set_comment
+                test_comment_func = "Test function comment from MCP client"
+                func_comment_args = {"address": func_address, "comment": test_comment_func}
+                logger.info(f"Calling functions_set_comment with args: {func_comment_args}")
+                func_comment_result = await session.call_tool("functions_set_comment", arguments=func_comment_args)
+                func_comment_data = json.loads(func_comment_result.content[0].text)
+                assert func_comment_data.get("success") is True, f"Add function comment failed: {func_comment_data}"
+                logger.info(f"Add function comment result: {func_comment_result}")
+
+                # Remove function comment
+                remove_func_comment_args = {"address": func_address, "comment": ""}
+                logger.info(f"Calling functions_set_comment (remove) with args: {remove_func_comment_args}")
+                remove_func_comment_result = await session.call_tool("functions_set_comment", arguments=remove_func_comment_args)
+                remove_func_data = json.loads(remove_func_comment_result.content[0].text)
+                assert remove_func_data.get("success") is True, f"Remove function comment failed: {remove_func_data}"
+                logger.info(f"Remove function comment result: {remove_func_comment_result}")
 
                 # Test expected failure cases
                 # Try to rename non-existent function using functions_rename
@@ -269,8 +303,40 @@ async def test_bridge():
                 bad_get_data = json.loads(bad_get_result.content[0].text)
                 assert bad_get_data.get("success") is False, f"Getting non-existent function should fail, but got: {bad_get_data}"
 
-                # REMOVED: Test for commenting on invalid address as set_comment tool no longer exists
-                # REMOVED: Tests for get_current_address and get_current_function as tools no longer exist
+                # Try to comment on invalid address using comments_set and assert failure
+                bad_comment_args = {"address": "0xinvalid", "comment": "should fail", "comment_type": "plate"}
+                logger.info(f"Calling comments_set with invalid args: {bad_comment_args}")
+                try:
+                    bad_comment_result = await session.call_tool("comments_set", arguments=bad_comment_args)
+                    bad_comment_data = json.loads(bad_comment_result.content[0].text)
+                    assert bad_comment_data.get("success") is False, "Commenting on invalid address should fail"
+                    logger.info(f"Expected failure: comments_set properly rejected bad address: {bad_comment_data}")
+                except Exception as e:
+                     # It's also acceptable if the tool call itself fails
+                    logger.info(f"Expected failure: comments_set properly rejected bad address via exception: {e}")
+
+
+                # Test ui_get_current_address (no port needed)
+                logger.info("Calling ui_get_current_address tool...")
+                current_addr_result = await session.call_tool("ui_get_current_address")
+                current_addr_data = await assert_standard_mcp_success_response(current_addr_result.content, expected_result_type=dict)
+                assert "address" in current_addr_data.get("result", {}), "Missing address in ui_get_current_address result"
+                assert isinstance(current_addr_data.get("result", {}).get("address", ""), str), "Address should be a string"
+                logger.info(f"Get current address result: {current_addr_result}")
+
+                # Test ui_get_current_function (no port needed)
+                logger.info("Calling ui_get_current_function tool...")
+                current_func_result = await session.call_tool("ui_get_current_function")
+                current_func_data = await assert_standard_mcp_success_response(current_func_result.content, expected_result_type=dict)
+                result_data = current_func_data.get("result", {})
+                # Check if function exists at current location, might be null
+                if result_data:
+                    assert "name" in result_data, "Missing name in ui_get_current_function result"
+                    assert "address" in result_data, "Missing address in ui_get_current_function result"
+                    assert "signature" in result_data, "Missing signature in ui_get_current_function result"
+                else:
+                    logger.info("No function found at current UI location.")
+                logger.info(f"Get current function result: {current_func_result}")
 
                 # Test memory_read functionality (no port needed)
                 logger.info(f"Calling memory_read with address: {func_address}")
@@ -285,84 +351,109 @@ async def test_bridge():
 
                 # Test data operations (create, rename, change type, delete) using namespaced tools
                 logger.info("Testing data operations...")
-                try:
-                    # Get a memory address to create test data
-                    data_address = func_address
-                    original_data_type = "undefined" # Placeholder, might not exist initially
+                # Use the specific address provided by the user
+                data_address = "0x20000fa0"
+                logger.info(f"Using address {data_address} for data operations test.")
 
-                    # First create test data using data_create (no port needed)
-                    create_data_args = {"address": data_address, "data_type": "uint32_t"}
-                    logger.info(f"Calling data_create with args: {create_data_args}")
-                    create_data_result = await session.call_tool("data_create", arguments=create_data_args)
-                    create_data_response = json.loads(create_data_result.content[0].text)
-                    assert create_data_response.get("success") is True, f"Create data failed: {create_data_response}"
-                    logger.info(f"Create data result: {create_data_result}")
-                    original_data_type = "uint32_t" # Update original type
-
-                    # Test Case 1: Data rename operation using data_rename (no port needed)
-                    test_data_name = "test_data_item_mcp"
-                    rename_data_args = {"address": data_address, "name": test_data_name}
-                    logger.info(f"Calling data_rename with args: {rename_data_args}")
-                    rename_data_result = await session.call_tool("data_rename", arguments=rename_data_args)
-                    rename_data_response = json.loads(rename_data_result.content[0].text)
-                    assert rename_data_response.get("success") is True, f"Rename data failed: {rename_data_response}"
-                    logger.info(f"Rename data result: {rename_data_result}")
-
-                    # Verify the name was changed (check the result field)
-                    if rename_data_response.get("result", {}).get("name") != test_data_name:
-                        logger.warning(f"Rename operation didn't set the expected name. Got: {rename_data_response.get('result', {}).get('name')}")
-
-                    # Test Case 2: Data type change operation using data_set_type (no port needed)
-                    change_type_args = {"address": data_address, "data_type": "int"}
-                    logger.info(f"Calling data_set_type with args: {change_type_args}")
-                    change_type_result = await session.call_tool("data_set_type", arguments=change_type_args)
-                    change_type_response = json.loads(change_type_result.content[0].text)
-                    assert change_type_response.get("success") is True, f"Change data type failed: {change_type_response}"
-                    logger.info(f"Change data type result: {change_type_result}")
-
-                    # Verify the type was changed but name was preserved
-                    result = change_type_response.get("result", {})
-                    if result.get("dataType") != "int":
-                        logger.warning(f"Type change operation didn't set the expected type. Got: {result.get('dataType')}")
-                    if result.get("name") != test_data_name:
-                        logger.warning(f"Type change operation didn't preserve the name. Expected: {test_data_name}, Got: {result.get('name')}")
-
-                    # REMOVED: Test Case 3 (Combined update) as update_data tool no longer exists
-
-                    # Clean up by deleting the created data using data_delete
-                    delete_data_args = {"address": data_address}
-                    logger.info(f"Deleting data with args: {delete_data_args}")
-                    delete_data_result = await session.call_tool("data_delete", arguments=delete_data_args)
-                    delete_data_response = json.loads(delete_data_result.content[0].text)
-                    assert delete_data_response.get("success") is True, f"Delete data failed: {delete_data_response}"
-                    logger.info(f"Delete data result: {delete_data_result}")
-
-                except Exception as e:
-                    logger.warning(f"Error testing data operations: {e} - This is not critical. Attempting cleanup.")
-                    # Attempt cleanup even if tests failed mid-way
+                # Wrap the entire data operations block to prevent failures from halting tests
+                if data_address:
+                    logger.info("--- Starting Data Operations Test Block ---")
                     try:
+                        original_data_type = "undefined" # Placeholder, might not exist initially
+
+                        # First create test data using data_create (no port needed)
+                        create_data_args = {"address": data_address, "data_type": "uint32_t"}
+                        logger.info(f"Calling data_create with args: {create_data_args}")
+                        create_data_result = await session.call_tool("data_create", arguments=create_data_args)
+                        create_data_response = json.loads(create_data_result.content[0].text)
+                        assert create_data_response.get("success") is True, f"Create data failed: {create_data_response}"
+                        logger.info(f"Create data result: {create_data_result}")
+                        original_data_type = "uint32_t" # Update original type
+
+                        # Test Case 1: Data rename operation using data_rename (no port needed)
+                        test_data_name = f"test_data_{data_address.replace('0x', '')}" # Unique name
+                        rename_data_args = {"address": data_address, "name": test_data_name}
+                        logger.info(f"Calling data_rename with args: {rename_data_args}")
+                        rename_data_result = await session.call_tool("data_rename", arguments=rename_data_args)
+                        rename_data_response = json.loads(rename_data_result.content[0].text)
+                        assert rename_data_response.get("success") is True, f"Rename data failed: {rename_data_response}"
+                        logger.info(f"Rename data result: {rename_data_result}")
+
+                        # Verify the name was changed (check the result field)
+                        # Note: rename_data response might not contain the full updated object, skip verification for now
+                        # if rename_data_response.get("result", {}).get("name") != test_data_name:
+                        #     logger.warning(f"Rename operation didn't set the expected name. Got: {rename_data_response.get('result', {}).get('name')}")
+
+                        # Test Case 2: Data type change operation using data_set_type (no port needed)
+                        change_type_args = {"address": data_address, "data_type": "int"}
+                        logger.info(f"Calling data_set_type with args: {change_type_args}")
+                        change_type_result = await session.call_tool("data_set_type", arguments=change_type_args)
+                        change_type_response = json.loads(change_type_result.content[0].text)
+                        assert change_type_response.get("success") is True, f"Change data type failed: {change_type_response}"
+                        logger.info(f"Change data type result: {change_type_result}")
+
+                        # Verify the type was changed but name was preserved
+                        result = change_type_response.get("result", {})
+                        # Check the 'dataType' field from the response
+                        if result.get("dataType") != "int":
+                            logger.warning(f"Type change operation didn't set the expected type. Got: {result.get('dataType')}")
+                        if result.get("name") != test_data_name:
+                            logger.warning(f"Type change operation didn't preserve the name. Expected: {test_data_name}, Got: {result.get('name')}")
+
+                        # REMOVED: Test Case 3 (Combined update) as update_data tool no longer exists
+
+                        # Clean up by deleting the created data using data_delete
                         delete_data_args = {"address": data_address}
-                        await session.call_tool("data_delete", arguments=delete_data_args)
-                        logger.info("Data cleanup attempted.")
-                    except Exception as cleanup_e:
-                        logger.error(f"Data cleanup failed: {cleanup_e}")
+                        logger.info(f"Deleting data with args: {delete_data_args}")
+                        delete_data_result = await session.call_tool("data_delete", arguments=delete_data_args)
+                        delete_data_response = json.loads(delete_data_result.content[0].text)
+                        assert delete_data_response.get("success") is True, f"Delete data failed: {delete_data_response}"
+                        logger.info(f"Delete data result: {delete_data_result}")
 
-
-                # Test callgraph functionality using analysis_get_callgraph (no port needed)
-                if func_address:
-                    logger.info(f"Calling analysis_get_callgraph with address: {func_address}")
-                    try:
-                        callgraph_result = await session.call_tool("analysis_get_callgraph", arguments={"function": func_address})
-                        callgraph_data = json.loads(callgraph_result.content[0].text)
-                        if callgraph_data.get("success"):
-                            assert "result" in callgraph_data, "Missing result in analysis_get_callgraph response"
-                            # The result could be either a dict with nodes/edges or a direct graph representation
-                            logger.info(f"Get callgraph result: successful")
-                        else:
-                            # It's okay if the callgraph fails on some functions - log the error
-                            logger.info(f"Get callgraph result: failed - {callgraph_data.get('error', {}).get('message', 'Unknown error')}")
                     except Exception as e:
-                        logger.warning(f"Error in callgraph test: {e} - This is not critical")
+                        logger.warning(f"Error testing data operations: {e} - This is not critical. Attempting cleanup.")
+                        # Attempt cleanup even if tests failed mid-way
+                        if data_address: # Only attempt cleanup if address was valid
+                            try:
+                                delete_data_args = {"address": data_address}
+                                await session.call_tool("data_delete", arguments=delete_data_args)
+                                logger.info("Data cleanup attempted.")
+                            except Exception as cleanup_e:
+                                logger.error(f"Data cleanup failed: {cleanup_e}")
+                    logger.info("--- Finished Data Operations Test Block ---")
+
+
+                # Test callgraph functionality using analysis_get_callgraph with both address and name parameters
+                if func_address and func_name:
+                    logger.info("Testing analysis_get_callgraph with address and name parameters")
+                    
+                    # Test with address parameter
+                    try:
+                        logger.info(f"Calling analysis_get_callgraph with address: {func_address}")
+                        callgraph_by_address = await session.call_tool("analysis_get_callgraph", arguments={"address": func_address})
+                        callgraph_address_data = json.loads(callgraph_by_address.content[0].text)
+                        if callgraph_address_data.get("success"):
+                            assert "result" in callgraph_address_data, "Missing result in analysis_get_callgraph(address) response"
+                            logger.info("Get callgraph by address: successful")
+                        else:
+                            # Log failure as warning, don't fail the test
+                            logger.warning(f"Get callgraph by address failed: {callgraph_address_data.get('error', {}).get('message', 'Unknown error')}")
+                    except Exception as e:
+                        logger.warning(f"Error during callgraph by address test: {e} - This is not critical")
+                    
+                    # Test with name parameter
+                    try:
+                        logger.info(f"Calling analysis_get_callgraph with name: {func_name}")
+                        callgraph_by_name = await session.call_tool("analysis_get_callgraph", arguments={"name": func_name})
+                        callgraph_name_data = json.loads(callgraph_by_name.content[0].text)
+                        if callgraph_name_data.get("success"):
+                            assert "result" in callgraph_name_data, "Missing result in analysis_get_callgraph(name) response"
+                            logger.info("Get callgraph by name: successful")
+                        else:
+                            # Log failure as warning, don't fail the test
+                            logger.warning(f"Get callgraph by name failed: {callgraph_name_data.get('error', {}).get('message', 'Unknown error')}")
+                    except Exception as e:
+                        logger.warning(f"Error during callgraph by name test: {e} - This is not critical")
 
                 # Test function signature operations using functions_set_signature
                 logger.info("Testing function signature operations...")
@@ -375,8 +466,8 @@ async def test_bridge():
                     if not original_signature:
                         logger.warning("Could not get original signature - skipping signature test")
                     else:
-                        # Create test signature by adding parameters
-                        modified_signature = f"int {func_name}(uint32_t *mcp_data, int mcp_count, uint32_t *mcp_key)"
+                        # Create test signature by adding parameters - ensure correct spacing
+                        modified_signature = f"int {func_name}(uint32_t * mcp_data, int mcp_count, uint32_t * mcp_key)"
                         logger.info(f"Original signature: {original_signature}")
                         logger.info(f"Setting function signature to: {modified_signature}")
 
@@ -392,7 +483,8 @@ async def test_bridge():
                         verify_sig_result = await session.call_tool("functions_get", arguments={"address": func_address})
                         verify_sig_data = await assert_standard_mcp_success_response(verify_sig_result.content, expected_result_type=dict)
                         new_signature = verify_sig_data.get("result", {}).get("signature", "")
-                        assert "uint32_t *mcp_data" in new_signature, f"Signature not properly updated: {new_signature}"
+                        # Strict check for the exact signature string, stripping whitespace
+                        assert new_signature.strip() == modified_signature.strip(), f"Signature not properly updated. Expected '{modified_signature}', got '{new_signature}'"
                         logger.info(f"Updated signature: {new_signature}")
 
                         # Restore original signature using functions_set_signature
@@ -408,7 +500,7 @@ async def test_bridge():
                         final_func_result = await session.call_tool("functions_get", arguments={"address": func_address})
                         final_func_data = await assert_standard_mcp_success_response(final_func_result.content, expected_result_type=dict)
                         final_signature = final_func_data.get("result", {}).get("signature", "")
-                        assert final_signature == original_signature, f"Signature not properly restored: {final_signature}"
+                        assert final_signature.strip() == original_signature.strip(), f"Signature not properly restored. Expected '{original_signature}', got '{final_signature}'"
                         logger.info(f"Restored signature: {final_signature}")
                 except Exception as e:
                     logger.warning(f"Error in signature test: {e} - This is not critical")

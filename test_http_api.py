@@ -648,6 +648,62 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
                 (has_address and has_signature),
                 "Function result missing required fields"
             )
+            
+    def test_callgraph_endpoint(self):
+        """Test the /analysis/callgraph endpoint with both name and address parameters"""
+        # First get a function to test with
+        response = requests.get(f"{BASE_URL}/functions?limit=1")
+        
+        # This might return 404 if no program is loaded, which is fine
+        if response.status_code == 404:
+            return
+            
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        result = data.get("result", [])
+        
+        # Skip test if no functions available
+        if not result:
+            self.skipTest("No functions available to test callgraph")
+        
+        # Extract name and address based on whether result is a list or dict
+        if isinstance(result, list) and result:
+            func = result[0]
+        elif isinstance(result, dict):
+            func = result
+        else:
+            self.skipTest("Unexpected result format, cannot test callgraph")
+            
+        func_name = func.get("name")
+        func_address = func.get("address")
+        
+        if not func_name or not func_address:
+            self.skipTest("Missing name or address for callgraph test")
+        
+        # Test with the address parameter
+        response = requests.get(f"{BASE_URL}/analysis/callgraph?address={func_address}&max_depth=2")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertStandardSuccessResponse(data)
+        
+        result = data.get("result", {})
+        self.assertIn("root", result, "Callgraph missing 'root' field")
+        self.assertIn("nodes", result, "Callgraph missing 'nodes' field")
+        self.assertIn("edges", result, "Callgraph missing 'edges' field")
+        
+        # Test with the name parameter
+        response = requests.get(f"{BASE_URL}/analysis/callgraph?name={func_name}&max_depth=2")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertStandardSuccessResponse(data)
+        
+        result = data.get("result", {})
+        self.assertIn("root", result, "Callgraph missing 'root' field")
+        self.assertIn("nodes", result, "Callgraph missing 'nodes' field")
+        self.assertIn("edges", result, "Callgraph missing 'edges' field")
 
     def test_data_operations(self):
         """Test data update operations including renaming and type changes"""

@@ -1477,25 +1477,48 @@ public class ProgramEndpoints extends AbstractEndpoint {
         
         try {
             Map<String, String> params = parseQueryParams(exchange);
-            String functionName = params.get("function");
+            // Support both function name and address as separate parameters
+            String name = params.get("name");
+            String address = params.get("address");
+            // For backward compatibility, also check "function" parameter
+            if (name == null) {
+                name = params.get("function");
+            }
             int maxDepth = parseIntOrDefault(params.get("max_depth"), 3);
             
             // Get starting function
             ghidra.program.model.listing.Function startFunction = null;
-            if (functionName != null) {
+            
+            // Try to find function by address first (if provided)
+            if (address != null) {
+                try {
+                    ghidra.program.model.address.Address addr = program.getAddressFactory().getAddress(address);
+                    startFunction = program.getFunctionManager().getFunctionAt(addr);
+                    
+                    if (startFunction == null) {
+                        sendErrorResponse(exchange, 404, "Function not found at address: " + address, "FUNCTION_NOT_FOUND");
+                        return;
+                    }
+                } catch (Exception e) {
+                    sendErrorResponse(exchange, 400, "Invalid address format: " + address, "INVALID_ADDRESS");
+                    return;
+                }
+            } 
+            // Try to find function by name if address not provided or function not found
+            else if (name != null) {
                 for (ghidra.program.model.listing.Function f : program.getFunctionManager().getFunctions(true)) {
-                    if (f.getName().equals(functionName)) {
+                    if (f.getName().equals(name)) {
                         startFunction = f;
                         break;
                     }
                 }
                 
                 if (startFunction == null) {
-                    sendErrorResponse(exchange, 404, "Function not found: " + functionName, "FUNCTION_NOT_FOUND");
+                    sendErrorResponse(exchange, 404, "Function not found by name: " + name, "FUNCTION_NOT_FOUND");
                     return;
                 }
             } else {
-                // Use the entry point function if no function is specified
+                // Use the entry point function if no function is specified by name or address
                 ghidra.program.model.address.Address entryPoint = program.getSymbolTable().getExternalEntryPointIterator().hasNext() ?
                     program.getSymbolTable().getExternalEntryPointIterator().next() :
                     program.getImageBase();
@@ -1518,10 +1541,22 @@ public class ProgramEndpoints extends AbstractEndpoint {
             
             // Add HATEOAS links
             StringBuilder selfLinkBuilder = new StringBuilder("/programs/current/analysis/callgraph");
-            if (functionName != null) {
-                selfLinkBuilder.append("?function=").append(functionName);
+            boolean hasParam = false;
+            
+            // Add appropriate parameters to self link
+            if (address != null) {
+                selfLinkBuilder.append("?address=").append(address);
+                hasParam = true;
+            } else if (name != null) {
+                selfLinkBuilder.append("?name=").append(name);
+                hasParam = true;
             }
-            selfLinkBuilder.append("&max_depth=").append(maxDepth);
+            
+            if (hasParam) {
+                selfLinkBuilder.append("&max_depth=").append(maxDepth);
+            } else {
+                selfLinkBuilder.append("?max_depth=").append(maxDepth);
+            }
             
             builder.addLink("self", selfLinkBuilder.toString());
             builder.addLink("program", "/programs/current");
