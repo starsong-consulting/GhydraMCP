@@ -324,8 +324,10 @@ def simplify_response(response: dict) -> dict:
                         # Format: address: bytes  mnemonic operands
                         disasm_text += f"{addr}: {bytes_str.ljust(10)}  {mnemonic} {operands}\n"
                 
-                # Add the text representation while preserving the original structured data
+                # Add the text representation
                 result_copy["disassembly_text"] = disasm_text
+                # Remove the original structured instructions to simplify the response
+                result_copy.pop("instructions", None)
             
             # Special case for decompiled code - make sure it's directly accessible
             if "ccode" in result_copy:
@@ -1852,11 +1854,12 @@ def analysis_run(port: int = None, analysis_options: dict = None) -> dict:
     return simplify_response(response)
 
 @mcp.tool()
-def analysis_get_callgraph(function: str = None, max_depth: int = 3, port: int = None) -> dict:
+def analysis_get_callgraph(name: str = None, address: str = None, max_depth: int = 3, port: int = None) -> dict:
     """Get function call graph visualization data
     
     Args:
-        function: Starting function name or address (None starts from entry point)
+        name: Starting function name (mutually exclusive with address)
+        address: Starting function address (mutually exclusive with name)
         max_depth: Maximum call depth to analyze (default: 3)
         port: Specific Ghidra instance port (optional)
         
@@ -1866,8 +1869,13 @@ def analysis_get_callgraph(function: str = None, max_depth: int = 3, port: int =
     port = _get_instance_port(port)
     
     params = {"max_depth": max_depth}
-    if function:
-        params["function"] = function
+    
+    # Explicitly pass either name or address parameter based on what was provided
+    if address:
+        params["address"] = address
+    elif name:
+        params["name"] = name
+    # If neither is provided, the Java endpoint will use the entry point
     
     response = safe_get(port, "analysis/callgraph", params)
     return simplify_response(response)
@@ -1902,6 +1910,108 @@ def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: i
     
     response = safe_get(port, "analysis/dataflow", params)
     return simplify_response(response)
+
+@mcp.tool()
+def ui_get_current_address(port: int = None) -> dict:
+    """Get the address currently selected in Ghidra's UI
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        Dict containing address information or error
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "address")
+    return simplify_response(response)
+
+@mcp.tool()
+def ui_get_current_function(port: int = None) -> dict:
+    """Get the function currently selected in Ghidra's UI
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        Dict containing function information or error
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "function")
+    return simplify_response(response)
+
+@mcp.tool()
+def comments_set(address: str, comment: str = "", comment_type: str = "plate", port: int = None) -> dict:
+    """Set a comment at the specified address
+
+    Args:
+        address: Memory address in hex format
+        comment: Comment text (empty string removes comment)
+        comment_type: Type of comment - "plate", "pre", "post", "eol", "repeatable" (default: "plate")
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result
+    """
+    if not address:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    payload = {
+        "comment": comment
+    }
+
+    response = safe_post(port, f"memory/{address}/comments/{comment_type}", payload)
+    return simplify_response(response)
+
+@mcp.tool()
+def functions_set_comment(address: str, comment: str = "", port: int = None) -> dict:
+    """Set a decompiler-friendly comment (tries function comment, falls back to pre-comment)
+
+    Args:
+        address: Memory address in hex format (preferably function entry point)
+        comment: Comment text (empty string removes comment)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result
+    """
+    if not address:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port_to_use = _get_instance_port(port)
+
+    # Try setting as a function comment first using PATCH
+    try:
+        func_patch_payload = {
+            "comment": comment
+        }
+        patch_response = safe_patch(port_to_use, f"functions/{address}", func_patch_payload)
+        if patch_response.get("success", False):
+            return simplify_response(patch_response) # Success setting function comment
+        else:
+             print(f"Note: Failed to set function comment via PATCH on {address}, falling back. Error: {patch_response.get('error')}", file=sys.stderr)
+    except Exception as e:
+        print(f"Exception trying function comment PATCH: {e}. Falling back.", file=sys.stderr)
+        # Fall through to set pre-comment if PATCH fails
+
+    # Fallback: Set as a "pre" comment using the comments_set tool
+    print(f"Falling back to setting 'pre' comment for address {address}", file=sys.stderr)
+    return comments_set(address=address, comment=comment, comment_type="pre", port=port_to_use)
+
 
 # ================= Startup =================
 
