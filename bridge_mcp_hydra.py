@@ -580,7 +580,7 @@ def handle_sigint(signum, frame):
 # Resources provide information that can be loaded directly into context
 # They focus on data and minimize metadata
 
-@mcp.resource()
+@mcp.resource(uri="/instance/{port}")
 def ghidra_instance(port: int = None) -> dict:
     """Get detailed information about a Ghidra instance and the loaded program
     
@@ -620,20 +620,19 @@ def ghidra_instance(port: int = None) -> dict:
     
     return instance_info
 
-@mcp.resource()
-def decompiled_function(name: str = None, address: str = None, port: int = None) -> str:
-    """Get decompiled C code for a function
+@mcp.resource(uri="/instance/{port}/function/decompile/address/{address}")
+def decompiled_function_by_address(port: int = None, address: str = None) -> str:
+    """Get decompiled C code for a function by address
     
     Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with address)
-        port: Specific Ghidra instance port (optional)
+        port: Specific Ghidra instance port
+        address: Function address in hex format
         
     Returns:
         str: The decompiled C code as a string, or error message
     """
-    if not name and not address:
-        return "Error: Either name or address parameter is required"
+    if not address:
+        return "Error: Address parameter is required"
     
     port = _get_instance_port(port)
     
@@ -642,10 +641,7 @@ def decompiled_function(name: str = None, address: str = None, port: int = None)
         "style": "normalize"
     }
     
-    if address:
-        endpoint = f"functions/{address}/decompile"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}/decompile"
+    endpoint = f"functions/{address}/decompile"
     
     response = safe_get(port, endpoint, params)
     simplified = simplify_response(response)
@@ -673,27 +669,72 @@ def decompiled_function(name: str = None, address: str = None, port: int = None)
     
     return "Error: Could not extract decompiled code from response"
 
-@mcp.resource()
-def function_info(name: str = None, address: str = None, port: int = None) -> dict:
-    """Get detailed information about a function
+@mcp.resource(uri="/instance/{port}/function/decompile/name/{name}")
+def decompiled_function_by_name(port: int = None, name: str = None) -> str:
+    """Get decompiled C code for a function by name
     
     Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with address)
-        port: Specific Ghidra instance port (optional)
+        port: Specific Ghidra instance port
+        name: Function name
+        
+    Returns:
+        str: The decompiled C code as a string, or error message
+    """
+    if not name:
+        return "Error: Name parameter is required"
+    
+    port = _get_instance_port(port)
+    
+    params = {
+        "syntax_tree": "false",
+        "style": "normalize"
+    }
+    
+    endpoint = f"functions/by-name/{quote(name)}/decompile"
+    
+    response = safe_get(port, endpoint, params)
+    simplified = simplify_response(response)
+    
+    # For a resource, we want to directly return just the decompiled code
+    if (not isinstance(simplified, dict) or 
+        not simplified.get("success", False) or 
+        "result" not in simplified):
+        error_message = "Error: Could not decompile function"
+        if isinstance(simplified, dict) and "error" in simplified:
+            if isinstance(simplified["error"], dict):
+                error_message = simplified["error"].get("message", error_message)
+            else:
+                error_message = str(simplified["error"])
+        return error_message
+    
+    # Extract just the decompiled code text
+    result = simplified["result"]
+    
+    # Different endpoints may return the code in different fields, try all of them
+    if isinstance(result, dict):
+        for key in ["decompiled_text", "ccode", "decompiled"]:
+            if key in result:
+                return result[key]
+    
+    return "Error: Could not extract decompiled code from response"
+
+@mcp.resource(uri="/instance/{port}/function/info/address/{address}")
+def function_info_by_address(port: int = None, address: str = None) -> dict:
+    """Get detailed information about a function by address
+    
+    Args:
+        port: Specific Ghidra instance port
+        address: Function address in hex format
         
     Returns:
         dict: Complete function information including signature, parameters, etc.
     """
-    if not name and not address:
-        return {"error": "Either name or address parameter is required"}
+    if not address:
+        return {"error": "Address parameter is required"}
     
     port = _get_instance_port(port)
     
-    if address:
-        endpoint = f"functions/{address}"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}"
+    endpoint = f"functions/{address}"
     
     response = safe_get(port, endpoint)
     simplified = simplify_response(response)
@@ -709,27 +750,115 @@ def function_info(name: str = None, address: str = None, port: int = None) -> di
     # Return just the function data without API metadata
     return simplified["result"]
 
-@mcp.resource()
-def disassembly(name: str = None, address: str = None, port: int = None) -> str:
-    """Get disassembled instructions for a function
+@mcp.resource(uri="/instance/{port}/function/info/name/{name}")
+def function_info_by_name(port: int = None, name: str = None) -> dict:
+    """Get detailed information about a function by name
     
     Args:
-        name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with address)
-        port: Specific Ghidra instance port (optional)
+        port: Specific Ghidra instance port
+        name: Function name
+        
+    Returns:
+        dict: Complete function information including signature, parameters, etc.
+    """
+    if not name:
+        return {"error": "Name parameter is required"}
+    
+    port = _get_instance_port(port)
+    
+    endpoint = f"functions/by-name/{quote(name)}"
+    
+    response = safe_get(port, endpoint)
+    simplified = simplify_response(response)
+    
+    if (not isinstance(simplified, dict) or 
+        not simplified.get("success", False) or 
+        "result" not in simplified):
+        error = {"error": "Could not get function information"}
+        if isinstance(simplified, dict) and "error" in simplified:
+            error["error_details"] = simplified["error"]
+        return error
+    
+    # Return just the function data without API metadata
+    return simplified["result"]
+
+@mcp.resource(uri="/instance/{port}/function/disassembly/address/{address}")
+def disassembly_by_address(port: int = None, address: str = None) -> str:
+    """Get disassembled instructions for a function by address
+    
+    Args:
+        port: Specific Ghidra instance port
+        address: Function address in hex format
         
     Returns:
         str: Formatted disassembly listing as a string
     """
-    if not name and not address:
-        return "Error: Either name or address parameter is required"
+    if not address:
+        return "Error: Address parameter is required"
     
     port = _get_instance_port(port)
     
-    if address:
-        endpoint = f"functions/{address}/disassembly"
-    else:
-        endpoint = f"functions/by-name/{quote(name)}/disassembly"
+    endpoint = f"functions/{address}/disassembly"
+    
+    response = safe_get(port, endpoint)
+    simplified = simplify_response(response)
+    
+    if (not isinstance(simplified, dict) or 
+        not simplified.get("success", False) or 
+        "result" not in simplified):
+        error_message = "Error: Could not get disassembly"
+        if isinstance(simplified, dict) and "error" in simplified:
+            if isinstance(simplified["error"], dict):
+                error_message = simplified["error"].get("message", error_message)
+            else:
+                error_message = str(simplified["error"])
+        return error_message
+    
+    # For a resource, we want to directly return just the disassembly text
+    result = simplified["result"]
+    
+    # Check if we have a disassembly_text field already
+    if isinstance(result, dict) and "disassembly_text" in result:
+        return result["disassembly_text"]
+    
+    # Otherwise if we have raw instructions, format them ourselves
+    if isinstance(result, dict) and "instructions" in result and isinstance(result["instructions"], list):
+        disasm_text = ""
+        for instr in result["instructions"]:
+            if isinstance(instr, dict):
+                addr = instr.get("address", "")
+                mnemonic = instr.get("mnemonic", "")
+                operands = instr.get("operands", "")
+                bytes_str = instr.get("bytes", "")
+                
+                # Format: address: bytes  mnemonic operands
+                disasm_text += f"{addr}: {bytes_str.ljust(10)}  {mnemonic} {operands}\n"
+        
+        return disasm_text
+    
+    # If we have a direct disassembly field, try that as well
+    if isinstance(result, dict) and "disassembly" in result:
+        return result["disassembly"]
+    
+    return "Error: Could not extract disassembly from response"
+
+@mcp.resource(uri="/instance/{port}/function/disassembly/name/{name}")
+def disassembly_by_name(port: int = None, name: str = None) -> str:
+    """Get disassembled instructions for a function by name
+    
+    Args:
+        port: Specific Ghidra instance port
+        name: Function name
+        
+    Returns:
+        str: Formatted disassembly listing as a string
+    """
+    if not name:
+        return "Error: Name parameter is required"
+    
+    port = _get_instance_port(port)
+    
+    endpoint = f"functions/by-name/{quote(name)}/disassembly"
     
     response = safe_get(port, endpoint)
     simplified = simplify_response(response)
@@ -789,23 +918,36 @@ def analyze_function_prompt(name: str = None, address: str = None, port: int = N
     
     # Get function name if only address is provided
     if address and not name:
-        fn_info = function_info(address=address, port=port)
+        fn_info = function_info_by_address(address=address, port=port)
         if isinstance(fn_info, dict) and "name" in fn_info:
             name = fn_info["name"]
     
     # Create the template that guides analysis
+    decompiled = ""
+    disasm = ""
+    fn_info = None
+    
+    if address:
+        decompiled = decompiled_function_by_address(address=address, port=port)
+        disasm = disassembly_by_address(address=address, port=port)
+        fn_info = function_info_by_address(address=address, port=port)
+    elif name:
+        decompiled = decompiled_function_by_name(name=name, port=port)
+        disasm = disassembly_by_name(name=name, port=port)
+        fn_info = function_info_by_name(name=name, port=port)
+    
     return {
         "prompt": f"""
         Analyze the following function: {name or address}
         
         Decompiled code:
         ```c
-        {decompiled_function(name=name, address=address, port=port)}
+        {decompiled}
         ```
         
         Disassembly:
         ```
-        {disassembly(name=name, address=address, port=port)}
+        {disasm}
         ```
         
         1. What is the purpose of this function?
@@ -815,7 +957,7 @@ def analyze_function_prompt(name: str = None, address: str = None, port: int = N
         5. Describe the algorithm or process being implemented.
         """,
         "context": {
-            "function_info": function_info(name=name, address=address, port=port)
+            "function_info": fn_info
         }
     }
 
@@ -832,18 +974,31 @@ def identify_vulnerabilities_prompt(name: str = None, address: str = None, port:
     
     # Get function name if only address is provided
     if address and not name:
-        fn_info = function_info(address=address, port=port)
+        fn_info = function_info_by_address(address=address, port=port)
         if isinstance(fn_info, dict) and "name" in fn_info:
             name = fn_info["name"]
     
     # Create the template focused on security analysis
+    decompiled = ""
+    disasm = ""
+    fn_info = None
+    
+    if address:
+        decompiled = decompiled_function_by_address(address=address, port=port)
+        disasm = disassembly_by_address(address=address, port=port)
+        fn_info = function_info_by_address(address=address, port=port)
+    elif name:
+        decompiled = decompiled_function_by_name(name=name, port=port)
+        disasm = disassembly_by_name(name=name, port=port)
+        fn_info = function_info_by_name(name=name, port=port)
+    
     return {
         "prompt": f"""
         Analyze the following function for security vulnerabilities: {name or address}
         
         Decompiled code:
         ```c
-        {decompiled_function(name=name, address=address, port=port)}
+        {decompiled}
         ```
         
         Look for these vulnerability types:
@@ -863,8 +1018,8 @@ def identify_vulnerabilities_prompt(name: str = None, address: str = None, port:
         - Recommend a fix
         """,
         "context": {
-            "function_info": function_info(name=name, address=address, port=port),
-            "disassembly": disassembly(name=name, address=address, port=port)
+            "function_info": fn_info,
+            "disassembly": disasm
         }
     }
 
