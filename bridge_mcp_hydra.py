@@ -5,8 +5,8 @@
 #     "requests==2.32.3",
 # ]
 # ///
-# GhydraMCP Bridge for Ghidra HATEOAS API - Refactored for MCP optimization
-# This provides a revised implementation with namespaced tools
+# GhydraMCP Bridge for Ghidra HATEOAS API - Optimized for MCP integration
+# Provides namespaced tools for interacting with Ghidra's reverse engineering capabilities
 import os
 import signal
 import sys
@@ -21,24 +21,19 @@ from mcp.server.fastmcp import FastMCP
 
 # ================= Core Infrastructure =================
 
-# Allowed origins for CORS/CSRF protection
 ALLOWED_ORIGINS = os.environ.get(
     "GHIDRA_ALLOWED_ORIGINS", "http://localhost").split(",")
 
-# Track active Ghidra instances (port -> info dict)
 active_instances: Dict[int, dict] = {}
 instances_lock = Lock()
 DEFAULT_GHIDRA_PORT = 8192
 DEFAULT_GHIDRA_HOST = "localhost"
-# Port ranges for scanning
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-# Version information
 BRIDGE_VERSION = "v2.0.0-beta.1"
 REQUIRED_API_VERSION = 2
 
-# Global state for the current instance
 current_instance_port = DEFAULT_GHIDRA_PORT
 
 instructions = """
