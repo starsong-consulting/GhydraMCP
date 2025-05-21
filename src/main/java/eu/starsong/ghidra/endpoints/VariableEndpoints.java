@@ -58,9 +58,9 @@ package eu.starsong.ghidra.endpoints;
         @Override
         public void registerEndpoints(HttpServer server) {
             server.createContext("/variables", this::handleGlobalVariables);
-            // Note: /functions/{name}/variables is handled within FunctionEndpoints for now
-            // to keep related logic together until full refactor.
-            // If needed, we can create a more complex routing mechanism later.
+            server.createContext("/functions/*/variables/*", this::handleFunctionVariableOperation);
+            server.createContext("/functions/by-name/*/variables/*", this::handleFunctionVariableByNameOperation);
+            // Note: /functions/{name}/variables (listing) is still handled within FunctionEndpoints
         }
 
         private void handleGlobalVariables(HttpExchange exchange) throws IOException {
@@ -641,5 +641,422 @@ package eu.starsong.ghidra.endpoints;
             if (data == null) return "undefined";
             DataType dt = data.getDataType();
             return dt != null ? dt.getName() : "unknown";
+        }
+        
+        /**
+         * Handle operations on a specific function variable (by function address or by name)
+         * This handles GET/PATCH operations for /functions/{address}/variables/{varName}
+         * or /functions/by-name/{name}/variables/{varName}
+         */
+        public void handleFunctionVariableOperation(HttpExchange exchange) throws IOException {
+            try {
+                String path = exchange.getRequestURI().getPath();
+                String[] parts = path.split("/");
+                
+                // Path should be like /functions/{address}/variables/{varName}
+                if (parts.length < 5) {
+                    sendErrorResponse(exchange, 400, "Invalid URL format", "INVALID_URL_FORMAT");
+                    return;
+                }
+                
+                // Extract function address from path
+                String functionAddress = parts[2];
+                String variableName = parts[4];
+                
+                // Handle different HTTP methods
+                if ("PATCH".equals(exchange.getRequestMethod())) {
+                    handleVariablePatch(exchange, functionAddress, variableName, false);
+                } else if ("GET".equals(exchange.getRequestMethod())) {
+                    handleVariableGet(exchange, functionAddress, variableName, false);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error handling function variable operation", e);
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            }
+        }
+        
+        /**
+         * Handle operations on a specific function variable by function name
+         * This handles GET/PATCH operations for /functions/by-name/{functionName}/variables/{varName}
+         */
+        private void handleFunctionVariableByNameOperation(HttpExchange exchange) throws IOException {
+            try {
+                String path = exchange.getRequestURI().getPath();
+                String[] parts = path.split("/");
+                
+                // Path should be like /functions/by-name/{functionName}/variables/{varName}
+                if (parts.length < 6) {
+                    sendErrorResponse(exchange, 400, "Invalid URL format", "INVALID_URL_FORMAT");
+                    return;
+                }
+                
+                // Extract function name from path
+                String functionName = parts[3];
+                String variableName = parts[5];
+                
+                // Handle different HTTP methods
+                if ("PATCH".equals(exchange.getRequestMethod())) {
+                    handleVariablePatch(exchange, functionName, variableName, true);
+                } else if ("GET".equals(exchange.getRequestMethod())) {
+                    handleVariableGet(exchange, functionName, variableName, true);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error handling function variable by name operation", e);
+                sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            }
+        }
+        
+        /**
+         * Handle GET request for a specific variable
+         */
+        private void handleVariableGet(HttpExchange exchange, String functionIdentifier, String variableName, boolean isByName) throws IOException {
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                return;
+            }
+            
+            // Find the function
+            Function function = null;
+            if (isByName) {
+                for (Function f : program.getFunctionManager().getFunctions(true)) {
+                    if (f.getName().equals(functionIdentifier)) {
+                        function = f;
+                        break;
+                    }
+                }
+            } else {
+                try {
+                    Address address = program.getAddressFactory().getAddress(functionIdentifier);
+                    function = program.getFunctionManager().getFunctionAt(address);
+                } catch (Exception e) {
+                    Msg.error(this, "Error getting function at address " + functionIdentifier, e);
+                }
+            }
+            
+            if (function == null) {
+                sendErrorResponse(exchange, 404, "Function not found", "FUNCTION_NOT_FOUND");
+                return;
+            }
+            
+            // Find variable in function
+            Map<String, Object> variableInfo = findVariableInFunction(function, variableName);
+            
+            if (variableInfo == null) {
+                sendErrorResponse(exchange, 404, "Function resource not found: variables/" + variableName, "RESOURCE_NOT_FOUND");
+                return;
+            }
+            
+            // Create HATEOAS-compliant response
+            String functionPathBase = isByName ? "/functions/by-name/" + function.getName() : "/functions/" + function.getEntryPoint();
+            
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                .success(true)
+                .addLink("self", functionPathBase + "/variables/" + variableName)
+                .addLink("function", functionPathBase)
+                .addLink("variables", functionPathBase + "/variables")
+                .result(variableInfo);
+            
+            sendJsonResponse(exchange, builder.build(), 200);
+        }
+        
+        /**
+         * Handle PATCH request to update a variable (rename or change data type)
+         */
+        private void handleVariablePatch(HttpExchange exchange, String functionIdentifier, String variableName, boolean isByName) throws IOException {
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                return;
+            }
+            
+            // Parse the request body to get the update data
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject jsonRequest;
+            try {
+                jsonRequest = new Gson().fromJson(requestBody, JsonObject.class);
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Invalid JSON payload", "INVALID_JSON");
+                return;
+            }
+            
+            // Find the function
+            Function function = null;
+            if (isByName) {
+                for (Function f : program.getFunctionManager().getFunctions(true)) {
+                    if (f.getName().equals(functionIdentifier)) {
+                        function = f;
+                        break;
+                    }
+                }
+            } else {
+                try {
+                    Address address = program.getAddressFactory().getAddress(functionIdentifier);
+                    function = program.getFunctionManager().getFunctionAt(address);
+                } catch (Exception e) {
+                    Msg.error(this, "Error getting function at address " + functionIdentifier, e);
+                }
+            }
+            
+            if (function == null) {
+                sendErrorResponse(exchange, 404, "Function not found", "FUNCTION_NOT_FOUND");
+                return;
+            }
+            
+            // Make sure we have a variable to update
+            Map<String, Object> variableInfo = findVariableInFunction(function, variableName);
+            if (variableInfo == null) {
+                sendErrorResponse(exchange, 404, "Function resource not found: variables/" + variableName, "RESOURCE_NOT_FOUND");
+                return;
+            }
+            
+            // Check if this is a decompiler-only variable
+            boolean isDecompilerOnly = Boolean.TRUE.equals(variableInfo.get("decompilerOnly"));
+            
+            // Get requested changes
+            String newName = null;
+            String newDataType = null;
+            
+            if (jsonRequest.has("name")) {
+                newName = jsonRequest.get("name").getAsString();
+            }
+            
+            if (jsonRequest.has("data_type")) {
+                newDataType = jsonRequest.get("data_type").getAsString();
+            }
+            
+            boolean success = false;
+            String message = "";
+            
+            try {
+                if (isDecompilerOnly) {
+                    // For decompiler-only variables, use HighFunctionDBUtil
+                    success = updateDecompilerVariable(function, variableName, newName, newDataType);
+                    message = success ? "Updated decompiler variable" : "Failed to update decompiler variable";
+                } else {
+                    // For regular variables, use the existing parameter/local variable mechanism
+                    success = updateRegularVariable(function, variableName, newName, newDataType);
+                    message = success ? "Updated variable" : "Failed to update variable";
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error updating variable: " + e.getMessage(), e);
+                sendErrorResponse(exchange, 500, "Error updating variable: " + e.getMessage());
+                return;
+            }
+            
+            if (success) {
+                // Get updated variable info
+                Map<String, Object> updatedInfo;
+                if (newName != null) {
+                    // If renamed, use the new name to find variable
+                    updatedInfo = findVariableInFunction(function, newName);
+                } else {
+                    // Otherwise use the original name
+                    updatedInfo = findVariableInFunction(function, variableName);
+                }
+                
+                if (updatedInfo == null) {
+                    // This shouldn't happen if the update was successful
+                    updatedInfo = new HashMap<>();
+                    updatedInfo.put("message", message);
+                }
+                
+                // Create HATEOAS-compliant response
+                String functionPathBase = isByName ? "/functions/by-name/" + function.getName() : "/functions/" + function.getEntryPoint();
+                
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .addLink("self", functionPathBase + "/variables/" + (newName != null ? newName : variableName))
+                    .addLink("function", functionPathBase)
+                    .addLink("variables", functionPathBase + "/variables")
+                    .result(updatedInfo);
+                
+                sendJsonResponse(exchange, builder.build(), 200);
+            } else {
+                sendErrorResponse(exchange, 500, "Failed to update variable: " + message);
+            }
+        }
+        
+        /**
+         * Update a regular variable (parameter or local variable)
+         */
+        private boolean updateRegularVariable(Function function, String variableName, String newName, String newDataType) {
+            try {
+                // Find and update parameter
+                for (Parameter param : function.getParameters()) {
+                    if (param.getName().equals(variableName)) {
+                        if (newName != null) {
+                            param.setName(newName, SourceType.USER_DEFINED);
+                        }
+                        // Updating data type for parameters would go here
+                        return true;
+                    }
+                }
+                
+                // Find and update local variable (use ghidra.program.model.listing.Variable)
+                for (ghidra.program.model.listing.Variable var : function.getAllVariables()) {
+                    if (var.getName().equals(variableName) && !(var instanceof Parameter)) {
+                        if (newName != null) {
+                            var.setName(newName, SourceType.USER_DEFINED);
+                        }
+                        // Updating data type for local variables would go here
+                        return true;
+                    }
+                }
+                
+                return false;
+            } catch (Exception e) {
+                Msg.error(this, "Error updating regular variable", e);
+                return false;
+            }
+        }
+        
+        /**
+         * Update a decompiler-generated variable
+         */
+        private boolean updateDecompilerVariable(Function function, String variableName, String newName, String newDataType) {
+            if (newName == null) {
+                // Nothing to do
+                return false;
+            }
+            
+            try {
+                Msg.info(this, "Attempting to rename decompiler variable: " + variableName + " to " + newName);
+                
+                // This requires a decompile operation to get the HighFunction
+                DecompInterface decomp = new DecompInterface();
+                try {
+                    decomp.openProgram(getCurrentProgram());
+                    DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                    
+                    if (results.decompileCompleted()) {
+                        HighFunction highFunc = results.getHighFunction();
+                        if (highFunc != null) {
+                            // Get the local symbol map
+                            LocalSymbolMap symbolMap = highFunc.getLocalSymbolMap();
+                            
+                            // Find the variable in the high function
+                            HighSymbol symbol = null;
+                            Iterator<HighSymbol> symbolIter = symbolMap.getSymbols();
+                            while (symbolIter.hasNext()) {
+                                HighSymbol hs = symbolIter.next();
+                                if (hs.getName().equals(variableName)) {
+                                    symbol = hs;
+                                    Msg.info(this, "Found decompiler variable: " + variableName);
+                                    break;
+                                }
+                            }
+                            
+                            if (symbol != null) {
+                                Msg.info(this, "Starting transaction to rename: " + variableName);
+                                // Use transaction to update the variable
+                                int txId = getCurrentProgram().startTransaction("Update Decompiler Variable");
+                                try {
+                                    // Rename the variable using HighFunctionDBUtil
+                                    // This method returns void, so we assume success if no exception is thrown
+                                    HighFunctionDBUtil.updateDBVariable(
+                                        symbol, newName, null, SourceType.USER_DEFINED);
+                                    
+                                    // If we reach here, it was successful
+                                    Msg.info(this, "Successfully renamed variable to: " + newName);
+                                    getCurrentProgram().endTransaction(txId, true);
+                                    return true;
+                                } catch (Exception e) {
+                                    getCurrentProgram().endTransaction(txId, false);
+                                    Msg.error(this, "Error updating decompiler variable: " + e.getMessage(), e);
+                                    return false;
+                                }
+                            } else {
+                                Msg.error(this, "Could not find decompiler variable: " + variableName);
+                            }
+                        } else {
+                            Msg.error(this, "HighFunction is null after decompilation");
+                        }
+                    } else {
+                        Msg.error(this, "Decompilation did not complete successfully for function: " + function.getName());
+                    }
+                } finally {
+                    decomp.dispose();
+                }
+                return false;
+            } catch (Exception e) {
+                Msg.error(this, "Error updating decompiler variable", e);
+                return false;
+            }
+        }
+        
+        /**
+         * Find a variable in the function, including decompiler-generated variables
+         */
+        private Map<String, Object> findVariableInFunction(Function function, String variableName) {
+            // First check regular parameters and local variables
+            for (Parameter param : function.getParameters()) {
+                if (param.getName().equals(variableName)) {
+                    Map<String, Object> info = new HashMap<>();
+                    info.put("name", param.getName());
+                    info.put("dataType", param.getDataType().getName());
+                    info.put("type", "parameter");
+                    info.put("storage", param.getVariableStorage().toString());
+                    info.put("ordinal", param.getOrdinal());
+                    info.put("decompilerOnly", false);
+                    return info;
+                }
+            }
+            
+            for (ghidra.program.model.listing.Variable var : function.getAllVariables()) {
+                if (var.getName().equals(variableName) && !(var instanceof Parameter)) {
+                    Map<String, Object> info = new HashMap<>();
+                    info.put("name", var.getName());
+                    info.put("dataType", var.getDataType().getName());
+                    info.put("type", "local");
+                    info.put("storage", var.getVariableStorage().toString());
+                    info.put("decompilerOnly", false);
+                    return info;
+                }
+            }
+            
+            // Then check decompiler-generated variables
+            try {
+                // This requires a decompile operation to get the HighFunction
+                DecompInterface decomp = new DecompInterface();
+                try {
+                    decomp.openProgram(getCurrentProgram());
+                    DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                    
+                    if (results.decompileCompleted()) {
+                        HighFunction highFunc = results.getHighFunction();
+                        if (highFunc != null) {
+                            LocalSymbolMap localSymbolMap = highFunc.getLocalSymbolMap();
+                            
+                            // Check local symbol map for the variable
+                            Iterator<HighSymbol> symbolIter = localSymbolMap.getSymbols();
+                            while (symbolIter.hasNext()) {
+                                HighSymbol symbol = symbolIter.next();
+                                if (symbol.getName().equals(variableName)) {
+                                    Map<String, Object> info = new HashMap<>();
+                                    info.put("name", symbol.getName());
+                                    info.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
+                                    info.put("type", symbol.isParameter() ? "parameter" : "local");
+                                    info.put("decompilerOnly", true);
+                                    info.put("pcAddress", symbol.getPCAddress() != null ? symbol.getPCAddress().toString() : "N/A");
+                                    info.put("storage", symbol.getStorage() != null ? symbol.getStorage().toString() : "N/A");
+                                    return info;
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    decomp.dispose();
+                }
+            } catch (Exception e) {
+                Msg.error(this, "Error examining decompiler variables", e);
+            }
+            
+            // Variable not found
+            return null;
         }
     }

@@ -7,15 +7,24 @@ import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.model.FunctionInfo;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
+import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileResults;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.pcode.HighFunction;
+import ghidra.program.model.pcode.HighFunctionDBUtil;
+import ghidra.program.model.pcode.HighSymbol;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.util.Msg;
+import ghidra.util.task.ConsoleTaskMonitor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.io.IOException;
@@ -791,6 +800,14 @@ public class FunctionEndpoints extends AbstractEndpoint {
             handleDisassembleFunction(exchange, function);
         } else if (resource.equals("variables")) {
             handleFunctionVariables(exchange, function);
+        } else if (resource.startsWith("variables/")) {
+            // Handle variable operations
+            String variableName = resource.substring("variables/".length());
+            if ("PATCH".equals(exchange.getRequestMethod())) {
+                handleUpdateVariable(exchange, function, variableName);
+            } else {
+                sendErrorResponse(exchange, 405, "Method not allowed for variable operations", "METHOD_NOT_ALLOWED");
+            }
         } else {
             sendErrorResponse(exchange, 404, "Function resource not found: " + resource, "RESOURCE_NOT_FOUND");
         }
@@ -1251,8 +1268,127 @@ public class FunctionEndpoints extends AbstractEndpoint {
      * Handle requests to update a function variable
      */
     private void handleUpdateVariable(HttpExchange exchange, Function function, String variableName) throws IOException {
-        // This is a placeholder - actual implementation would update the variable
-        sendErrorResponse(exchange, 501, "Variable update not implemented", "NOT_IMPLEMENTED");
+        // This is a placeholder - we need to implement variable renaming here
+        Program program = getCurrentProgram();
+        if (program == null) {
+            sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+            return;
+        }
+        
+        try {
+            // Parse the request body to get the update parameters
+            Map<String, String> params = parseJsonPostParams(exchange);
+            String newName = params.get("name");
+            String newDataType = params.get("data_type");
+            
+            if (newName == null && newDataType == null) {
+                sendErrorResponse(exchange, 400, "Missing update parameters - name or data_type required", "MISSING_PARAMETER");
+                return;
+            }
+            
+            // Check if this is a decompiler-generated variable
+            boolean success = false;
+            String message = "";
+            
+            // Use a transaction to update the variable
+            try {
+                int txId = program.startTransaction("Update Function Variable");
+                try {
+                    // First check if this is a regular parameter or local variable
+                    for (Parameter param : function.getParameters()) {
+                        if (param.getName().equals(variableName)) {
+                            if (newName != null) {
+                                param.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
+                                success = true;
+                                message = "Parameter renamed successfully";
+                            }
+                            // Handle data type change if needed
+                            break;
+                        }
+                    }
+                    
+                    // If not a parameter, check if it's a local variable
+                    if (!success) {
+                        for (ghidra.program.model.listing.Variable var : function.getAllVariables()) {
+                            if (var.getName().equals(variableName) && !(var instanceof Parameter)) {
+                                if (newName != null) {
+                                    var.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
+                                    success = true;
+                                    message = "Local variable renamed successfully";
+                                }
+                                // Handle data type change if needed
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // If not a database variable, try as a decompiler variable
+                    if (!success) {
+                        // This requires a decompile operation to get the HighFunction
+                        DecompInterface decomp = new DecompInterface();
+                        try {
+                            decomp.openProgram(program);
+                            DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                            
+                            if (results.decompileCompleted()) {
+                                HighFunction highFunc = results.getHighFunction();
+                                if (highFunc != null) {
+                                    // Find the variable in the high function
+                                    HighSymbol symbol = null;
+                                    Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
+                                    while (symbolIter.hasNext()) {
+                                        HighSymbol hs = symbolIter.next();
+                                        if (hs.getName().equals(variableName)) {
+                                            symbol = hs;
+                                            break;
+                                        }
+                                    }
+                                    
+                                    if (symbol != null) {
+                                        if (newName != null) {
+                                            // Rename the variable using HighFunctionDBUtil
+                                            HighFunctionDBUtil.updateDBVariable(
+                                                symbol, newName, null, SourceType.USER_DEFINED);
+                                            success = true;
+                                            message = "Decompiler variable renamed successfully";
+                                        }
+                                    }
+                                }
+                            }
+                        } finally {
+                            decomp.dispose();
+                        }
+                    }
+                    
+                    program.endTransaction(txId, true);
+                } catch (Exception e) {
+                    program.endTransaction(txId, false);
+                    throw e;
+                }
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 500, "Error updating variable: " + e.getMessage(), "UPDATE_FAILED");
+                return;
+            }
+            
+            if (success) {
+                // Create a successful response
+                Map<String, Object> result = new HashMap<>();
+                result.put("name", newName != null ? newName : variableName);
+                result.put("function", function.getName());
+                result.put("address", function.getEntryPoint().toString());
+                result.put("message", message);
+                
+                ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(result);
+                
+                sendJsonResponse(exchange, builder.build(), 200);
+            } else {
+                sendErrorResponse(exchange, 404, "Function resource not found: variables/" + variableName, "RESOURCE_NOT_FOUND");
+            }
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 500, "Error processing variable update request: " + e.getMessage(), "INTERNAL_ERROR");
+        }
     }
 
     /**

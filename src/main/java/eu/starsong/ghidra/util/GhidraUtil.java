@@ -364,7 +364,7 @@ public class GhidraUtil {
     }
     
     /**
-     * Gets information about variables in a function.
+     * Gets information about variables in a function, including decompiler variables.
      * @param function The function to get variables from.
      * @return A list of maps containing information about each variable.
      */
@@ -381,10 +381,12 @@ public class GhidraUtil {
             varInfo.put("name", param.getName());
             varInfo.put("type", param.getDataType().getName());
             varInfo.put("isParameter", true);
+            varInfo.put("storage", param.getVariableStorage().toString());
+            varInfo.put("source", "database");
             variables.add(varInfo);
         }
         
-        // Add local variables
+        // Add local variables from database
         for (Variable var : function.getAllVariables()) {
             if (var instanceof Parameter) {
                 continue; // Skip parameters, already added
@@ -394,7 +396,61 @@ public class GhidraUtil {
             varInfo.put("name", var.getName());
             varInfo.put("type", var.getDataType().getName());
             varInfo.put("isParameter", false);
+            varInfo.put("storage", var.getVariableStorage().toString());
+            varInfo.put("source", "database");
             variables.add(varInfo);
+        }
+        
+        // Add decompiler-generated variables
+        DecompInterface decompiler = new DecompInterface();
+        try {
+            decompiler.openProgram(function.getProgram());
+            DecompileResults results = decompiler.decompileFunction(function, 30, TaskMonitor.DUMMY);
+            
+            if (results.decompileCompleted()) {
+                HighFunction highFunc = results.getHighFunction();
+                if (highFunc != null) {
+                    // Iterate over local variables from decompiler
+                    for (java.util.Iterator<ghidra.program.model.pcode.HighSymbol> iter = 
+                            highFunc.getLocalSymbolMap().getSymbols(); iter.hasNext(); ) {
+                        
+                        ghidra.program.model.pcode.HighSymbol highSymbol = iter.next();
+                        
+                        // Skip if this is already a tracked variable
+                        boolean alreadyAdded = false;
+                        for (Map<String, Object> var : variables) {
+                            if (var.get("name").equals(highSymbol.getName())) {
+                                alreadyAdded = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!alreadyAdded) {
+                            Map<String, Object> varInfo = new HashMap<>();
+                            varInfo.put("name", highSymbol.getName());
+                            varInfo.put("type", highSymbol.getDataType() != null ? 
+                                highSymbol.getDataType().getName() : "unknown");
+                            varInfo.put("isParameter", highSymbol.isParameter());
+                            varInfo.put("storage", highSymbol.getStorage() != null ? 
+                                highSymbol.getStorage().toString() : "unknown");
+                            varInfo.put("source", "decompiler");
+                            
+                            // Add PC address if available
+                            if (highSymbol.getPCAddress() != null) {
+                                varInfo.put("pcAddress", highSymbol.getPCAddress().toString());
+                            }
+                            
+                            variables.add(varInfo);
+                        }
+                    }
+                }
+            }
+        } 
+        catch (Exception e) {
+            Msg.error(GhidraUtil.class, "Error analyzing decompiler variables", e);
+        }
+        finally {
+            decompiler.dispose();
         }
         
         return variables;
