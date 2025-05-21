@@ -506,6 +506,27 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
         
+        // Attempt to disassemble the code at the specified address before creating a function
+        try {
+            TransactionHelper.executeInTransaction(program, "Disassemble Before Function Creation", () -> {
+                // Check if there's already a defined instruction at the address
+                if (program.getListing().getInstructionAt(address) == null) {
+                    // Attempt to directly disassemble at the address
+                    try {
+                        ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
+                            new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
+                        cmd.applyTo(program);
+                    } catch (Exception ex) {
+                        Msg.warn(this, "Basic disassembly failed: " + ex.getMessage());
+                    }
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            // Log the error but proceed with function creation attempt anyway
+            Msg.warn(this, "Disassembly before function creation failed: " + e.getMessage());
+        }
+        
         // Create function
         Function function;
         try {
@@ -513,8 +534,31 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return program.getFunctionManager().createFunction(null, address, null, null);
             });
         } catch (Exception e) {
-            sendErrorResponse(exchange, 400, "Failed to create function: " + e.getMessage(), "CREATE_FAILED");
-            return;
+            // If function creation initially fails, try a different approach
+            try {
+                Msg.info(this, "Initial function creation failed, attempting with code unit clearing");
+                
+                // Clear any existing data at this location and try disassembling again
+                TransactionHelper.executeInTransaction(program, "Clear and Disassemble", () -> {
+                    // Clear existing data at the address
+                    program.getListing().clearCodeUnits(address, address, false);
+                    
+                    // Try disassembling again
+                    ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
+                        new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
+                    cmd.applyTo(program);
+                    return null;
+                });
+                
+                // Try creating the function again
+                function = TransactionHelper.executeInTransaction(program, "Create Function Retry", () -> {
+                    return program.getFunctionManager().createFunction(null, address, null, null);
+                });
+            } catch (Exception e2) {
+                // Both attempts failed, return the error
+                sendErrorResponse(exchange, 400, "Failed to create function after multiple attempts: " + e.getMessage(), "CREATE_FAILED");
+                return;
+            }
         }
         
         if (function == null) {
@@ -939,6 +983,27 @@ public class FunctionEndpoints extends AbstractEndpoint {
             sendErrorResponse(exchange, 409, "Function already exists at address: " + addressStr, "FUNCTION_EXISTS");
             return;
         }
+
+        // Attempt to disassemble the code at the specified address before creating a function
+        try {
+            TransactionHelper.executeInTransaction(program, "Disassemble Before Function Creation", () -> {
+                // Check if there's already a defined instruction at the address
+                if (program.getListing().getInstructionAt(address) == null) {
+                    // Attempt to directly disassemble at the address
+                    try {
+                        ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
+                            new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
+                        cmd.applyTo(program);
+                    } catch (Exception ex) {
+                        Msg.warn(this, "Basic disassembly failed: " + ex.getMessage());
+                    }
+                }
+                return null;
+            });
+        } catch (Exception e) {
+            // Log the error but proceed with function creation attempt anyway
+            Msg.warn(this, "Disassembly before function creation failed: " + e.getMessage());
+        }
         
         // Create function
         Function function;
@@ -947,8 +1012,31 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return program.getFunctionManager().createFunction(null, address, null, null);
             });
         } catch (Exception e) {
-            sendErrorResponse(exchange, 400, "Failed to create function: " + e.getMessage(), "CREATE_FAILED");
-            return;
+            // If function creation initially fails, try a different approach
+            try {
+                Msg.info(this, "Initial function creation failed, attempting with code unit clearing");
+                
+                // Clear any existing data at this location and try disassembling again
+                TransactionHelper.executeInTransaction(program, "Clear and Disassemble", () -> {
+                    // Clear existing data at the address
+                    program.getListing().clearCodeUnits(address, address, false);
+                    
+                    // Try disassembling again
+                    ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
+                        new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
+                    cmd.applyTo(program);
+                    return null;
+                });
+                
+                // Try creating the function again
+                function = TransactionHelper.executeInTransaction(program, "Create Function Retry", () -> {
+                    return program.getFunctionManager().createFunction(null, address, null, null);
+                });
+            } catch (Exception e2) {
+                // Both attempts failed, return the error
+                sendErrorResponse(exchange, 400, "Failed to create function after multiple attempts: " + e.getMessage(), "CREATE_FAILED");
+                return;
+            }
         }
         
         if (function == null) {
