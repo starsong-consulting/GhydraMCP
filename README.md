@@ -156,6 +156,7 @@ Theoretically, any MCP client should work with GhydraMCP. Two examples are given
 - `list_exports`: List exported functions (params: offset, limit)
 - `list_namespaces`: Show namespaces (params: offset, limit)
 - `list_data_items`: View data labels (params: offset, limit)
+- `list_strings`: List all defined strings in binary (params: offset, limit, filter)
 - `search_functions_by_name`: Find functions (params: query, offset, limit)
 
 **Function Operations**:
@@ -191,6 +192,11 @@ client.use_tool("ghydra", "get_callgraph", {"address": "0x00401000"})
 # Memory and disassembly operations
 client.use_tool("ghydra", "read_memory", {"address": "0x00401000", "length": 16})
 client.use_tool("ghydra", "get_disassembly", {"address": "0x00401000", "length": 32})
+
+# String analysis
+client.use_tool("ghydra", "list_strings")  # List all strings in the binary
+client.use_tool("ghydra", "list_strings", {"limit": 100, "offset": 0})  # Pagination
+client.use_tool("ghydra", "list_strings", {"filter": "password"})  # Search for strings containing "password"
 
 # Function operations
 client.use_tool("ghydra", "set_function_signature", {"address": "0x00401000", "signature": "int main(int argc, char **argv)"})

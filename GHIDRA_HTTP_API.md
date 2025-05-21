@@ -371,6 +371,39 @@ Represents defined data items in memory.
 - **`PATCH /data/{address}`**: Modify a data item (e.g., change `name`, `type`, `comment`). Payload specifies changes.
 - **`DELETE /data/{address}`**: Undefine the data item at the specified address.
 
+### 6.1 Strings
+
+Provides access to string data in the binary.
+
+- **`GET /strings`**: List all defined strings in the binary. Supports pagination and filtering.
+  - Query Parameters:
+    - `?offset=[int]`: Number of strings to skip (default: 0).
+    - `?limit=[int]`: Maximum number of strings to return (default: 2000).
+    - `?filter=[string]`: Only include strings containing this substring (case-insensitive).
+  ```json
+  // Example Response
+  "result": [
+    {
+      "address": "0x00401234",
+      "value": "Hello, world!",
+      "length": 14,
+      "type": "string",
+      "name": "aHelloWorld"
+    },
+    {
+      "address": "0x00401250",
+      "value": "Error: could not open file",
+      "length": 26,
+      "type": "string",
+      "name": "aErrorCouldNotO"
+    }
+  ],
+  "_links": {
+    "self": { "href": "/strings?offset=0&limit=10" },
+    "next": { "href": "/strings?offset=10&limit=10" }
+  }
+  ```
+
 ### 7. Memory Segments
 
 Represents memory blocks/sections defined in the program. 
