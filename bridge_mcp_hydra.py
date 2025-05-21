@@ -1617,6 +1617,34 @@ def rename_data(port: int = DEFAULT_GHIDRA_PORT,
 
 
 @mcp.tool()
+def list_strings(port: int = DEFAULT_GHIDRA_PORT,
+                offset: int = 0,
+                limit: int = 2000,
+                filter: str = None) -> dict:
+    """List all defined strings in the binary with their memory addresses
+    
+    Args:
+        port: Ghidra instance port (default: 8192)
+        offset: Pagination offset (default: 0)
+        limit: Maximum strings to return (default: 2000)
+        filter: Optional string content filter
+        
+    Returns:
+        dict: List of string data with addresses, values, and metadata
+    """
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    
+    if filter:
+        params["filter"] = filter
+    
+    response = safe_get(port, "strings", params)
+    return simplify_response(response)
+
+
+@mcp.tool()
 def update_data(port: int = DEFAULT_GHIDRA_PORT,
                address: str = "",
                name: str = None,

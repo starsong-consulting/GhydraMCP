@@ -84,6 +84,18 @@ package eu.starsong.ghidra.endpoints;
                     sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
                 }
             });
+            server.createContext("/strings", exchange -> {
+                try {
+                    if ("GET".equals(exchange.getRequestMethod())) {
+                        handleListStrings(exchange);
+                    } else {
+                        sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    }
+                } catch (Exception e) {
+                    Msg.error(this, "Error in /strings endpoint", e);
+                    sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+                }
+            });
         }
 
         public void handleData(HttpExchange exchange) throws IOException {
@@ -1294,4 +1306,100 @@ package eu.starsong.ghidra.endpoints;
         }
 
         // Note: The handleUpdateData method is already defined earlier in this file at line 477
+        
+        /**
+         * Handle request to list strings in the binary
+         * @param exchange The HTTP exchange
+         * @throws IOException If an I/O error occurs
+         */
+        public void handleListStrings(HttpExchange exchange) throws IOException {
+            try {
+                Map<String, String> qparams = parseQueryParams(exchange);
+                int offset = parseIntOrDefault(qparams.get("offset"), 0);
+                int limit = parseIntOrDefault(qparams.get("limit"), 2000);
+                String filter = qparams.get("filter");
+                
+                Program program = getCurrentProgram();
+                if (program == null) {
+                    sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                    return;
+                }
+                
+                List<Map<String, Object>> strings = new ArrayList<>();
+                
+                for (MemoryBlock block : program.getMemory().getBlocks()) {
+                    if (!block.isInitialized()) continue;
+                    
+                    DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
+                    while (it.hasNext()) {
+                        Data data = it.next();
+                        if (!block.contains(data.getAddress())) continue;
+                        
+                        // Check if the data type is a string type
+                        String dataTypeName = data.getDataType().getName().toLowerCase();
+                        boolean isString = dataTypeName.contains("string") || 
+                                          dataTypeName.contains("unicode") || 
+                                          (dataTypeName.contains("char") && data.getLength() > 1); // Array of chars
+                        
+                        if (isString) {
+                            // Get the string value
+                            String value = data.getDefaultValueRepresentation();
+                            if (value == null) value = "";
+                            
+                            // Skip if it doesn't match the filter
+                            if (filter != null && !filter.isEmpty() && !value.toLowerCase().contains(filter.toLowerCase())) {
+                                continue;
+                            }
+                            
+                            Map<String, Object> stringInfo = new HashMap<>();
+                            stringInfo.put("address", data.getAddress().toString());
+                            stringInfo.put("value", value);
+                            stringInfo.put("length", data.getLength());
+                            stringInfo.put("type", data.getDataType().getName());
+                            
+                            // If the data has a label/name, include it
+                            String name = null;
+                            Symbol symbol = program.getSymbolTable().getPrimarySymbol(data.getAddress());
+                            if (symbol != null) {
+                                name = symbol.getName();
+                            }
+                            stringInfo.put("name", name != null ? name : "");
+                            
+                            // Add HATEOAS links
+                            Map<String, Object> links = new HashMap<>();
+                            Map<String, String> selfLink = new HashMap<>();
+                            selfLink.put("href", "/data/" + data.getAddress().toString());
+                            links.put("self", selfLink);
+                            
+                            Map<String, String> memoryLink = new HashMap<>();
+                            memoryLink.put("href", "/memory?address=" + data.getAddress().toString());
+                            links.put("memory", memoryLink);
+                            
+                            stringInfo.put("_links", links);
+                            
+                            strings.add(stringInfo);
+                        }
+                    }
+                }
+                
+                // Build response with HATEOAS links
+                eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
+                    .success(true);
+                
+                // Apply pagination and get paginated items
+                List<Map<String, Object>> paginated = applyPagination(strings, offset, limit, builder, "/strings");
+                
+                // Set the paginated result
+                builder.result(paginated);
+                
+                // Add program link
+                builder.addLink("program", "/program");
+                builder.addLink("data", "/data");
+                
+                sendJsonResponse(exchange, builder.build(), 200);
+            } catch (Exception e) {
+                Msg.error(this, "Error listing strings", e);
+                sendErrorResponse(exchange, 500, "Error listing strings: " + e.getMessage(), "INTERNAL_ERROR");
+            }
+        }
     }

@@ -374,6 +374,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                            .addLink("functions", "/functions")
                            .addLink("symbols", "/symbols")
                            .addLink("data", "/data")
+                           .addLink("strings", "/strings")
                            .addLink("segments", "/segments")
                            .addLink("memory", "/memory")
                            .addLink("xrefs", "/xrefs")
