@@ -34,8 +34,8 @@ QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
 # Version information
-BRIDGE_VERSION = "v2.0.0-beta.1"
-REQUIRED_API_VERSION = 2
+BRIDGE_VERSION = "v2.0.0-beta.3"
+REQUIRED_API_VERSION = 2003
 
 instructions = """
 GhydraMCP allows interacting with multiple Ghidra SRE instances. Ghidra SRE is a tool for reverse engineering and analyzing binaries, e.g. malware.
