@@ -1268,13 +1268,6 @@ public class FunctionEndpoints extends AbstractEndpoint {
      * Handle requests to update a function variable
      */
     private void handleUpdateVariable(HttpExchange exchange, Function function, String variableName) throws IOException {
-        // This is a placeholder - we need to implement variable renaming here
-        Program program = getCurrentProgram();
-        if (program == null) {
-            sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
-            return;
-        }
-        
         try {
             // Parse the request body to get the update parameters
             Map<String, String> params = parseJsonPostParams(exchange);
@@ -1286,89 +1279,44 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
             
-            // Check if this is a decompiler-generated variable
-            boolean success = false;
-            String message = "";
-            
-            // Use a transaction to update the variable
-            try {
-                int txId = program.startTransaction("Update Function Variable");
-                try {
-                    // First check if this is a regular parameter or local variable
-                    for (Parameter param : function.getParameters()) {
-                        if (param.getName().equals(variableName)) {
-                            if (newName != null) {
-                                param.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
-                                success = true;
-                                message = "Parameter renamed successfully";
-                            }
-                            // Handle data type change if needed
-                            break;
-                        }
-                    }
-                    
-                    // If not a parameter, check if it's a local variable
-                    if (!success) {
-                        for (ghidra.program.model.listing.Variable var : function.getAllVariables()) {
-                            if (var.getName().equals(variableName) && !(var instanceof Parameter)) {
-                                if (newName != null) {
-                                    var.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
-                                    success = true;
-                                    message = "Local variable renamed successfully";
-                                }
-                                // Handle data type change if needed
-                                break;
-                            }
-                        }
-                    }
-                    
-                    // If not a database variable, try as a decompiler variable
-                    if (!success) {
-                        // This requires a decompile operation to get the HighFunction
-                        DecompInterface decomp = new DecompInterface();
-                        try {
-                            decomp.openProgram(program);
-                            DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
-                            
-                            if (results.decompileCompleted()) {
-                                HighFunction highFunc = results.getHighFunction();
-                                if (highFunc != null) {
-                                    // Find the variable in the high function
-                                    HighSymbol symbol = null;
-                                    Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
-                                    while (symbolIter.hasNext()) {
-                                        HighSymbol hs = symbolIter.next();
-                                        if (hs.getName().equals(variableName)) {
-                                            symbol = hs;
-                                            break;
-                                        }
-                                    }
-                                    
-                                    if (symbol != null) {
-                                        if (newName != null) {
-                                            // Rename the variable using HighFunctionDBUtil
-                                            HighFunctionDBUtil.updateDBVariable(
-                                                symbol, newName, null, SourceType.USER_DEFINED);
-                                            success = true;
-                                            message = "Decompiler variable renamed successfully";
-                                        }
-                                    }
-                                }
-                            }
-                        } finally {
-                            decomp.dispose();
-                        }
-                    }
-                    
-                    program.endTransaction(txId, true);
-                } catch (Exception e) {
-                    program.endTransaction(txId, false);
-                    throw e;
-                }
-            } catch (Exception e) {
-                sendErrorResponse(exchange, 500, "Error updating variable: " + e.getMessage(), "UPDATE_FAILED");
+            // Use transaction to update variable
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                 return;
             }
+            
+            boolean success = TransactionHelper.executeInTransaction(program, "Update Variable", () -> {
+                try {
+                    // This requires a decompile operation to get the HighFunction
+                    DecompInterface decomp = new DecompInterface();
+                    try {
+                        decomp.openProgram(program);
+                        DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                        
+                        if (results.decompileCompleted()) {
+                            HighFunction highFunc = results.getHighFunction();
+                            if (highFunc != null) {
+                                // Find the variable in the high function
+                                for (Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols(); symbolIter.hasNext();) {
+                                    HighSymbol symbol = symbolIter.next();
+                                    if (symbol.getName().equals(variableName)) {
+                                        // Rename the variable using HighFunctionDBUtil
+                                        HighFunctionDBUtil.updateDBVariable(symbol, newName, null, SourceType.USER_DEFINED);
+                                        return true;
+                                    }
+                                }
+                            }
+                        }
+                    } finally {
+                        decomp.dispose();
+                    }
+                    return false;
+                } catch (Exception e) {
+                    Msg.error(this, "Error updating variable: " + e.getMessage(), e);
+                    return false;
+                }
+            });
             
             if (success) {
                 // Create a successful response
@@ -1376,7 +1324,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 result.put("name", newName != null ? newName : variableName);
                 result.put("function", function.getName());
                 result.put("address", function.getEntryPoint().toString());
-                result.put("message", message);
+                result.put("message", "Variable renamed successfully");
                 
                 ResponseBuilder builder = new ResponseBuilder(exchange, port)
                     .success(true)
