@@ -188,6 +188,12 @@ package eu.starsong.ghidra.endpoints;
                     while (it.hasNext()) {
                         Data data = it.next();
                         if (block.contains(data.getAddress())) {
+                            // Apply addr filter if present
+                            String addrFilter = qparams.get("addr");
+                            if (addrFilter != null && !data.getAddress().toString().equals(addrFilter)) {
+                                continue; // Skip this data item if address doesn't match filter
+                            }
+
                             Map<String, Object> item = new HashMap<>();
                             item.put("address", data.getAddress().toString());
                             item.put("label", data.getLabel() != null ? data.getLabel() : "(unnamed)");
