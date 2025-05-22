@@ -1,8 +1,8 @@
 package eu.starsong.ghidra.api;
 
 public class ApiConstants {
-    public static final String PLUGIN_VERSION = "v2.0.0-beta.3";
-    public static final int API_VERSION = 2003;
+    public static final String PLUGIN_VERSION = "v2.0.0-beta.4";
+    public static final int API_VERSION = 2004;
     public static final int DEFAULT_PORT = 8192;
     public static final int MAX_PORT_ATTEMPTS = 10;
 }
