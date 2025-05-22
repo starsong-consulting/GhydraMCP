@@ -1321,15 +1321,6 @@ def functions_decompile(name: str = None, address: str = None,
     response = safe_get(port, endpoint, params)
     simplified = simplify_response(response)
     
-    # For AI consumption, make the decompiled code more directly accessible
-    if "result" in simplified and isinstance(simplified["result"], dict):
-        if "decompiled" in simplified["result"]:
-            simplified["decompiled_code"] = simplified["result"]["decompiled"]
-        elif "ccode" in simplified["result"]:
-            simplified["decompiled_code"] = simplified["result"]["ccode"]
-        elif "decompiled_text" in simplified["result"]:
-            simplified["decompiled_code"] = simplified["result"]["decompiled_text"]
-    
     return simplified
 
 @mcp.tool()
