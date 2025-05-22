@@ -1740,6 +1740,32 @@ def data_create(address: str, data_type: str, size: int = None, port: int = None
     return simplify_response(response)
 
 @mcp.tool()
+def data_list_strings(offset: int = 0, limit: int = 2000, filter: str = None, port: int = None) -> dict:
+    """List all defined strings in the binary with their memory addresses
+    
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum strings to return (default: 2000)
+        filter: Optional string content filter
+        port: Specific Ghidra instance port (optional)
+        
+    Returns:
+        dict: List of string data with addresses, values, and metadata
+    """
+    port = _get_instance_port(port)
+    
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    
+    if filter:
+        params["filter"] = filter
+    
+    response = safe_get(port, "strings", params)
+    return simplify_response(response)
+
+@mcp.tool()
 def data_rename(address: str, name: str, port: int = None) -> dict:
     """Rename a data item
     
