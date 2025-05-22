@@ -509,6 +509,12 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
         
+        // Check if address is in a valid memory block
+        if (program.getMemory().getBlock(address) == null) {
+             sendErrorResponse(exchange, 400, "Address is not in a defined memory block: " + addressStr, "INVALID_ADDRESS");
+             return;
+        }
+        
         // Check if function already exists
         if (program.getFunctionManager().getFunctionAt(address) != null) {
             sendErrorResponse(exchange, 409, "Function already exists at address: " + addressStr, "FUNCTION_EXISTS");
