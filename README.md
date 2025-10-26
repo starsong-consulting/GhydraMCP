@@ -435,6 +435,21 @@ Tests the MCP bridge functionality:
 
 # Building from Source
 
+## Build Configuration
+
+GhydraMCP can be built using default jars of GhydraMCP (version 11.3.2) or the version of your ghidra install (by setting GHYDRA_HOME).
+
+### Using your ghidra install GHIDRA_HOME
+
+If you have Ghidra installed on your system, you can build directly against your installation by setting the `GHIDRA_HOME` environment variable. This ensures you're always building against the correct Ghidra version you're running.
+
+```bash
+# Set GHIDRA_HOME to your Ghidra installation directory
+export GHIDRA_HOME=/PATH/TO/ghidra
+```
+
+## Build Targets
+
 You can build different artifacts with Maven:
 
 ## Build Everything (Default)

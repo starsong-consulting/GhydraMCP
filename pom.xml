@@ -13,7 +13,14 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-    <ghidra.jar.location>${project.basedir}/lib</ghidra.jar.location>
+    <!-- Default paths to local lib - will be overridden if GHIDRA_HOME is set -->
+    <ghidra.generic.jar>${project.basedir}/lib/Generic.jar</ghidra.generic.jar>
+    <ghidra.softwaremodeling.jar>${project.basedir}/lib/SoftwareModeling.jar</ghidra.softwaremodeling.jar>
+    <ghidra.project.jar>${project.basedir}/lib/Project.jar</ghidra.project.jar>
+    <ghidra.docking.jar>${project.basedir}/lib/Docking.jar</ghidra.docking.jar>
+    <ghidra.decompiler.jar>${project.basedir}/lib/Decompiler.jar</ghidra.decompiler.jar>
+    <ghidra.utility.jar>${project.basedir}/lib/Utility.jar</ghidra.utility.jar>
+    <ghidra.base.jar>${project.basedir}/lib/Base.jar</ghidra.base.jar>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
@@ -31,54 +38,55 @@
     </dependency>
 
     <!-- Ghidra JARs as system-scoped dependencies -->
+    <!-- Paths can be overridden via GHIDRA_HOME environment variable -->
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Generic</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/Generic.jar</systemPath>
+      <systemPath>${ghidra.generic.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>SoftwareModeling</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/SoftwareModeling.jar</systemPath>
+      <systemPath>${ghidra.softwaremodeling.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Project</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/Project.jar</systemPath>
+      <systemPath>${ghidra.project.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Docking</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/Docking.jar</systemPath>
+      <systemPath>${ghidra.docking.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Decompiler</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/Decompiler.jar</systemPath>
+      <systemPath>${ghidra.decompiler.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Utility</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/Utility.jar</systemPath>
+      <systemPath>${ghidra.utility.jar}</systemPath>
     </dependency>
     <dependency>
       <groupId>ghidra</groupId>
       <artifactId>Base</artifactId>
-      <version>11.3.1</version>
+      <version>11.3.2</version>
       <scope>system</scope>
-      <systemPath>${ghidra.jar.location}/Base.jar</systemPath>
+      <systemPath>${ghidra.base.jar}</systemPath>
     </dependency>
     
     <!-- Test dependencies -->
@@ -261,6 +269,25 @@
   </build>
   
   <profiles>
+    <!-- Profile activated when GHIDRA_HOME environment variable is set -->
+    <profile>
+      <id>use-ghidra-home</id>
+      <activation>
+        <property>
+          <name>env.GHIDRA_HOME</name>
+        </property>
+      </activation>
+      <properties>
+        <ghidra.generic.jar>${env.GHIDRA_HOME}/Ghidra/Framework/Generic/lib/Generic.jar</ghidra.generic.jar>
+        <ghidra.softwaremodeling.jar>${env.GHIDRA_HOME}/Ghidra/Framework/SoftwareModeling/lib/SoftwareModeling.jar</ghidra.softwaremodeling.jar>
+        <ghidra.project.jar>${env.GHIDRA_HOME}/Ghidra/Framework/Project/lib/Project.jar</ghidra.project.jar>
+        <ghidra.docking.jar>${env.GHIDRA_HOME}/Ghidra/Framework/Docking/lib/Docking.jar</ghidra.docking.jar>
+        <ghidra.decompiler.jar>${env.GHIDRA_HOME}/Ghidra/Features/Decompiler/lib/Decompiler.jar</ghidra.decompiler.jar>
+        <ghidra.utility.jar>${env.GHIDRA_HOME}/Ghidra/Framework/Utility/lib/Utility.jar</ghidra.utility.jar>
+        <ghidra.base.jar>${env.GHIDRA_HOME}/Ghidra/Features/Base/lib/Base.jar</ghidra.base.jar>
+      </properties>
+    </profile>
+    
     <!-- Profile for building just the Ghidra plugin -->
     <profile>
       <id>plugin-only</id>
