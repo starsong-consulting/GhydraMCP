@@ -1350,18 +1350,21 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
     return simplify_response(response)
 
 @mcp.tool()
-def functions_decompile(name: str = None, address: str = None, 
+def functions_decompile(name: str = None, address: str = None,
                         syntax_tree: bool = False, style: str = "normalize",
+                        show_constants: bool = True, timeout: int = 30,
                         port: int = None) -> dict:
     """Get decompiled code for a function
-    
+
     Args:
         name: Function name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         syntax_tree: Include syntax tree (default: False)
         style: Decompiler style (default: "normalize")
+        show_constants: Show actual constant values (strings, numbers) instead of placeholder addresses (default: True)
+        timeout: Decompilation timeout in seconds (default: 30)
         port: Specific Ghidra instance port (optional)
-        
+
     Returns:
         dict: Contains function information and decompiled code
     """
@@ -1374,22 +1377,24 @@ def functions_decompile(name: str = None, address: str = None,
             },
             "timestamp": int(time.time() * 1000)
         }
-    
+
     port = _get_instance_port(port)
-    
+
     params = {
         "syntax_tree": str(syntax_tree).lower(),
-        "style": style
+        "style": style,
+        "show_constants": str(show_constants).lower(),
+        "timeout": str(timeout)
     }
-    
+
     if address:
         endpoint = f"functions/{address}/decompile"
     else:
         endpoint = f"functions/by-name/{quote(name)}/decompile"
-    
+
     response = safe_get(port, endpoint, params)
     simplified = simplify_response(response)
-    
+
     return simplified
 
 @mcp.tool()
