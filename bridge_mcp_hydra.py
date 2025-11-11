@@ -1944,13 +1944,13 @@ def analysis_run(port: int = None, analysis_options: dict = None) -> dict:
 @mcp.tool()
 def analysis_get_callgraph(name: str = None, address: str = None, max_depth: int = 3, port: int = None) -> dict:
     """Get function call graph visualization data
-    
+
     Args:
         name: Starting function name (mutually exclusive with address)
         address: Starting function address (mutually exclusive with name)
-        max_depth: Maximum call depth to analyze (default: 3)
+        max_depth: Maximum call depth to analyze (default: 3). Increase for deeper call chains (e.g., 10-15 for complex functions)
         port: Specific Ghidra instance port (optional)
-        
+
     Returns:
         dict: Graph data with nodes and edges
     """
