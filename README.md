@@ -139,7 +139,13 @@ https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
 
 ## MCP Clients
 
-Theoretically, any MCP client should work with GhydraMCP. Two examples are given below.
+GhydraMCP works with any MCP-compatible client using **stdio transport**. It has been tested and confirmed working with:
+
+- **Claude Desktop** - Anthropic's official desktop application
+- **Claude Code** - Anthropic's VS Code extension and CLI tool
+- **Cline** - Popular VS Code extension for AI-assisted coding
+
+See the [Client Setup](#client-setup) section below for detailed configuration instructions for each client.
 
 ## API Reference (Updated for v2.0)
 
@@ -218,7 +224,12 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
 
 ## Client Setup
 
+GhydraMCP works with any MCP-compatible client. Below are configuration examples for popular AI coding assistants.
+
 ### Claude Desktop Configuration
+
+Add this to your Claude Desktop configuration file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+
 ```json
 {
   "mcpServers": {
@@ -229,7 +240,7 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
         "/ABSOLUTE_PATH_TO/bridge_mcp_hydra.py"
       ],
       "env": {
-        "GHIDRA_HYDRA_HOST": "localhost"  // Optional - defaults to localhost
+        "GHIDRA_HYDRA_HOST": "localhost"
       }
     }
   }
@@ -238,8 +249,67 @@ client.use_tool("ghydra", "register_instance", {"port": 8193})
 
 > **Note:** You can also use `python` instead of `uv run`, but then you'll need to manually install the requirements first with `pip install mcp requests`.
 
+### Claude Code Configuration
+
+Claude Code automatically discovers MCP servers configured in Claude Desktop. If you've set up the configuration above, Claude Code will have access to GhydraMCP tools immediately.
+
+Alternatively, you can configure Claude Code separately by adding the same configuration to the MCP settings in Claude Code's configuration.
+
+### Cline Configuration
+
+Cline (VS Code extension) uses a separate configuration file. To set up GhydraMCP with Cline:
+
+1. Open VS Code with Cline installed
+2. Click the "MCP Servers" icon in Cline's interface
+3. Select the "Configure" tab
+4. Click "Configure MCP Servers" to edit `cline_mcp_settings.json`
+5. Add the following configuration:
+
+```json
+{
+  "mcpServers": {
+    "ghydra": {
+      "command": "uv",
+      "args": [
+        "run",
+        "/ABSOLUTE_PATH_TO/bridge_mcp_hydra.py"
+      ],
+      "env": {
+        "GHIDRA_HYDRA_HOST": "localhost"
+      },
+      "disabled": false
+    }
+  }
+}
+```
+
+If you prefer to use `python` directly instead of `uv`:
+
+```json
+{
+  "mcpServers": {
+    "ghydra": {
+      "command": "python",
+      "args": [
+        "/ABSOLUTE_PATH_TO/bridge_mcp_hydra.py"
+      ],
+      "env": {
+        "GHIDRA_HYDRA_HOST": "localhost"
+      },
+      "disabled": false
+    }
+  }
+}
+```
+
+> **Important:** Replace `/ABSOLUTE_PATH_TO/` with the actual absolute path to your `bridge_mcp_hydra.py` file. For example:
+> - **Linux/macOS**: `/home/username/GhydraMCP/bridge_mcp_hydra.py`
+> - **Windows**: `C:\\Users\\username\\GhydraMCP\\bridge_mcp_hydra.py`
+
+After saving the configuration, restart Cline to load the GhydraMCP server.
+
 ### 5ire Configuration
-1. Tool Key: ghydra  
+1. Tool Key: ghydra
 2. Name: GhydraMCP
 3. Command: `uv run /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
 
