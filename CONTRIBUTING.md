@@ -83,12 +83,12 @@ When making changes, update version numbers in these locations:
 
 1. **Plugin Version** in `src/main/java/eu/starsong/ghidra/api/ApiConstants.java`:
    ```java
-   public static final String PLUGIN_VERSION = "v2.0.0-beta.1";
+   public static final String PLUGIN_VERSION = "v2.0.0";
    ```
 
 2. **Bridge Version** in `bridge_mcp_hydra.py`:
    ```python
-   BRIDGE_VERSION = "v2.0.0-beta.1"
+   BRIDGE_VERSION = "v2.0.0"
    ```
 
 ### API Versions

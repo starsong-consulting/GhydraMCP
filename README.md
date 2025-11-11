@@ -121,7 +121,7 @@ First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/rel
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
 3. Click the `+` button
-4. Select the `GhydraMCP-2.0.0-beta.1.zip` (or your chosen version) from the downloaded release
+4. Select the `GhydraMCP-[version].zip` file from the downloaded release
 5. Restart Ghidra
 6. Make sure the GhydraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
 
@@ -177,10 +177,10 @@ Theoretically, any MCP client should work with GhydraMCP. Two examples are given
 - `update_data`: Update both name and type (params: address, name, data_type)
 
 **Instance Management**:
-- `list_instances`: List active Ghidra instances (no params)
+- `list_instances`: List active Ghidra instances, automatically discovering new ones on default host (no params) - **use this first**
+- `discover_instances`: Discover instances on a specific host (params: host [optional]) - **only use for non-default hosts**
 - `register_instance`: Register new instance (params: port, url)
 - `unregister_instance`: Remove instance (params: port)
-- `discover_instances`: Auto-discover running instances (params: host [optional])
 
 **Example Usage**:
 ```python
@@ -209,13 +209,11 @@ client.use_tool("ghydra", "rename_data", {"address": "0x00401234", "name": "my_v
 client.use_tool("ghydra", "update_data", {"address": "0x00401238", "name": "ptr_var", "data_type": "char *"})
 client.use_tool("ghydra", "delete_data", {"address": "0x0040123C"})
 
-# Instance management  
+# Instance management
+client.use_tool("ghydra", "list_instances")  # Lists all instances (auto-discovers on default host)
+client.use_tool("ghydra", "discover_instances", {"host": "192.168.1.10"})  # Only if scanning different host
 client.use_tool("ghydra", "register_instance", {"port": 8192, "url": "http://localhost:8192/"})
 client.use_tool("ghydra", "register_instance", {"port": 8193})
-
-# Auto-discover instances
-client.use_tool("ghydra", "discover_instances")  # Default host
-client.use_tool("ghydra", "discover_instances", {"host": "192.168.1.10"})  # Custom host
 ```
 
 ## Client Setup
@@ -256,24 +254,7 @@ Check which Ghidra instances are currently running.
 
 **Assistant:**
 ```
-I'll check which Ghidra instances are currently running by discovering any active instances.
-
-View result from discover_instances from ghydra (local)
-{
-  "found": 2,
-  "instances": [
-    {
-      "port": 8192,
-      "url": "http://localhost:8192",
-      "result": "Registered instance on port 8192 at http://localhost:8192"
-    },
-    {
-      "port": 8193,
-      "url": "http://localhost:8193",
-      "result": "Registered instance on port 8193 at http://localhost:8193"
-    }
-  ]
-}
+I'll check which Ghidra instances are currently running.
 
 View result from list_instances from ghydra (local)
 {

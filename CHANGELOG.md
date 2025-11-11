@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.0] - 2025-11-11
+
 ### Added
 - **MCP Integration Refactor:** Refactored the Python bridge for improved MCP integration. (337f89e)
   - Introduced MCP resources for loading context (e.g., instances, functions, disassembly).
@@ -115,7 +117,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Initial project setup
 - Basic MCP bridge functionality
 
-[unreleased]: https://github.com/teal-bauer/GhydraMCP/compare/v1.4.0...HEAD
+[unreleased]: https://github.com/teal-bauer/GhydraMCP/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/teal-bauer/GhydraMCP/compare/v1.4.0...v2.0.0
 [1.4.0]: https://github.com/teal-bauer/GhydraMCP/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/teal-bauer/GhydraMCP/compare/v1.2...v1.3.0
 [1.2]: https://github.com/teal-bauer/GhydraMCP/compare/v1.1...v1.2

@@ -31,7 +31,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v2.0.0-beta.5"
+BRIDGE_VERSION = "v2.0.0"
 REQUIRED_API_VERSION = 2005
 
 current_instance_port = DEFAULT_GHIDRA_PORT
@@ -39,7 +39,10 @@ current_instance_port = DEFAULT_GHIDRA_PORT
 instructions = """
 GhydraMCP allows interacting with multiple Ghidra SRE instances. Ghidra SRE is a tool for reverse engineering and analyzing binaries, e.g. malware.
 
-First, run `instances_discover()` to find all available Ghidra instances (both already known and newly discovered). Then use `instances_use(port)` to set your working instance.
+First, run `instances_list()` to see all available Ghidra instances (automatically discovers instances on the default host).
+Then use `instances_use(port)` to set your working instance.
+
+Note: Use `instances_discover(host)` only if you need to scan a different host.
 
 The API is organized into namespaces for different types of operations:
 - instances_* : For managing Ghidra instances
@@ -1151,7 +1154,19 @@ def reverse_engineer_binary_prompt(port: int = None):
 # Instance management tools
 @mcp.tool()
 def instances_list() -> dict:
-    """List all active Ghidra instances"""
+    """List all active Ghidra instances
+
+    This is the primary tool for working with instances. It automatically discovers
+    new instances on the default host before listing.
+
+    Use instances_discover(host) only if you need to scan a different host.
+
+    Returns:
+        dict: Contains 'instances' list with all available Ghidra instances
+    """
+    # Auto-discover new instances before listing
+    _discover_instances(QUICK_DISCOVERY_RANGE, host=None, timeout=0.5)
+
     with instances_lock:
         return {
             "instances": [
@@ -1167,45 +1182,33 @@ def instances_list() -> dict:
 
 @mcp.tool()
 def instances_discover(host: str = None) -> dict:
-    """Discover available Ghidra instances by scanning ports
+    """Discover Ghidra instances on a specific host
+
+    Use this ONLY when you need to discover instances on a different host.
+    For normal usage, just use instances_list() which auto-discovers on the default host.
 
     Args:
-        host: Optional host to scan (default: configured ghidra_host)
+        host: Host to scan for Ghidra instances (default: configured ghidra_host)
 
     Returns:
-        dict: Contains 'found' count, 'new_instances' count, and 'instances' list with all available instances
+        dict: Contains 'instances' list with all available instances after discovery
     """
-    # Get newly discovered instances
-    discovery_result = _discover_instances(QUICK_DISCOVERY_RANGE, host=host, timeout=0.5)
-    new_instances = discovery_result.get("instances", [])
-    new_count = len(new_instances)
+    # Discover instances on the specified host
+    _discover_instances(QUICK_DISCOVERY_RANGE, host=host, timeout=0.5)
 
-    # Get all currently known instances (including ones that were already registered)
-    all_instances = []
+    # Return all instances (same format as instances_list for consistency)
     with instances_lock:
-        for port, info in active_instances.items():
-            instance_info = {
-                "port": port,
-                "url": info["url"],
-                "project": info.get("project", ""),
-                "file": info.get("file", ""),
-                "plugin_version": info.get("plugin_version", "unknown"),
-                "api_version": info.get("api_version", "unknown")
-            }
-
-            # Mark if this was newly discovered in this call
-            instance_info["newly_discovered"] = any(inst["port"] == port for inst in new_instances)
-
-            all_instances.append(instance_info)
-
-    # Sort by port for consistent ordering
-    all_instances.sort(key=lambda x: x["port"])
-
-    return {
-        "found": len(all_instances),  # Total instances available
-        "new_instances": new_count,   # How many were newly discovered
-        "instances": all_instances    # All available instances
-    }
+        return {
+            "instances": [
+                {
+                    "port": port,
+                    "url": info["url"],
+                    "project": info.get("project", ""),
+                    "file": info.get("file", "")
+                }
+                for port, info in active_instances.items()
+            ]
+        }
 
 @mcp.tool()
 def instances_register(port: int, url: str = None) -> str:
