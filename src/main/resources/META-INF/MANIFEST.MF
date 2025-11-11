@@ -1,7 +1,7 @@
 Manifest-Version: 1.0
 Plugin-Class: eu.starsong.ghidra.GhydraMCP
 Plugin-Name: GhydraMCP
-Plugin-Version: 11.3.1
+Plugin-Version: 11.4.2
 Bundle-Version: dev-SNAPSHOT
 Plugin-Author: LaurieWired, Teal Bauer
 Plugin-Description: Expose multiple Ghidra tools to MCP servers with variable management
