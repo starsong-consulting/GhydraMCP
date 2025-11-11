@@ -12,6 +12,7 @@ import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Program;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.util.Msg;
@@ -328,8 +329,8 @@ private boolean isValidCommentType(String commentType) {
  */
 private String getCommentByType(Program program, Address address, String commentType) {
     if (program == null) return null;
-    
-    int type = getCommentTypeInt(commentType);
+
+    CommentType type = getCommentType(commentType);
     return program.getListing().getComment(type, address);
 }
 
@@ -338,9 +339,9 @@ private String getCommentByType(Program program, Address address, String comment
  */
 private boolean setCommentByType(Program program, Address address, String commentType, String comment) {
     if (program == null) return false;
-    
-    int type = getCommentTypeInt(commentType);
-    
+
+    CommentType type = getCommentType(commentType);
+
     try {
         return TransactionHelper.executeInTransaction(program, "Set Comment", () -> {
             program.getListing().setComment(address, type, comment);
@@ -353,22 +354,22 @@ private boolean setCommentByType(Program program, Address address, String commen
 }
 
 /**
- * Convert comment type string to Ghidra's internal comment type constants
+ * Convert comment type string to Ghidra's CommentType enum
  */
-private int getCommentTypeInt(String commentType) {
+private CommentType getCommentType(String commentType) {
     switch (commentType.toLowerCase()) {
         case "plate":
-            return CodeUnit.PLATE_COMMENT;
+            return CommentType.PLATE;
         case "pre":
-            return CodeUnit.PRE_COMMENT;
+            return CommentType.PRE;
         case "post":
-            return CodeUnit.POST_COMMENT;
+            return CommentType.POST;
         case "eol":
-            return CodeUnit.EOL_COMMENT;
+            return CommentType.EOL;
         case "repeatable":
-            return CodeUnit.REPEATABLE_COMMENT;
+            return CommentType.REPEATABLE;
         default:
-            return CodeUnit.PLATE_COMMENT;
+            return CommentType.PLATE;
     }
 }
 
