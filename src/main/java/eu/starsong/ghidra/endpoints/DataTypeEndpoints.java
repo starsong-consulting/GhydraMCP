@@ -80,7 +80,7 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                 if (kind != null) {
                     boolean match = false;
                     if (kind.equals("struct") && dt instanceof Structure) match = true;
-                    if (kind.equals("enum") && dt instanceof Enum) match = true;
+                    if (kind.equals("enum") && dt instanceof ghidra.program.model.data.Enum) match = true;
                     if (kind.equals("union") && dt instanceof Union) match = true;
                     if (!match) continue;
                 }
@@ -95,9 +95,9 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                 if (dt instanceof Structure) {
                     dtInfo.put("kind", "struct");
                     dtInfo.put("numComponents", ((Structure) dt).getNumComponents());
-                } else if (dt instanceof Enum) {
+                } else if (dt instanceof ghidra.program.model.data.Enum) {
                     dtInfo.put("kind", "enum");
-                    dtInfo.put("numValues", ((Enum) dt).getCount());
+                    dtInfo.put("numValues", ((ghidra.program.model.data.Enum) dt).getCount());
                 } else if (dt instanceof Union) {
                     dtInfo.put("kind", "union");
                     dtInfo.put("numComponents", ((Union) dt).getNumComponents());

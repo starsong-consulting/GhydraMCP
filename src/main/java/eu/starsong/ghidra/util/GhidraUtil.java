@@ -336,19 +336,36 @@ public class GhidraUtil {
      * @return The decompiled code as a string, or null if decompilation failed.
      */
     public static String decompileFunction(Function function) {
+        return decompileFunction(function, true, 30);
+    }
+
+    /**
+     * Helper method to decompile a function with configurable options.
+     * @param function The function to decompile.
+     * @param showConstants If true, show actual constant values (strings, numbers) instead of placeholder addresses
+     * @param timeout Timeout in seconds for decompilation
+     * @return The decompiled code as a string, or null if decompilation failed.
+     */
+    public static String decompileFunction(Function function, boolean showConstants, int timeout) {
         if (function == null) {
             return null;
         }
-        
+
         Program program = function.getProgram();
         DecompInterface decompiler = new DecompInterface();
         DecompileOptions options = new DecompileOptions();
-        
+
+        // Configure constant display - when true, shows actual values instead of DAT_* placeholders
+        if (showConstants) {
+            options.setEliminateUnreachable(true);
+            options.grabFromProgram(program);
+        }
+
         decompiler.setOptions(options);
         decompiler.openProgram(program);
-        
+
         try {
-            DecompileResults results = decompiler.decompileFunction(function, 30, TaskMonitor.DUMMY);
+            DecompileResults results = decompiler.decompileFunction(function, timeout, TaskMonitor.DUMMY);
             if (results.decompileCompleted()) {
                 return results.getDecompiledFunction().getC();
             } else {

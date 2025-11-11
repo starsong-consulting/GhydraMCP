@@ -1089,10 +1089,11 @@ public class FunctionEndpoints extends AbstractEndpoint {
             boolean syntaxTree = Boolean.parseBoolean(params.getOrDefault("syntax_tree", "false"));
             String style = params.getOrDefault("style", "normalize");
             String format = params.getOrDefault("format", "structured");
+            boolean showConstants = Boolean.parseBoolean(params.getOrDefault("show_constants", "true"));
             int timeout = parseIntOrDefault(params.get("timeout"), 30);
-            
-            // Decompile function
-            String decompilation = GhidraUtil.decompileFunction(function);
+
+            // Decompile function with configurable options
+            String decompilation = GhidraUtil.decompileFunction(function, showConstants, timeout);
             
             // Create function info
             Map<String, Object> functionInfo = new HashMap<>();
