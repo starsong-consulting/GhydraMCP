@@ -2106,7 +2106,7 @@ def functions_set_comment(address: str, comment: str = "", port: int = None) -> 
 
 # ================= Startup =================
 
-if __name__ == "__main__":
+def main():
     register_instance(DEFAULT_GHIDRA_PORT,
                       f"http://{ghidra_host}:{DEFAULT_GHIDRA_PORT}")
 
@@ -2123,3 +2123,7 @@ if __name__ == "__main__":
 
     signal.signal(signal.SIGINT, handle_sigint)
     mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
