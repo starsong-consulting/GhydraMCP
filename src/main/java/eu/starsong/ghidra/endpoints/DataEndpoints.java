@@ -532,11 +532,16 @@ package eu.starsong.ghidra.endpoints;
                         if (dataType == null) {
                             throw new Exception("Could not find or parse data type: " + dataTypeStr);
                         }
-                        
-                        // Clear existing data
-                        int length = data.getLength();
-                        listing.clearCodeUnits(addr, addr.add(length - 1), false);
-                        
+
+                        // Clear existing data - need to clear enough space for the new data type
+                        // Use the LARGER of the old data length or new data type length
+                        int oldLength = data.getLength();
+                        int newLength = dataType.getLength();
+                        int lengthToClear = Math.max(oldLength, newLength > 0 ? newLength : oldLength);
+
+                        // Clear the required space
+                        listing.clearCodeUnits(addr, addr.add(lengthToClear - 1), false);
+
                         // Create new data
                         Data newData = listing.createData(addr, dataType);
                         if (newData == null) {
