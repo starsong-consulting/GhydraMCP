@@ -1,12 +1,12 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/releases)
-[![API Version](https://img.shields.io/badge/API-v2.0-orange)](https://github.com/teal-bauer/GhydraMCP/blob/main/GHIDRA_HTTP_API.md)
-[![GitHub stars](https://img.shields.io/github/stars/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/network/members)
-[![GitHub contributors](https://img.shields.io/github/contributors/teal-bauer/GhydraMCP)](https://github.com/teal-bauer/GhydraMCP/graphs/contributors)
-[![Build Status](https://github.com/teal-bauer/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/teal-bauer/GhydraMCP/actions/workflows/build.yml)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/releases)
+[![API Version](https://img.shields.io/badge/API-v2.1-orange)](https://github.com/starsong-consulting/GhydraMCP/blob/main/GHIDRA_HTTP_API.md)
+[![GitHub stars](https://img.shields.io/github/stars/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/network/members)
+[![GitHub contributors](https://img.shields.io/github/contributors/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/graphs/contributors)
+[![Build Status](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml)
 
-# GhydraMCP v2.0
+# GhydraMCP v2.1
 
 GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI assistants that enables comprehensive AI-assisted reverse engineering through the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp).
 
@@ -14,7 +14,7 @@ GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI 
 
 ## Overview
 
-GhydraMCP v2.0 integrates three key components:
+GhydraMCP v2.1 integrates three key components:
 
 1. **Modular Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a HATEOAS-driven REST API
 2. **MCP Bridge**: A Python script that translates MCP requests into API calls with comprehensive type checking
@@ -32,7 +32,7 @@ GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired
 
 # Features
 
-GhydraMCP version 2.0 provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
+GhydraMCP version 2.1 provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
 
 ## Advanced Program Analysis
 
@@ -147,88 +147,128 @@ GhydraMCP works with any MCP-compatible client using **stdio transport**. It has
 
 See the [Client Setup](#client-setup) section below for detailed configuration instructions for each client.
 
-## API Reference (Updated for v2.0)
+## API Reference (Updated for v2.1)
 
 ### Available Tools
 
-**Program Analysis**:
-- `list_functions`: List all functions (params: offset, limit)
-- `list_classes`: List all classes/namespaces (params: offset, limit)  
-- `decompile_function`: Get decompiled C code (params: name or address)
-- `get_function`: Get function details (params: name or address)
-- `get_callgraph`: Get function call graph (params: address)
-- `list_segments`: View memory segments (params: offset, limit)
-- `list_imports`: List imported symbols (params: offset, limit)
-- `list_exports`: List exported functions (params: offset, limit)
-- `list_namespaces`: Show namespaces (params: offset, limit)
-- `list_data_items`: View data labels (params: offset, limit)
-- `list_strings`: List all defined strings in binary (params: offset, limit, filter)
-- `search_functions_by_name`: Find functions (params: query, offset, limit)
+GhydraMCP v2.1 organizes tools into logical namespaces for better discoverability and organization:
 
-**Function Operations**:
-- `rename_function`: Rename a function (params: name, new_name)
-- `set_function_signature`: Update function prototype (params: address, signature)
-- `set_comment`: Add comments (params: address, comment, comment_type)
-- `remove_comment`: Remove comments (params: address, comment_type)
+**Instance Management** (`instances_*`):
+- `instances_list`: List active Ghidra instances (auto-discovers on default host) - **use this first**
+- `instances_discover`: Discover instances on a specific host (params: host [optional]) - **only use for non-default hosts**
+- `instances_register`: Register new instance (params: port, url [optional])
+- `instances_unregister`: Remove instance (params: port)
+- `instances_use`: Set current working instance (params: port)
+- `instances_current`: Get current working instance info
 
-**Memory Operations**:
-- `read_memory`: Read bytes from memory (params: address, length)
-- `get_disassembly`: Get disassembled instructions (params: address, length)
+**Function Analysis** (`functions_*`):
+- `functions_list`: List all functions (params: offset, limit, port [optional])
+- `functions_get`: Get function details (params: name or address, port [optional])
+- `functions_decompile`: Get decompiled C code (params: name or address, syntax_tree, style, timeout, port [optional])
+- `functions_disassemble`: Get disassembled instructions (params: name or address, port [optional])
+- `functions_create`: Create function at address (params: address, port [optional])
+- `functions_rename`: Rename a function (params: old_name or address, new_name, port [optional])
+- `functions_set_signature`: Update function prototype (params: name or address, signature, port [optional])
+- `functions_get_variables`: Get function variables (params: name or address, port [optional])
+- `functions_set_comment`: Set function comment (params: address, comment, port [optional])
 
-**Data Manipulation**:
-- `create_data`: Create new data at address (params: address, data_type)
-- `delete_data`: Delete data at address (params: address)
-- `set_data_type`: Change data type at address (params: address, data_type)
-- `rename_data`: Rename data at address (params: address, name)
-- `update_data`: Update both name and type (params: address, name, data_type)
+**Data Manipulation** (`data_*`):
+- `data_list`: List data items (params: offset, limit, addr, name, name_contains, port [optional])
+- `data_list_strings`: List all defined strings (params: offset, limit, filter, port [optional])
+- `data_create`: Create data at address (params: address, data_type, size [optional], port [optional])
+- `data_rename`: Rename data item (params: address, name, port [optional])
+- `data_delete`: Delete data item (params: address, port [optional])
+- `data_set_type`: Change data type (params: address, data_type, port [optional])
 
-**Instance Management**:
-- `list_instances`: List active Ghidra instances, automatically discovering new ones on default host (no params) - **use this first**
-- `discover_instances`: Discover instances on a specific host (params: host [optional]) - **only use for non-default hosts**
-- `register_instance`: Register new instance (params: port, url)
-- `unregister_instance`: Remove instance (params: port)
+**Struct Management** (`structs_*`):
+- `structs_list`: List all struct data types (params: offset, limit, category [optional], port [optional])
+- `structs_get`: Get detailed struct information (params: name, port [optional])
+- `structs_create`: Create new struct (params: name, category [optional], description [optional], port [optional])
+- `structs_add_field`: Add field to struct (params: struct_name, field_name, field_type, offset [optional], comment [optional], port [optional])
+- `structs_update_field`: Update struct field (params: struct_name, field_name or field_offset, new_name [optional], new_type [optional], new_comment [optional], port [optional])
+- `structs_delete`: Delete struct (params: name, port [optional])
+
+**Memory Operations** (`memory_*`):
+- `memory_read`: Read bytes from memory (params: address, length, format, port [optional])
+- `memory_write`: Write bytes to memory (params: address, bytes_data, format, port [optional])
+
+**Cross-References** (`xrefs_*`):
+- `xrefs_list`: List cross-references (params: to_addr [optional], from_addr [optional], type [optional], offset, limit, port [optional])
+
+**Analysis** (`analysis_*`):
+- `analysis_run`: Trigger program analysis (params: port [optional], analysis_options [optional])
+- `analysis_get_callgraph`: Get function call graph (params: name or address, max_depth, port [optional])
+- `analysis_get_dataflow`: Perform data flow analysis (params: address, direction, max_steps, port [optional])
 
 **Example Usage**:
 ```python
-# Program analysis
-client.use_tool("ghydra", "decompile_function", {"name": "main"})
-client.use_tool("ghydra", "get_function", {"address": "0x00401000"})
-client.use_tool("ghydra", "get_callgraph", {"address": "0x00401000"})
+# Instance Management - Always start here
+client.use_tool("ghydra", "instances_list")  # Auto-discovers instances on localhost
+client.use_tool("ghydra", "instances_use", {"port": 8192})  # Set working instance
+client.use_tool("ghydra", "instances_current")  # Check current instance
 
-# Memory and disassembly operations
-client.use_tool("ghydra", "read_memory", {"address": "0x00401000", "length": 16})
-client.use_tool("ghydra", "get_disassembly", {"address": "0x00401000", "length": 32})
+# Function Analysis
+client.use_tool("ghydra", "functions_list", {"offset": 0, "limit": 100})
+client.use_tool("ghydra", "functions_get", {"name": "main"})
+client.use_tool("ghydra", "functions_decompile", {"address": "0x00401000"})
+client.use_tool("ghydra", "functions_disassemble", {"name": "main"})
+client.use_tool("ghydra", "functions_rename", {"address": "0x00401000", "new_name": "process_data"})
+client.use_tool("ghydra", "functions_set_signature", {"address": "0x00401000", "signature": "int process_data(char* buf, int len)"})
+client.use_tool("ghydra", "functions_set_comment", {"address": "0x00401000", "comment": "Main processing function"})
 
-# String analysis
-client.use_tool("ghydra", "list_strings")  # List all strings in the binary
-client.use_tool("ghydra", "list_strings", {"limit": 100, "offset": 0})  # Pagination
-client.use_tool("ghydra", "list_strings", {"filter": "password"})  # Search for strings containing "password"
+# Data Manipulation
+client.use_tool("ghydra", "data_list_strings", {"filter": "password"})  # Find strings containing "password"
+client.use_tool("ghydra", "data_list", {"offset": 0, "limit": 50})
+client.use_tool("ghydra", "data_create", {"address": "0x00401234", "data_type": "int"})
+client.use_tool("ghydra", "data_rename", {"address": "0x00401234", "name": "counter"})
+client.use_tool("ghydra", "data_set_type", {"address": "0x00401238", "data_type": "char *"})
+client.use_tool("ghydra", "data_delete", {"address": "0x0040123C"})
 
-# Function operations
-client.use_tool("ghydra", "set_function_signature", {"address": "0x00401000", "signature": "int main(int argc, char **argv)"})
-client.use_tool("ghydra", "set_comment", {"address": "0x00401100", "comment": "This instruction initializes the counter", "comment_type": "plate"})
+# Struct Management
+client.use_tool("ghydra", "structs_create", {"name": "NetworkPacket", "category": "/network"})
+client.use_tool("ghydra", "structs_add_field", {
+    "struct_name": "NetworkPacket",
+    "field_name": "header",
+    "field_type": "dword",
+    "comment": "Packet header"
+})
+client.use_tool("ghydra", "structs_add_field", {
+    "struct_name": "NetworkPacket",
+    "field_name": "data_ptr",
+    "field_type": "pointer"
+})
+client.use_tool("ghydra", "structs_update_field", {
+    "struct_name": "NetworkPacket",
+    "field_name": "header",
+    "new_name": "packet_header",
+    "new_comment": "Updated header field"
+})
+client.use_tool("ghydra", "structs_get", {"name": "NetworkPacket"})
+client.use_tool("ghydra", "structs_list", {"category": "/network"})
 
-# Data manipulation
-client.use_tool("ghydra", "create_data", {"address": "0x00401234", "data_type": "int"})
-client.use_tool("ghydra", "set_data_type", {"address": "0x00401238", "data_type": "char *"})
-client.use_tool("ghydra", "rename_data", {"address": "0x00401234", "name": "my_variable"})
-client.use_tool("ghydra", "update_data", {"address": "0x00401238", "name": "ptr_var", "data_type": "char *"})
-client.use_tool("ghydra", "delete_data", {"address": "0x0040123C"})
+# Memory Operations
+client.use_tool("ghydra", "memory_read", {"address": "0x00401000", "length": 16, "format": "hex"})
+client.use_tool("ghydra", "memory_write", {"address": "0x00401000", "bytes_data": "90909090", "format": "hex"})
 
-# Instance management
-client.use_tool("ghydra", "list_instances")  # Lists all instances (auto-discovers on default host)
-client.use_tool("ghydra", "discover_instances", {"host": "192.168.1.10"})  # Only if scanning different host
-client.use_tool("ghydra", "register_instance", {"port": 8192, "url": "http://localhost:8192/"})
-client.use_tool("ghydra", "register_instance", {"port": 8193})
+# Cross-References
+client.use_tool("ghydra", "xrefs_list", {"to_addr": "0x00401000"})  # Find callers
+client.use_tool("ghydra", "xrefs_list", {"from_addr": "0x00401000"})  # Find callees
+
+# Analysis
+client.use_tool("ghydra", "analysis_get_callgraph", {"name": "main", "max_depth": 5})
+client.use_tool("ghydra", "analysis_get_dataflow", {"address": "0x00401050", "direction": "forward"})
+client.use_tool("ghydra", "analysis_run")  # Trigger full analysis
 ```
 
 ## Client Setup
 
 GhydraMCP works with any MCP-compatible client. Below are configuration examples for popular AI coding assistants.
 
-### Claude Desktop Configuration
+### Installation Methods
 
-Add this to your Claude Desktop configuration file (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+#### Recommended: Local Installation from Release
+
+Download the latest [release](https://github.com/starsong-consulting/GhydraMCP/releases) to ensure the bridge and plugin versions are in sync.
 
 ```json
 {
@@ -247,7 +287,39 @@ Add this to your Claude Desktop configuration file (`~/Library/Application Suppo
 }
 ```
 
+Replace `/ABSOLUTE_PATH_TO/` with the actual path to your `bridge_mcp_hydra.py` file.
+
 > **Note:** You can also use `python` instead of `uv run`, but then you'll need to manually install the requirements first with `pip install mcp requests`.
+
+#### Alternative: Direct from Repository with uvx
+
+If you want to use the latest development version, you can run directly from the GitHub repository:
+
+```json
+{
+  "mcpServers": {
+    "ghydra": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/starsong-consulting/GhydraMCP",
+        "ghydramcp"
+      ],
+      "env": {
+        "GHIDRA_HYDRA_HOST": "localhost"
+      }
+    }
+  }
+}
+```
+
+> **Warning:** This method may pull a bridge version that's out of sync with your installed plugin. Only use this if you're tracking the latest development branch.
+
+### Claude Desktop Configuration
+
+Add your chosen configuration method to your Claude Desktop configuration file:
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ### Claude Code Configuration
 
@@ -315,76 +387,86 @@ After saving the configuration, restart Cline to load the GhydraMCP server.
 
 ## Example Session
 
-Below is an example of how an AI assistant might interact with multiple Ghidra instances using GhydraMCP:
+Below is an example of how an AI assistant might interact with Ghidra using GhydraMCP v2.1:
 
 **User:**
 ```
-Check which Ghidra instances are currently running.
+Analyze the main function in the binary and identify any data structures being used.
 ```
 
 **Assistant:**
 ```
-I'll check which Ghidra instances are currently running.
+I'll analyze the binary for you. Let me start by checking available Ghidra instances.
 
-View result from list_instances from ghydra (local)
-{
-  "instances": [
-    {
-      "port": 8192,
-      "url": "http://localhost:8192",
-      "project": "TestProject",
-      "file": "application.exe"
-    },
-    {
-      "port": 8193,
-      "url": "http://localhost:8193",
-      "project": "FirmwareAnalysis",
-      "file": "firmware.bin"
-    }
-  ]
+[Uses instances_list]
+Found Ghidra instance on port 8192 analyzing "malware_sample.exe".
+
+[Uses instances_use with port 8192]
+Set instance 8192 as current working instance.
+
+[Uses functions_decompile with name "main"]
+Here's the decompiled main function:
+
+void main(void) {
+  NetworkPacket *packet;
+  int status;
+
+  packet = (NetworkPacket *)malloc(0x20);
+  packet->header = 0x1234;
+  packet->data_ptr = allocate_buffer(0x100);
+  status = process_packet(packet);
+  ...
 }
 
-I found two active Ghidra instances:
-1. Port 8192: Analyzing "application.exe" in project "TestProject"
-2. Port 8193: Analyzing "firmware.bin" in project "FirmwareAnalysis"
+I can see this code uses a "NetworkPacket" structure. Let me check if it's already defined.
 
-I'm ready to analyze these binaries. What would you like me to examine?
+[Uses structs_get with name "NetworkPacket"]
+The struct doesn't exist yet. Let me create it based on the decompiled code.
+
+[Uses structs_create with name "NetworkPacket", category "/network"]
+Created NetworkPacket struct.
+
+[Uses structs_add_field for each field]
+Added fields:
+- header (dword at offset 0)
+- data_ptr (pointer at offset 4)
+- size (dword at offset 8)
+- status (dword at offset 12)
+
+[Uses data_list_strings with filter "Error"]
+I also found several error strings that suggest this binary handles network communications with error checking.
+
+The main function appears to be the entry point for a network packet processing routine that allocates and processes data structures for network communication.
 ```
 
 **User:**
 ```
-List the functions through ghydra for both instances and identify any related functionality.
+Can you trace where process_packet is called from and show me the call graph?
 ```
 
 **Assistant:**
 ```
-I'll list the functions from both instances and analyze them.
+I'll trace the call relationships for process_packet.
 
-View result from list_functions from ghydra (local){
-  `port`: 8192
-}
-[Function list for application.exe...]
+[Uses xrefs_list with to_addr for process_packet]
+Found 3 callers of process_packet:
+- main at 0x401000
+- worker_thread at 0x401200
+- handle_request at 0x401450
 
-View result from list_functions from ghydra (local){
-  `port`: 8193
-}
-[Function list for firmware.bin...]
+[Uses analysis_get_callgraph with name "process_packet", max_depth 3]
+Here's the call graph starting from process_packet:
 
-I notice some interesting functions in both binaries. Let me decompile a few to understand their behavior.
+process_packet (0x401100)
+├── validate_header (0x401150)
+│   └── check_magic (0x401180)
+├── parse_data (0x4011A0)
+│   ├── extract_field (0x4011D0)
+│   └── validate_checksum (0x4011E0)
+└── send_response (0x401220)
+    └── network_send (0x401250)
 
-View result from get_function from ghydra (local){
-  `port`: 8192,
-  `name`: "process_command"
-}
-[Decompiled code for process_command...]
-
-View result from get_function from ghydra (local){
-  `port`: 8193,
-  `name`: "handle_message"
-}
-[Decompiled code for handle_message...]
-
-Based on this analysis, I can see these binaries communicate using a simple protocol where...
+This shows process_packet coordinates validation, parsing, and response transmission.
 ```
 
 # JSON Communication
@@ -393,7 +475,7 @@ GhydraMCP uses structured JSON for all communication between the Python bridge a
 
 ## API Architecture
 
-GhydraMCP v2.0 implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
+GhydraMCP v2.1 implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
 
 ### Core API Design
 
