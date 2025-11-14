@@ -404,6 +404,201 @@ Provides access to string data in the binary.
   }
   ```
 
+### 6.2 Structs
+
+Provides functionality for creating and managing struct (composite) data types.
+
+- **`GET /structs`**: List all struct data types in the program. Supports pagination and filtering.
+  - Query Parameters:
+    - `?offset=[int]`: Number of structs to skip (default: 0).
+    - `?limit=[int]`: Maximum number of structs to return (default: 100).
+    - `?category=[string]`: Filter by category path (e.g. "/winapi").
+  ```json
+  // Example Response
+  "result": [
+    {
+      "name": "MyStruct",
+      "path": "/custom/MyStruct",
+      "size": 16,
+      "numFields": 4,
+      "category": "/custom",
+      "description": "Custom data structure"
+    },
+    {
+      "name": "FileHeader",
+      "path": "/FileHeader",
+      "size": 32,
+      "numFields": 8,
+      "category": "/",
+      "description": ""
+    }
+  ],
+  "_links": {
+    "self": { "href": "/structs?offset=0&limit=100" },
+    "program": { "href": "/program" }
+  }
+  ```
+
+- **`GET /structs?name={struct_name}`**: Get detailed information about a specific struct including all fields.
+  ```json
+  // Example Response for GET /structs?name=MyStruct
+  "result": {
+    "name": "MyStruct",
+    "path": "/custom/MyStruct",
+    "size": 16,
+    "category": "/custom",
+    "description": "Custom data structure",
+    "numFields": 4,
+    "fields": [
+      {
+        "name": "id",
+        "offset": 0,
+        "length": 4,
+        "type": "int",
+        "typePath": "/int",
+        "comment": "Unique identifier"
+      },
+      {
+        "name": "flags",
+        "offset": 4,
+        "length": 4,
+        "type": "dword",
+        "typePath": "/dword",
+        "comment": ""
+      },
+      {
+        "name": "data_ptr",
+        "offset": 8,
+        "length": 4,
+        "type": "pointer",
+        "typePath": "/pointer",
+        "comment": "Pointer to data"
+      },
+      {
+        "name": "size",
+        "offset": 12,
+        "length": 4,
+        "type": "uint",
+        "typePath": "/uint",
+        "comment": ""
+      }
+    ]
+  },
+  "_links": {
+    "self": { "href": "/structs?name=MyStruct" },
+    "structs": { "href": "/structs" },
+    "program": { "href": "/program" }
+  }
+  ```
+
+- **`POST /structs/create`**: Create a new struct data type.
+  - Request Payload:
+    - `name`: Name for the new struct (required).
+    - `category`: Category path (optional, defaults to root).
+    - `description`: Description for the struct (optional).
+  ```json
+  // Example Request Payload
+  {
+    "name": "NetworkPacket",
+    "category": "/network",
+    "description": "Network packet structure"
+  }
+
+  // Example Response
+  "result": {
+    "name": "NetworkPacket",
+    "path": "/network/NetworkPacket",
+    "category": "/network",
+    "size": 0,
+    "message": "Struct created successfully"
+  }
+  ```
+
+- **`POST /structs/addfield`**: Add a field to an existing struct.
+  - Request Payload:
+    - `struct`: Name of the struct to modify (required).
+    - `fieldName`: Name for the new field (required).
+    - `fieldType`: Data type for the field (required, e.g. "int", "char", "pointer").
+    - `offset`: Specific offset to insert field (optional, appends to end if not specified).
+    - `comment`: Comment for the field (optional).
+  ```json
+  // Example Request Payload
+  {
+    "struct": "NetworkPacket",
+    "fieldName": "header",
+    "fieldType": "dword",
+    "comment": "Packet header"
+  }
+
+  // Example Response
+  "result": {
+    "struct": "NetworkPacket",
+    "fieldName": "header",
+    "fieldType": "dword",
+    "offset": 0,
+    "length": 4,
+    "structSize": 4,
+    "message": "Field added successfully"
+  }
+  ```
+
+- **`POST /structs/updatefield`**: Update an existing field in a struct (rename, change type, or modify comment).
+  - Request Payload:
+    - `struct`: Name of the struct to modify (required).
+    - `fieldOffset` OR `fieldName`: Identify the field to update (one required).
+    - `newName`: New name for the field (optional).
+    - `newType`: New data type for the field (optional).
+    - `newComment`: New comment for the field (optional).
+    - At least one of `newName`, `newType`, or `newComment` must be provided.
+  ```json
+  // Example Request Payload - rename a field
+  {
+    "struct": "NetworkPacket",
+    "fieldName": "header",
+    "newName": "packet_header",
+    "newComment": "Updated packet header field"
+  }
+
+  // Example Request Payload - change type by offset
+  {
+    "struct": "NetworkPacket",
+    "fieldOffset": 0,
+    "newType": "qword"
+  }
+
+  // Example Response
+  "result": {
+    "struct": "NetworkPacket",
+    "offset": 0,
+    "originalName": "header",
+    "originalType": "dword",
+    "originalComment": "Packet header",
+    "newName": "packet_header",
+    "newType": "dword",
+    "newComment": "Updated packet header field",
+    "length": 4,
+    "message": "Field updated successfully"
+  }
+  ```
+
+- **`POST /structs/delete`**: Delete a struct data type.
+  - Request Payload:
+    - `name`: Name of the struct to delete (required).
+  ```json
+  // Example Request Payload
+  {
+    "name": "NetworkPacket"
+  }
+
+  // Example Response
+  "result": {
+    "name": "NetworkPacket",
+    "path": "/network/NetworkPacket",
+    "category": "/network",
+    "message": "Struct deleted successfully"
+  }
+  ```
+
 ### 7. Memory Segments
 
 Represents memory blocks/sections defined in the program. 
