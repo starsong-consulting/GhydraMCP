@@ -1351,20 +1351,35 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
     return simplify_response(response)
 
 @mcp.tool()
-def functions_decompile(name: str = None, address: str = None, 
+def functions_decompile(name: str = None, address: str = None,
                         syntax_tree: bool = False, style: str = "normalize",
+                        start_line: int = None, end_line: int = None, max_lines: int = None,
                         port: int = None) -> dict:
-    """Get decompiled code for a function
-    
+    """Get decompiled code for a function with optional line filtering for context management
+
     Args:
         name: Function name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         syntax_tree: Include syntax tree (default: False)
         style: Decompiler style (default: "normalize")
+        start_line: Start at this line number (1-indexed, optional)
+        end_line: End at this line number (inclusive, optional)
+        max_lines: Maximum number of lines to return (optional, takes precedence over end_line)
         port: Specific Ghidra instance port (optional)
-        
+
     Returns:
-        dict: Contains function information and decompiled code
+        dict: Contains function information and decompiled code (potentially filtered).
+              If filtering is applied, includes a 'filter' object with total_lines and applied parameters.
+
+    Examples:
+        # Get first 20 lines of decompiled code
+        functions_decompile(name="main", max_lines=20)
+
+        # Get lines 10-30
+        functions_decompile(name="main", start_line=10, end_line=30)
+
+        # Get 15 lines starting from line 25
+        functions_decompile(name="main", start_line=25, max_lines=15)
     """
     if not name and not address:
         return {
@@ -1375,22 +1390,30 @@ def functions_decompile(name: str = None, address: str = None,
             },
             "timestamp": int(time.time() * 1000)
         }
-    
+
     port = _get_instance_port(port)
-    
+
     params = {
         "syntax_tree": str(syntax_tree).lower(),
         "style": style
     }
-    
+
+    # Add line filtering parameters if provided
+    if start_line is not None:
+        params["start_line"] = str(start_line)
+    if end_line is not None:
+        params["end_line"] = str(end_line)
+    if max_lines is not None:
+        params["max_lines"] = str(max_lines)
+
     if address:
         endpoint = f"functions/{address}/decompile"
     else:
         endpoint = f"functions/by-name/{quote(name)}/decompile"
-    
+
     response = safe_get(port, endpoint, params)
     simplified = simplify_response(response)
-    
+
     return simplified
 
 @mcp.tool()
