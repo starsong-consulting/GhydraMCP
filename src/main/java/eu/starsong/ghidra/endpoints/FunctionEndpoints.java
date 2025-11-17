@@ -1092,19 +1092,66 @@ public class FunctionEndpoints extends AbstractEndpoint {
             boolean showConstants = Boolean.parseBoolean(params.getOrDefault("show_constants", "true"));
             int timeout = parseIntOrDefault(params.get("timeout"), 30);
 
+            // Line filtering parameters for context management
+            int startLine = parseIntOrDefault(params.get("start_line"), -1);
+            int endLine = parseIntOrDefault(params.get("end_line"), -1);
+            int maxLines = parseIntOrDefault(params.get("max_lines"), -1);
+
             // Decompile function with configurable options
             String decompilation = GhidraUtil.decompileFunction(function, showConstants, timeout);
-            
+
+            // Apply line filtering if requested
+            String filteredDecompilation = decompilation;
+            int totalLines = 0;
+            if (decompilation != null) {
+                String[] lines = decompilation.split("\n");
+                totalLines = lines.length;
+
+                // Apply line range filtering
+                if (startLine > 0 || endLine > 0 || maxLines > 0) {
+                    int start = startLine > 0 ? Math.max(0, startLine - 1) : 0;
+                    int end = endLine > 0 ? Math.min(lines.length, endLine) : lines.length;
+
+                    // If maxLines is specified, limit the range
+                    if (maxLines > 0) {
+                        end = Math.min(end, start + maxLines);
+                    }
+
+                    if (start < lines.length) {
+                        StringBuilder filtered = new StringBuilder();
+                        for (int i = start; i < end && i < lines.length; i++) {
+                            if (i > start) {
+                                filtered.append("\n");
+                            }
+                            filtered.append(lines[i]);
+                        }
+                        filteredDecompilation = filtered.toString();
+                    } else {
+                        filteredDecompilation = "// No lines in specified range";
+                    }
+                }
+            }
+
             // Create function info
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
             functionInfo.put("name", function.getName());
-            
+
             // Create the result structure according to GHIDRA_HTTP_API.md
             Map<String, Object> result = new HashMap<>();
             result.put("function", functionInfo);
-            result.put("decompiled", decompilation != null ? decompilation : "// Decompilation failed");
-            
+            result.put("decompiled", filteredDecompilation != null ? filteredDecompilation : "// Decompilation failed");
+
+            // Add metadata about line filtering if applied
+            if (startLine > 0 || endLine > 0 || maxLines > 0) {
+                Map<String, Object> filterInfo = new HashMap<>();
+                filterInfo.put("total_lines", totalLines);
+                if (startLine > 0) filterInfo.put("start_line", startLine);
+                if (endLine > 0) filterInfo.put("end_line", endLine);
+                if (maxLines > 0) filterInfo.put("max_lines", maxLines);
+                result.put("filter", filterInfo);
+            }
+
             // Add syntax tree if requested
             if (syntaxTree) {
                 result.put("syntax_tree", "Syntax tree not implemented");

@@ -31,8 +31,8 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v2.0.0"
-REQUIRED_API_VERSION = 2005
+BRIDGE_VERSION = "v2.1.0"
+REQUIRED_API_VERSION = 2010
 
 current_instance_port = DEFAULT_GHIDRA_PORT
 
@@ -48,6 +48,7 @@ The API is organized into namespaces for different types of operations:
 - instances_* : For managing Ghidra instances
 - functions_* : For working with functions
 - data_* : For working with data items
+- structs_* : For creating and managing struct data types
 - memory_* : For memory access
 - xrefs_* : For cross-references
 - analysis_* : For program analysis
@@ -1353,8 +1354,9 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
 def functions_decompile(name: str = None, address: str = None,
                         syntax_tree: bool = False, style: str = "normalize",
                         show_constants: bool = True, timeout: int = 30,
+                        start_line: int = None, end_line: int = None, max_lines: int = None,
                         port: int = None) -> dict:
-    """Get decompiled code for a function
+    """Get decompiled code for a function with optional line filtering and configurable options
 
     Args:
         name: Function name (mutually exclusive with address)
@@ -1363,10 +1365,24 @@ def functions_decompile(name: str = None, address: str = None,
         style: Decompiler style (default: "normalize")
         show_constants: Show actual constant values (strings, numbers) instead of placeholder addresses (default: True)
         timeout: Decompilation timeout in seconds (default: 30)
+        start_line: Start at this line number (1-indexed, optional)
+        end_line: End at this line number (inclusive, optional)
+        max_lines: Maximum number of lines to return (optional, takes precedence over end_line)
         port: Specific Ghidra instance port (optional)
 
     Returns:
-        dict: Contains function information and decompiled code
+        dict: Contains function information and decompiled code (potentially filtered).
+              If filtering is applied, includes a 'filter' object with total_lines and applied parameters.
+
+    Examples:
+        # Get first 20 lines of decompiled code
+        functions_decompile(name="main", max_lines=20)
+
+        # Get lines 10-30
+        functions_decompile(name="main", start_line=10, end_line=30)
+
+        # Get 15 lines starting from line 25
+        functions_decompile(name="main", start_line=25, max_lines=15)
     """
     if not name and not address:
         return {
@@ -1386,6 +1402,14 @@ def functions_decompile(name: str = None, address: str = None,
         "show_constants": str(show_constants).lower(),
         "timeout": str(timeout)
     }
+
+    # Add line filtering parameters if provided
+    if start_line is not None:
+        params["start_line"] = str(start_line)
+    if end_line is not None:
+        params["end_line"] = str(end_line)
+    if max_lines is not None:
+        params["max_lines"] = str(max_lines)
 
     if address:
         endpoint = f"functions/{address}/decompile"
@@ -1929,6 +1953,234 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
     response = safe_post(port, "data/type", payload)
     return simplify_response(response)
 
+# Struct tools
+@mcp.tool()
+def structs_list(offset: int = 0, limit: int = 100, category: str = None, port: int = None) -> dict:
+    """List all struct data types in the program
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        category: Filter by category path (e.g. "/winapi")
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of structs with name, size, and field count
+    """
+    port = _get_instance_port(port)
+
+    params = {
+        "offset": offset,
+        "limit": limit
+    }
+    if category:
+        params["category"] = category
+
+    response = safe_get(port, "structs", params)
+    simplified = simplify_response(response)
+
+    # Ensure we maintain pagination metadata
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+
+    return simplified
+
+@mcp.tool()
+def structs_get(name: str, port: int = None) -> dict:
+    """Get detailed information about a specific struct including all fields
+
+    Args:
+        name: Struct name
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Struct details including all fields with their names, types, and offsets
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Struct name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    params = {"name": name}
+    response = safe_get(port, "structs", params)
+    return simplify_response(response)
+
+@mcp.tool()
+def structs_create(name: str, category: str = None, description: str = None, port: int = None) -> dict:
+    """Create a new struct data type
+
+    Args:
+        name: Name for the new struct
+        category: Category path for the struct (e.g. "/custom")
+        description: Optional description for the struct
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Created struct information
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Struct name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    payload = {"name": name}
+    if category:
+        payload["category"] = category
+    if description:
+        payload["description"] = description
+
+    response = safe_post(port, "structs/create", payload)
+    return simplify_response(response)
+
+@mcp.tool()
+def structs_add_field(struct_name: str, field_name: str, field_type: str,
+                     offset: int = None, comment: str = None, port: int = None) -> dict:
+    """Add a field to an existing struct
+
+    Args:
+        struct_name: Name of the struct to modify
+        field_name: Name for the new field
+        field_type: Data type for the field (e.g. "int", "char", "pointer")
+        offset: Specific offset to insert field (optional, appends to end if not specified)
+        comment: Optional comment for the field
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result with updated struct size and field information
+    """
+    if not struct_name or not field_name or not field_type:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "struct_name, field_name, and field_type parameters are required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    payload = {
+        "struct": struct_name,
+        "fieldName": field_name,
+        "fieldType": field_type
+    }
+    if offset is not None:
+        payload["offset"] = offset
+    if comment:
+        payload["comment"] = comment
+
+    response = safe_post(port, "structs/addfield", payload)
+    return simplify_response(response)
+
+@mcp.tool()
+def structs_update_field(struct_name: str, field_name: str = None, field_offset: int = None,
+                        new_name: str = None, new_type: str = None, new_comment: str = None,
+                        port: int = None) -> dict:
+    """Update an existing field in a struct (change name, type, or comment)
+
+    Args:
+        struct_name: Name of the struct to modify
+        field_name: Name of the field to update (use this OR field_offset)
+        field_offset: Offset of the field to update (use this OR field_name)
+        new_name: New name for the field (optional)
+        new_type: New data type for the field (optional, e.g. "int", "pointer")
+        new_comment: New comment for the field (optional)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result with old and new field values
+    """
+    if not struct_name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "struct_name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    if not field_name and field_offset is None:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Either field_name or field_offset must be provided"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    if not new_name and not new_type and new_comment is None:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "At least one of new_name, new_type, or new_comment must be provided"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    payload = {"struct": struct_name}
+    if field_name:
+        payload["fieldName"] = field_name
+    if field_offset is not None:
+        payload["fieldOffset"] = field_offset
+    if new_name:
+        payload["newName"] = new_name
+    if new_type:
+        payload["newType"] = new_type
+    if new_comment is not None:
+        payload["newComment"] = new_comment
+
+    response = safe_post(port, "structs/updatefield", payload)
+    return simplify_response(response)
+
+@mcp.tool()
+def structs_delete(name: str, port: int = None) -> dict:
+    """Delete a struct data type
+
+    Args:
+        name: Name of the struct to delete
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result confirming deletion
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Struct name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    payload = {"name": name}
+    response = safe_post(port, "structs/delete", payload)
+    return simplify_response(response)
+
 # Analysis tools
 @mcp.tool()
 def analysis_run(port: int = None, analysis_options: dict = None) -> dict:
@@ -2111,7 +2363,7 @@ def functions_set_comment(address: str, comment: str = "", port: int = None) -> 
 
 # ================= Startup =================
 
-if __name__ == "__main__":
+def main():
     register_instance(DEFAULT_GHIDRA_PORT,
                       f"http://{ghidra_host}:{DEFAULT_GHIDRA_PORT}")
 
@@ -2128,3 +2380,7 @@ if __name__ == "__main__":
 
     signal.signal(signal.SIGINT, handle_sigint)
     mcp.run(transport="stdio")
+
+
+if __name__ == "__main__":
+    main()
