@@ -5,9 +5,13 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import ghidra.app.services.Analyzer;
+import ghidra.app.services.AnalyzerType;
+import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
 import ghidra.program.model.listing.Program;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.util.Msg;
+import ghidra.util.task.TaskMonitor;
 
 import java.io.IOException;
 import java.util.*;
@@ -32,81 +36,98 @@ public class AnalysisEndpoints extends AbstractEndpoint {
 
     @Override
     public void registerEndpoints(HttpServer server) {
-        server.createContext("/analysis", this::handleAnalysisRequest);
-        
+        server.createContext("/analysis/status", this::handleAnalysisStatus);
+        server.createContext("/analysis/run", this::handleAnalysisRun);
+
         // NOTE: The callgraph endpoint is now registered in ProgramEndpoints
         // This comment is to avoid confusion during future maintenance
     }
-    
-    private void handleAnalysisRequest(HttpExchange exchange) throws IOException {
+
+    /**
+     * Handle GET /analysis/status - Get analysis status for current program
+     */
+    private void handleAnalysisStatus(HttpExchange exchange) throws IOException {
         try {
-            String method = exchange.getRequestMethod();
-            
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+                return;
+            }
+
             Program program = getCurrentProgram();
             if (program == null) {
                 sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                 return;
             }
-            
-            // Create ResponseBuilder for HATEOAS-compliant response
-            ResponseBuilder builder = new ResponseBuilder(exchange, port)
-                .success(true)
-                .addLink("self", "/analysis");
-            
-            // Add common links
-            builder.addLink("program", "/program");
-            
-            // Get analysis status
+
+            AutoAnalysisManager analysisManager = AutoAnalysisManager.getAnalysisManager(program);
+
             Map<String, Object> status = new HashMap<>();
-            
-            // Add program information
-            status.put("processor", program.getLanguage().getProcessor().toString());
-            status.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
             status.put("programName", program.getName());
-            status.put("programLanguage", program.getLanguage().toString());
-            
-            // Add analyzer counts - simplified since we don't have access to the Analysis API directly
-            int totalAnalyzers = 0;
-            int enabledAnalyzers = 0;
-            
-            // Simple analysis status with minimal API use
-            Map<String, Boolean> analyzerStatus = new HashMap<>();
-            // Note: We're not attempting to get all analyzers as this would require access to internal Ghidra APIs
-            analyzerStatus.put("basicAnalysis", true);
-            analyzerStatus.put("advancedAnalysis", false);
-            
-            totalAnalyzers = 2;
-            enabledAnalyzers = 1;
-            
-            // Add counts to status report
-            status.put("totalAnalyzers", totalAnalyzers);
-            status.put("enabledAnalyzers", enabledAnalyzers);
-            status.put("analyzerStatus", analyzerStatus);
-            
-            // Handle different request types
-            if ("GET".equals(method)) {
-                builder.result(status);
-                sendJsonResponse(exchange, builder.build(), 200);
-                
-            } else if ("POST".equals(method)) {
-                // We can't directly start/stop analysis without direct AutoAnalysisManager access,
-                // so return a placeholder response
-                Map<String, String> params = parseJsonPostParams(exchange);
-                String action = params.get("action");
-                
-                Map<String, Object> result = new HashMap<>();
-                result.put("success", true);
-                result.put("message", "Analysis action '" + action + "' requested, but not fully implemented yet.");
-                result.put("status", status);
-                
-                builder.result(result);
-                sendJsonResponse(exchange, builder.build(), 200);
-                
-            } else {
-                sendErrorResponse(exchange, 405, "Method Not Allowed");
-            }
+            status.put("isAnalyzing", analysisManager.isAnalyzing());
+
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(status);
+
+            builder.addLink("self", "/analysis/status");
+            builder.addLink("run", "/analysis/run", "POST");
+            builder.addLink("program", "/program");
+
+            sendJsonResponse(exchange, builder.build(), 200);
+
         } catch (Exception e) {
-            Msg.error(this, "Error in /analysis endpoint", e);
+            Msg.error(this, "Error in /analysis/status endpoint", e);
+            sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Handle POST /analysis/run - Trigger analysis on current program
+     */
+    private void handleAnalysisRun(HttpExchange exchange) throws IOException {
+        try {
+            if (!"POST".equals(exchange.getRequestMethod())) {
+                sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+                return;
+            }
+
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                return;
+            }
+
+            Map<String, String> params = parseJsonPostParams(exchange);
+            boolean background = Boolean.parseBoolean(params.getOrDefault("background", "true"));
+
+            AutoAnalysisManager analysisManager = AutoAnalysisManager.getAnalysisManager(program);
+
+            if (analysisManager.isAnalyzing()) {
+                sendErrorResponse(exchange, 409, "Analysis is already running", "ANALYSIS_RUNNING");
+                return;
+            }
+
+            // Start analysis
+            analysisManager.reAnalyzeAll(null);
+            analysisManager.startAnalysis(TaskMonitor.DUMMY, background);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("started", true);
+            result.put("background", background);
+            result.put("message", "Analysis started on program: " + program.getName());
+
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                    .success(true)
+                    .result(result);
+
+            builder.addLink("self", "/analysis/run");
+            builder.addLink("status", "/analysis/status");
+            builder.addLink("program", "/program");
+
+            sendJsonResponse(exchange, builder.build(), 200);
+
+        } catch (Exception e) {
+            Msg.error(this, "Error in /analysis/run endpoint", e);
             sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
         }
     }

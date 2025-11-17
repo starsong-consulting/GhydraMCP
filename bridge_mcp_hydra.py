@@ -2361,6 +2361,107 @@ def functions_set_comment(address: str, comment: str = "", port: int = None) -> 
     return comments_set(address=address, comment=comment, comment_type="pre", port=port_to_use)
 
 
+# ================= Project Management =================
+
+@mcp.tool()
+def project_info(port: int = None) -> dict:
+    """Get information about the currently open Ghidra project
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Project information including name, location, file counts
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "project")
+    return simplify_response(response)
+
+
+@mcp.tool()
+def project_list_files(folder: str = "/", recursive: bool = True,
+                       offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List files in the current Ghidra project
+
+    Args:
+        folder: Folder path to list (default: "/")
+        recursive: Recursively list all files (default: True)
+        offset: Pagination offset (default: 0)
+        limit: Maximum number of items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of project files and folders
+    """
+    port = _get_instance_port(port)
+
+    params = {
+        "folder": folder,
+        "recursive": str(recursive).lower(),
+        "offset": str(offset),
+        "limit": str(limit)
+    }
+
+    response = safe_get(port, "project/files", params)
+    return simplify_response(response)
+
+
+@mcp.tool()
+def project_open_file(path: str, port: int = None) -> dict:
+    """Open a file from the project in CodeBrowser
+
+    This will open the file in a new CodeBrowser window, creating a new instance.
+    Use instances_discover after opening to find the new instance port.
+
+    Args:
+        path: Path to the file in the project (e.g., "/malware.exe")
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Result of the open operation with instructions to discover new instance
+    """
+    port = _get_instance_port(port)
+
+    data = {"path": path}
+    response = safe_post(port, "project/open", data)
+    return simplify_response(response)
+
+
+# ================= Analysis =================
+
+@mcp.tool()
+def analysis_status(port: int = None) -> dict:
+    """Get analysis status for the current program
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Analysis status including whether analysis is running
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "analysis/status")
+    return simplify_response(response)
+
+
+@mcp.tool()
+def analysis_run(background: bool = True, port: int = None) -> dict:
+    """Trigger auto-analysis on the current program
+
+    Args:
+        background: Run analysis in background (default: True)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Result of starting analysis
+    """
+    port = _get_instance_port(port)
+
+    data = {"background": str(background).lower()}
+    response = safe_post(port, "analysis/run", data)
+    return simplify_response(response)
+
+
 # ================= Startup =================
 
 def main():

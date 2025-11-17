@@ -143,8 +143,9 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         new MemoryEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new XrefsEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new AnalysisEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new ProjectManagementEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new ProgramEndpoints(currentProgram, port, tool).registerEndpoints(server);
-        
+
         Msg.info(this, "Registered program-dependent endpoints. Programs will be checked at runtime.");
     }
     
