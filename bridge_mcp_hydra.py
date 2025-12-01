@@ -1155,15 +1155,17 @@ def reverse_engineer_binary_prompt(port: int = None):
 # Instance management tools
 @mcp.tool()
 def instances_list() -> dict:
-    """List all active Ghidra instances
+    """List all known Ghidra instances with automatic discovery
 
-    This is the primary tool for working with instances. It automatically discovers
-    new instances on the default host before listing.
+    This is the PRIMARY tool for discovering instances. It automatically scans
+    for new instances on the default host (ports 8192-8201) before returning the list.
 
-    Use instances_discover(host) only if you need to scan a different host.
+    IMPORTANT: This performs discovery automatically. You do NOT need to call
+    instances_discover() separately unless scanning a different host.
 
     Returns:
-        dict: Contains 'instances' list with all available Ghidra instances
+        dict: Contains 'instances' list with all available Ghidra instances,
+              each showing port, url, project, and file
     """
     # Auto-discover new instances before listing
     _discover_instances(QUICK_DISCOVERY_RANGE, host=None, timeout=0.5)
@@ -1183,13 +1185,15 @@ def instances_list() -> dict:
 
 @mcp.tool()
 def instances_discover(host: str = None) -> dict:
-    """Discover Ghidra instances on a specific host
+    """Scan a specific host for Ghidra instances (RARELY NEEDED)
 
-    Use this ONLY when you need to discover instances on a different host.
-    For normal usage, just use instances_list() which auto-discovers on the default host.
+    Use this ONLY when scanning a different host than the default.
+
+    For normal usage, use instances_list() instead - it performs discovery
+    automatically on the default host.
 
     Args:
-        host: Host to scan for Ghidra instances (default: configured ghidra_host)
+        host: Hostname or IP to scan (default: localhost/configured ghidra_host)
 
     Returns:
         dict: Contains 'instances' list with all available instances after discovery
@@ -1271,10 +1275,13 @@ def instances_use(port: int) -> str:
 
 @mcp.tool()
 def instances_current() -> dict:
-    """Get information about the current working Ghidra instance
-    
+    """Get information about the current working instance set by instances_use()
+
+    Shows which Ghidra instance will be used when port is omitted from other tools.
+    The default current instance is port 8192.
+
     Returns:
-        dict: Details about the current instance and program
+        dict: Details about the current instance including port, program, and project
     """
     return ghidra_instance(port=current_instance_port)
 
