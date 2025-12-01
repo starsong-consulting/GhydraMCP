@@ -213,8 +213,9 @@ public class ProjectManagementEndpoints extends AbstractEndpoint {
                 return;
             }
 
-            // Open the program
-            Program program = programManager.openProgram(file);
+            // Open the program with OPEN_CURRENT to avoid triggering analysis dialog
+            // Using the current version and programManager as the consumer
+            Program program = programManager.openProgram(file, DomainFile.DEFAULT_VERSION, ProgramManager.OPEN_CURRENT);
 
             if (program == null) {
                 sendErrorResponse(exchange, 500, "Failed to open file: " + filePath, "OPEN_FAILED");
@@ -251,11 +252,19 @@ public class ProjectManagementEndpoints extends AbstractEndpoint {
         fileInfo.put("name", file.getName());
         fileInfo.put("path", file.getPathname());
         fileInfo.put("type", "file");
-        fileInfo.put("contentType", file.getContentType());
 
-        if (file.getContentType().equals(Program.class.getName())) {
-            fileInfo.put("isProgram", true);
+        String contentType = file.getContentType();
+        fileInfo.put("contentType", contentType);
 
+        // Check if this is a Program file (contentType could be "Program" or "ghidra.program.model.listing.Program")
+        boolean isProgram = contentType != null &&
+                           (contentType.equals("Program") ||
+                            contentType.equals(Program.class.getName()) ||
+                            contentType.endsWith(".Program"));
+
+        fileInfo.put("isProgram", isProgram);
+
+        if (isProgram) {
             // Check if program is open
             ProgramManager programManager = tool.getService(ProgramManager.class);
             if (programManager != null) {
@@ -266,8 +275,6 @@ public class ProjectManagementEndpoints extends AbstractEndpoint {
                     }
                 }
             }
-        } else {
-            fileInfo.put("isProgram", false);
         }
 
         fileInfo.put("fileID", file.getFileID());
