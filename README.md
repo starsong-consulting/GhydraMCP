@@ -1,12 +1,12 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/releases)
-[![API Version](https://img.shields.io/badge/API-v2.1-orange)](https://github.com/starsong-consulting/GhydraMCP/blob/main/GHIDRA_HTTP_API.md)
+[![API Version](https://img.shields.io/badge/API-v2020-orange)](https://github.com/starsong-consulting/GhydraMCP/blob/main/GHIDRA_HTTP_API.md)
 [![GitHub stars](https://img.shields.io/github/stars/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/network/members)
 [![GitHub contributors](https://img.shields.io/github/contributors/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/graphs/contributors)
 [![Build Status](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml)
 
-# GhydraMCP v2.1
+# GhydraMCP v2.2.0
 
 GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI assistants that enables comprehensive AI-assisted reverse engineering through the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp).
 
@@ -14,7 +14,7 @@ GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI 
 
 ## Overview
 
-GhydraMCP v2.1 integrates three key components:
+GhydraMCP v2.2.0 integrates three key components:
 
 1. **Modular Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a HATEOAS-driven REST API
 2. **MCP Bridge**: A Python script that translates MCP requests into API calls with comprehensive type checking
@@ -32,7 +32,7 @@ GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired
 
 # Features
 
-GhydraMCP version 2.1 provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
+GhydraMCP version 2.2.0 provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
 
 ## Advanced Program Analysis
 
@@ -90,14 +90,22 @@ GhydraMCP version 2.1 provides a comprehensive set of reverse engineering capabi
   - Modify local variable names and types
   - Set function return types
 
-## Multi-instance Support
+## Multi-instance and Project Management
 
-- Run multiple Ghidra instances simultaneously
-- Analyze different binaries in parallel
-- Connect to specific instances using port numbers
-- Auto-discovery of running Ghidra instances
-- Instance metadata with project and file information
-- Plugin version and API checking for compatibility
+- **Multi-instance Support**:
+  - Run multiple Ghidra instances simultaneously on ports 8192-8447 (256 port range)
+  - Analyze different binaries in parallel
+  - Connect to specific instances using port numbers
+  - Auto-discovery of running Ghidra instances
+  - Instance metadata with project and file information
+  - Plugin version and API checking for compatibility
+
+- **Project Management**:
+  - Get current project information (name, location, file counts)
+  - List all files in a project with filtering
+  - Open project files in new CodeBrowser windows
+  - Navigate project folder hierarchy
+  - Automatic instance registration when opening new programs
 
 ## Program Navigation and Discovery
 
@@ -147,11 +155,11 @@ GhydraMCP works with any MCP-compatible client using **stdio transport**. It has
 
 See the [Client Setup](#client-setup) section below for detailed configuration instructions for each client.
 
-## API Reference (Updated for v2.1)
+## API Reference (Updated for v2.2.0)
 
 ### Available Tools
 
-GhydraMCP v2.1 organizes tools into logical namespaces for better discoverability and organization:
+GhydraMCP v2.2.0 organizes tools into logical namespaces for better discoverability and organization:
 
 **Instance Management** (`instances_*`):
 - `instances_list`: List active Ghidra instances (auto-discovers on default host) - **use this first**
@@ -196,9 +204,15 @@ GhydraMCP v2.1 organizes tools into logical namespaces for better discoverabilit
 - `xrefs_list`: List cross-references (params: to_addr [optional], from_addr [optional], type [optional], offset, limit, port [optional])
 
 **Analysis** (`analysis_*`):
-- `analysis_run`: Trigger program analysis (params: port [optional], analysis_options [optional])
+- `analysis_run`: Trigger program analysis (params: background, port [optional])
+- `analysis_status`: Check analysis status (params: port [optional])
 - `analysis_get_callgraph`: Get function call graph (params: name or address, max_depth, port [optional])
 - `analysis_get_dataflow`: Perform data flow analysis (params: address, direction, max_steps, port [optional])
+
+**Project Management** (`project_*`):
+- `project_info`: Get current project information (params: port [optional])
+- `project_list_files`: List files in project (params: folder, recursive, offset, limit, port [optional])
+- `project_open_file`: Open project file in CodeBrowser (params: path, port [optional])
 
 **Example Usage**:
 ```python
@@ -255,9 +269,15 @@ client.use_tool("ghydra", "xrefs_list", {"to_addr": "0x00401000"})  # Find calle
 client.use_tool("ghydra", "xrefs_list", {"from_addr": "0x00401000"})  # Find callees
 
 # Analysis
+client.use_tool("ghydra", "analysis_status")  # Check if analysis is running
+client.use_tool("ghydra", "analysis_run", {"background": True})  # Trigger analysis in background
 client.use_tool("ghydra", "analysis_get_callgraph", {"name": "main", "max_depth": 5})
 client.use_tool("ghydra", "analysis_get_dataflow", {"address": "0x00401050", "direction": "forward"})
-client.use_tool("ghydra", "analysis_run")  # Trigger full analysis
+
+# Project Management
+client.use_tool("ghydra", "project_info")  # Get current project info
+client.use_tool("ghydra", "project_list_files", {"folder": "/", "recursive": True})
+client.use_tool("ghydra", "project_open_file", {"path": "/malware_samples/sample2.exe"})
 ```
 
 ## Client Setup
@@ -387,7 +407,7 @@ After saving the configuration, restart Cline to load the GhydraMCP server.
 
 ## Example Session
 
-Below is an example of how an AI assistant might interact with Ghidra using GhydraMCP v2.1:
+Below is an example of how an AI assistant might interact with Ghidra using GhydraMCP v2.2.0:
 
 **User:**
 ```
@@ -441,6 +461,41 @@ The main function appears to be the entry point for a network packet processing 
 
 **User:**
 ```
+What other binaries are in this project? Can you open one and compare its structure to this one?
+```
+
+**Assistant:**
+```
+Let me check what other files are in the current project.
+
+[Uses project_info]
+Current project: "MalwareAnalysis" at /home/user/ghidra_projects/MalwareAnalysis
+Contains 15 files across 3 folders.
+
+[Uses project_list_files with folder "/" and recursive True]
+Found these binaries in the project:
+- /malware_samples/sample1.exe (currently open)
+- /malware_samples/sample2.exe
+- /malware_samples/sample3.dll
+- /clean_samples/notepad.exe
+
+Let me open sample2.exe for comparison.
+
+[Uses project_open_file with path "/malware_samples/sample2.exe"]
+Opened sample2.exe in a new CodeBrowser window.
+
+[Uses instances_discover]
+Found new instance on port 8193 analyzing sample2.exe.
+
+[Uses instances_use with port 8193]
+Switched to the new instance.
+
+[Uses functions_list on port 8193]
+sample2.exe has a similar structure with 342 functions. Let me compare the main functions...
+```
+
+**User:**
+```
 Can you trace where process_packet is called from and show me the call graph?
 ```
 
@@ -475,7 +530,7 @@ GhydraMCP uses structured JSON for all communication between the Python bridge a
 
 ## API Architecture
 
-GhydraMCP v2.1 implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
+GhydraMCP v2.2.0 implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
 
 ### Core API Design
 
