@@ -1,0 +1,86 @@
+"""Memory operations commands."""
+
+import click
+
+from ..client.exceptions import GhidraError
+from ..utils import should_page, page_output
+
+
+@click.group('memory')
+def memory():
+    """Memory read/write commands.
+
+    Commands for reading and writing raw memory in the binary.
+    """
+    pass
+
+
+@memory.command('read')
+@click.option('--address', '-a', required=True, help='Memory address (hex)')
+@click.option('--length', type=int, default=16, help='Number of bytes to read')
+@click.option('--format', type=click.Choice(['hex', 'base64', 'string']), default='hex', help='Output format')
+@click.pass_context
+def read_memory(ctx, address, length, format):
+    """Read bytes from memory.
+
+    \b
+    Examples:
+        ghydra memory read --address 0x401000
+        ghydra memory read --address 0x401000 --length 64
+        ghydra memory read --address 0x401000 --format string
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {
+            'address': address.lstrip("0x"),
+            'length': length,
+            'format': format
+        }
+
+        response = client.get('memory', params=params)
+        output = formatter.format_memory(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        click.echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@memory.command('write')
+@click.option('--address', '-a', required=True, help='Memory address (hex)')
+@click.option('--bytes-data', required=True, help='Data to write')
+@click.option('--format', type=click.Choice(['hex', 'base64', 'string']), default='hex', help='Input format')
+@click.pass_context
+def write_memory(ctx, address, bytes_data, format):
+    """Write bytes to memory (use with caution).
+
+    \b
+    Examples:
+        ghydra memory write --address 0x401000 --bytes-data "4883EC10"
+        ghydra memory write --address 0x401000 --bytes-data "Hello" --format string
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        data = {
+            'bytes': bytes_data,
+            'format': format
+        }
+
+        response = client.post(f'memory/{address.lstrip("0x")}', json_data=data)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        click.echo(error_output, err=True)
+        ctx.exit(1)
