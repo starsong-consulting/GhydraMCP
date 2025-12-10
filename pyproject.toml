@@ -1,21 +1,25 @@
 [project]
 name = "ghydramcp"
-version = "2.0.0"
-description = "AI-assisted reverse engineering bridge: a multi-instance Ghidra plugin exposed via a HATEOAS REST API plus an MCP Python bridge for decompilation, analysis & binary manipulation"
+version = "2.2.0"
+description = "Multi-instance Ghidra plugin with HATEOAS REST API and MCP bridge for AI-assisted reverse engineering, binary analysis, and decompilation"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "mcp==1.6.0",
     "requests==2.32.3",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "urllib3>=2.0.0",
 ]
 
 [project.scripts]
 ghydramcp = "bridge_mcp_hydra:main"
+ghydra = "ghydra.cli.main:cli"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["."]
-only-include = ["bridge_mcp_hydra.py"]
+packages = ["ghydra"]
+include = ["bridge_mcp_hydra.py", "ghydra/**/*.py"]
