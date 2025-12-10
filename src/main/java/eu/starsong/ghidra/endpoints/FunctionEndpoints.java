@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.model.FunctionInfo;
 import eu.starsong.ghidra.util.GhidraUtil;
+import eu.starsong.ghidra.util.HttpUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
@@ -56,16 +57,17 @@ public class FunctionEndpoints extends AbstractEndpoint {
     @Override
     public void registerEndpoints(HttpServer server) {
         // Register endpoints in order from most specific to least specific to ensure proper URL path matching
-        
+        // Use safeHandler wrapper to catch StackOverflowError and other critical errors
+
         // Specifically handle sub-resource endpoints first (these are the most specific)
-        server.createContext("/functions/by-name/", this::handleFunctionByName);
-        
+        server.createContext("/functions/by-name/", HttpUtil.safeHandler(this::handleFunctionByName, port));
+
         // Then handle address-based endpoints with clear pattern matching
-        server.createContext("/functions/", this::handleFunctionByAddress);
-        
+        server.createContext("/functions/", HttpUtil.safeHandler(this::handleFunctionByAddress, port));
+
         // Base endpoint last as it's least specific
-        server.createContext("/functions", this::handleFunctions);
-        
+        server.createContext("/functions", HttpUtil.safeHandler(this::handleFunctions, port));
+
         // Register function-specific endpoints
         registerAdditionalEndpoints(server);
     }
