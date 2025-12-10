@@ -29,6 +29,20 @@
   </properties>
 
   <dependencies>
+    <!-- Javalin HTTP framework -->
+    <dependency>
+      <groupId>io.javalin</groupId>
+      <artifactId>javalin</artifactId>
+      <version>6.3.0</version>
+    </dependency>
+
+    <!-- SLF4J simple implementation for Javalin logging -->
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.9</version>
+    </dependency>
+
     <!-- JSON handling -->
     <dependency>
       <groupId>com.google.code.gson</groupId>
@@ -114,7 +128,11 @@
         <configuration>
           <source>21</source>
           <target>21</target>
-          <compilerArgument>-Xlint:-path</compilerArgument>
+          <compilerArgs>
+            <arg>-Xlint:-path</arg>
+            <arg>-Xlint:deprecation</arg>
+            <arg>-Xlint:removal</arg>
+          </compilerArgs>
         </configuration>
       </plugin>
       

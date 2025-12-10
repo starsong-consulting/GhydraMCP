@@ -524,23 +524,21 @@ public class GhidraUtil {
                     function.setCallingConvention(callingConvention);
                 }
                 
-                // Remove all existing parameters
-                while (function.getParameterCount() > 0) {
-                    function.removeParameter(0);
-                }
-                
-                // Add each parameter
+                // Build parameter list
+                List<Parameter> newParams = new ArrayList<>();
                 if (paramDefs != null) {
                     for (int i = 0; i < paramDefs.length; i++) {
                         ghidra.program.model.data.ParameterDefinition paramDef = paramDefs[i];
                         String name = paramDef.getName();
                         ghidra.program.model.data.DataType dataType = paramDef.getDataType();
-                        
-                        // Create parameter and then add it
-                        Parameter param = new ParameterImpl(name, dataType, program);
-                        function.addParameter(param, sourceType);
+                        newParams.add(new ParameterImpl(name, dataType, program));
                     }
                 }
+
+                // Replace all parameters at once using replaceParameters
+                function.replaceParameters(newParams,
+                    ghidra.program.model.listing.Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+                    false, sourceType);
                 
                 return true;
             } catch (ghidra.util.exception.InvalidInputException e) {
