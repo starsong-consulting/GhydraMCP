@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.util.HttpUtil;
     import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.symbol.Symbol;
@@ -34,9 +35,11 @@ package eu.starsong.ghidra.endpoints;
 
         @Override
         public void registerEndpoints(HttpServer server) {
-            server.createContext("/symbols/imports", this::handleImports);
-            server.createContext("/symbols/exports", this::handleExports);
-            server.createContext("/symbols", this::handleSymbols);
+            // Use safeHandler wrapper to catch StackOverflowError and other critical errors
+            // that can occur during symbol name resolution in Ghidra
+            server.createContext("/symbols/imports", HttpUtil.safeHandler(this::handleImports, port));
+            server.createContext("/symbols/exports", HttpUtil.safeHandler(this::handleExports, port));
+            server.createContext("/symbols", HttpUtil.safeHandler(this::handleSymbols, port));
         }
         
         public void handleSymbols(HttpExchange exchange) throws IOException {

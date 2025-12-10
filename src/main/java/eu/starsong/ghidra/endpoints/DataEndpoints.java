@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.util.HttpUtil;
     import eu.starsong.ghidra.util.TransactionHelper;
     import eu.starsong.ghidra.util.TransactionHelper.TransactionException;
     import ghidra.program.model.address.Address;
@@ -44,58 +45,40 @@ package eu.starsong.ghidra.endpoints;
 
         @Override
         public void registerEndpoints(HttpServer server) {
-            server.createContext("/data", this::handleData);
-            server.createContext("/data/delete", exchange -> {
-                try {
-                    if ("POST".equals(exchange.getRequestMethod())) {
-                        Map<String, String> params = parseJsonPostParams(exchange);
-                        handleDeleteData(exchange, params);
-                    } else {
-                        sendErrorResponse(exchange, 405, "Method Not Allowed");
-                    }
-                } catch (Exception e) {
-                    Msg.error(this, "Error in /data/delete endpoint", e);
-                    sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            // Use safeHandler wrapper to catch StackOverflowError and other critical errors
+            // that can occur during data/symbol resolution in Ghidra
+            server.createContext("/data", HttpUtil.safeHandler(this::handleData, port));
+            server.createContext("/data/delete", HttpUtil.safeHandler(exchange -> {
+                if ("POST".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parseJsonPostParams(exchange);
+                    handleDeleteData(exchange, params);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
-            });
-            server.createContext("/data/update", exchange -> {
-                try {
-                    if ("POST".equals(exchange.getRequestMethod())) {
-                        Map<String, String> params = parseJsonPostParams(exchange);
-                        handleUpdateData(exchange, params);
-                    } else {
-                        sendErrorResponse(exchange, 405, "Method Not Allowed");
-                    }
-                } catch (Exception e) {
-                    Msg.error(this, "Error in /data/update endpoint", e);
-                    sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            }, port));
+            server.createContext("/data/update", HttpUtil.safeHandler(exchange -> {
+                if ("POST".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parseJsonPostParams(exchange);
+                    handleUpdateData(exchange, params);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
-            });
-            server.createContext("/data/type", exchange -> {
-                try {
-                    if ("POST".equals(exchange.getRequestMethod()) || "PATCH".equals(exchange.getRequestMethod())) {
-                        Map<String, String> params = parseJsonPostParams(exchange);
-                        handleTypeChangeData(exchange, params);
-                    } else {
-                        sendErrorResponse(exchange, 405, "Method Not Allowed");
-                    }
-                } catch (Exception e) {
-                    Msg.error(this, "Error in /data/type endpoint", e);
-                    sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            }, port));
+            server.createContext("/data/type", HttpUtil.safeHandler(exchange -> {
+                if ("POST".equals(exchange.getRequestMethod()) || "PATCH".equals(exchange.getRequestMethod())) {
+                    Map<String, String> params = parseJsonPostParams(exchange);
+                    handleTypeChangeData(exchange, params);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
-            });
-            server.createContext("/strings", exchange -> {
-                try {
-                    if ("GET".equals(exchange.getRequestMethod())) {
-                        handleListStrings(exchange);
-                    } else {
-                        sendErrorResponse(exchange, 405, "Method Not Allowed");
-                    }
-                } catch (Exception e) {
-                    Msg.error(this, "Error in /strings endpoint", e);
-                    sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+            }, port));
+            server.createContext("/strings", HttpUtil.safeHandler(exchange -> {
+                if ("GET".equals(exchange.getRequestMethod())) {
+                    handleListStrings(exchange);
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
-            });
+            }, port));
         }
 
         public void handleData(HttpExchange exchange) throws IOException {
