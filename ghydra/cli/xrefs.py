@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output
+from ..utils import should_page, page_output, rich_echo
 
 
 @click.group('xrefs')
@@ -34,7 +34,7 @@ def list_xrefs(ctx, to_addr, from_addr, type, offset, limit):
         ghydra xrefs list --to-addr 0x401000 --type CALL
     """
     if not to_addr and not from_addr:
-        click.echo("Error: Either --to-addr or --from-addr is required", err=True)
+        rich_echo("[red]Error:[/red] Either --to-addr or --from-addr is required", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
@@ -64,5 +64,89 @@ def list_xrefs(ctx, to_addr, from_addr, type, offset, limit):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@xrefs.command('to')
+@click.argument('address')
+@click.option('--type', help='Filter by type (e.g., CALL, READ, WRITE)')
+@click.option('--offset', type=int, default=0, help='Pagination offset')
+@click.option('--limit', type=int, default=100, help='Maximum results to return')
+@click.pass_context
+def xrefs_to(ctx, address, type, offset, limit):
+    """Get cross-references TO an address.
+
+    \b
+    Examples:
+        ghydra xrefs to 0x401000
+        ghydra xrefs to 0x401000 --type CALL
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {
+            'to': address.lstrip('0x'),
+            'offset': offset,
+            'limit': limit
+        }
+
+        if type:
+            params['type'] = type
+
+        response = client.get('xrefs', params=params)
+        output = formatter.format_xrefs(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@xrefs.command('from')
+@click.argument('address')
+@click.option('--type', help='Filter by type (e.g., CALL, READ, WRITE)')
+@click.option('--offset', type=int, default=0, help='Pagination offset')
+@click.option('--limit', type=int, default=100, help='Maximum results to return')
+@click.pass_context
+def xrefs_from(ctx, address, type, offset, limit):
+    """Get cross-references FROM an address.
+
+    \b
+    Examples:
+        ghydra xrefs from 0x401000
+        ghydra xrefs from 0x401000 --type CALL
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {
+            'from': address.lstrip('0x'),
+            'offset': offset,
+            'limit': limit
+        }
+
+        if type:
+            params['type'] = type
+
+        response = client.get('xrefs', params=params)
+        output = formatter.format_xrefs(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
         ctx.exit(1)

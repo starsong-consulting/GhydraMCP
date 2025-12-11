@@ -4,7 +4,7 @@ import click
 from urllib.parse import quote
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output
+from ..utils import should_page, page_output, rich_echo
 
 
 @click.group('functions')
@@ -21,8 +21,9 @@ def functions():
 @click.option('--limit', type=int, default=100, help='Maximum results to return')
 @click.option('--name-contains', help='Filter by function name substring (case-insensitive)')
 @click.option('--name-matches', help='Filter by function name regex pattern')
+@click.option('--containing-address', help='Find function containing this address (hex)')
 @click.pass_context
-def list_functions(ctx, offset, limit, name_contains, name_matches):
+def list_functions(ctx, offset, limit, name_contains, name_matches, containing_address):
     """List all functions with optional filtering.
 
     \b
@@ -30,6 +31,7 @@ def list_functions(ctx, offset, limit, name_contains, name_matches):
         ghydra functions list
         ghydra functions list --name-contains main
         ghydra functions list --name-matches "^sub_.*"
+        ghydra functions list --containing-address 0x401234
         ghydra functions list --limit 50
     """
     client = ctx.obj['client']
@@ -49,6 +51,9 @@ def list_functions(ctx, offset, limit, name_contains, name_matches):
         if name_matches:
             params['name_matches_regex'] = name_matches
 
+        if containing_address:
+            params['containing_addr'] = containing_address.lstrip('0x')
+
         # Make API request
         response = client.get('functions', params=params)
 
@@ -61,7 +66,7 @@ def list_functions(ctx, offset, limit, name_contains, name_matches):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -80,11 +85,11 @@ def get_function(ctx, name, address):
         ghydra functions get --address 0x401000
     """
     if not name and not address:
-        click.echo("Error: Either --name or --address is required", err=True)
+        rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
         ctx.exit(1)
 
     if name and address:
-        click.echo("Error: Cannot specify both --name and --address", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --name and --address", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
@@ -110,7 +115,7 @@ def get_function(ctx, name, address):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -137,11 +142,11 @@ def decompile(ctx, name, address, syntax_tree, style, no_constants, timeout, sta
         ghydra functions decompile --name main --start-line 10 --end-line 20
     """
     if not name and not address:
-        click.echo("Error: Either --name or --address is required", err=True)
+        rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
         ctx.exit(1)
 
     if name and address:
-        click.echo("Error: Cannot specify both --name and --address", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --name and --address", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
@@ -182,7 +187,7 @@ def decompile(ctx, name, address, syntax_tree, style, no_constants, timeout, sta
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -201,11 +206,11 @@ def disassemble(ctx, name, address):
         ghydra functions disassemble --address 0x401000
     """
     if not name and not address:
-        click.echo("Error: Either --name or --address is required", err=True)
+        rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
         ctx.exit(1)
 
     if name and address:
-        click.echo("Error: Cannot specify both --name and --address", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --name and --address", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
@@ -231,7 +236,7 @@ def disassemble(ctx, name, address):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -258,7 +263,7 @@ def create_function(ctx, address):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -304,7 +309,7 @@ def rename_function(ctx, old_name, address, new_name):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -324,11 +329,11 @@ def set_signature(ctx, name, address, signature):
         ghydra functions set-signature --address 0x401000 --signature "void func(void)"
     """
     if not name and not address:
-        click.echo("Error: Either --name or --address is required", err=True)
+        rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
         ctx.exit(1)
 
     if name and address:
-        click.echo("Error: Cannot specify both --name and --address", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --name and --address", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
@@ -350,7 +355,7 @@ def set_signature(ctx, name, address, signature):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -369,11 +374,11 @@ def get_variables(ctx, name, address):
         ghydra functions get-variables --address 0x401000
     """
     if not name and not address:
-        click.echo("Error: Either --name or --address is required", err=True)
+        rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
         ctx.exit(1)
 
     if name and address:
-        click.echo("Error: Cannot specify both --name and --address", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --name and --address", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
@@ -399,7 +404,7 @@ def get_variables(ctx, name, address):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -430,5 +435,5 @@ def set_comment(ctx, address, comment):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)

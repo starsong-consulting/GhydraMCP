@@ -620,45 +620,98 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 String nameContainsFilter = params.get("name_contains");
                 String nameRegexFilter = params.get("name_matches_regex");
                 String addrFilter = params.get("addr");
-                
+                String containingAddrFilter = params.get("containing_addr");
+
                 List<Map<String, Object>> functions = new ArrayList<>();
-                
-                // Get all functions
-                for (Function f : program.getFunctionManager().getFunctions(true)) {
-                    // Apply filters
-                    if (nameFilter != null && !f.getName().equals(nameFilter)) {
-                        continue;
+
+                // Handle special case: if containing_addr is specified, find the function containing that address
+                if (containingAddrFilter != null && !containingAddrFilter.isEmpty()) {
+                    try {
+                        Address containingAddr = program.getAddressFactory().getAddress(containingAddrFilter);
+                        Function containingFunc = program.getFunctionManager().getFunctionContaining(containingAddr);
+
+                        if (containingFunc != null) {
+                            // Apply other filters to the found function
+                            boolean matches = true;
+
+                            if (nameFilter != null && !containingFunc.getName().equals(nameFilter)) {
+                                matches = false;
+                            }
+
+                            if (nameContainsFilter != null && !containingFunc.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+                                matches = false;
+                            }
+
+                            if (nameRegexFilter != null && !containingFunc.getName().matches(nameRegexFilter)) {
+                                matches = false;
+                            }
+
+                            if (addrFilter != null && !containingFunc.getEntryPoint().toString().equals(addrFilter)) {
+                                matches = false;
+                            }
+
+                            if (matches) {
+                                Map<String, Object> func = new HashMap<>();
+                                func.put("name", containingFunc.getName());
+                                func.put("address", containingFunc.getEntryPoint().toString());
+
+                                // Add HATEOAS links (fixed to use proper URL paths)
+                                Map<String, Object> links = new HashMap<>();
+                                Map<String, String> selfLink = new HashMap<>();
+                                selfLink.put("href", "/functions/" + containingFunc.getEntryPoint());
+                                links.put("self", selfLink);
+
+                                Map<String, String> programLink = new HashMap<>();
+                                programLink.put("href", "/program");
+                                links.put("program", programLink);
+
+                                func.put("_links", links);
+
+                                functions.add(func);
+                            }
+                        }
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid containing_addr format: " + containingAddrFilter, "INVALID_PARAMETER");
+                        return;
                     }
-                    
-                    if (nameContainsFilter != null && !f.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
-                        continue;
+                } else {
+                    // Get all functions
+                    for (Function f : program.getFunctionManager().getFunctions(true)) {
+                        // Apply filters
+                        if (nameFilter != null && !f.getName().equals(nameFilter)) {
+                            continue;
+                        }
+
+                        if (nameContainsFilter != null && !f.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+                            continue;
+                        }
+
+                        if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
+                            continue;
+                        }
+
+                        if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
+                            continue;
+                        }
+
+                        Map<String, Object> func = new HashMap<>();
+                        func.put("name", f.getName());
+                        func.put("address", f.getEntryPoint().toString());
+
+                        // Add HATEOAS links (fixed to use proper URL paths)
+                        Map<String, Object> links = new HashMap<>();
+                        Map<String, String> selfLink = new HashMap<>();
+                        selfLink.put("href", "/functions/" + f.getEntryPoint());
+                        links.put("self", selfLink);
+
+                        Map<String, String> programLink = new HashMap<>();
+                        programLink.put("href", "/program");
+                        links.put("program", programLink);
+
+                        func.put("_links", links);
+
+                        functions.add(func);
                     }
-                    
-                    if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
-                        continue;
-                    }
-                    
-                    if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
-                        continue;
-                    }
-                    
-                    Map<String, Object> func = new HashMap<>();
-                    func.put("name", f.getName());
-                    func.put("address", f.getEntryPoint().toString());
-                    
-                    // Add HATEOAS links (fixed to use proper URL paths)
-                    Map<String, Object> links = new HashMap<>();
-                    Map<String, String> selfLink = new HashMap<>();
-                    selfLink.put("href", "/functions/" + f.getEntryPoint());
-                    links.put("self", selfLink);
-                    
-                    Map<String, String> programLink = new HashMap<>();
-                    programLink.put("href", "/program");
-                    links.put("program", programLink);
-                    
-                    func.put("_links", links);
-                    
-                    functions.add(func);
                 }
                 
                 // Apply pagination
