@@ -368,7 +368,13 @@ def format_xrefs(response: dict, to_addr: str = None, from_addr: str = None, **k
     if not response.get("success", False):
         return format_error(response)
 
-    items = response.get("result", [])
+    result = response.get("result", {})
+    # Handle both dict (with references key) and list format
+    if isinstance(result, dict):
+        items = result.get("references", [])
+    else:
+        items = result if isinstance(result, list) else []
+
     total = response.get("size", len(items))
     target = to_addr or from_addr
 
@@ -382,11 +388,17 @@ def format_xrefs(response: dict, to_addr: str = None, from_addr: str = None, **k
 
     lines = [header]
     for xref in items:
-        from_a = xref.get("fromAddress", "???")
-        ref_type = xref.get("referenceType", "???")
-        from_func = xref.get("fromFunction", "")
+        from_a = xref.get("from_addr", "???")
+        ref_type = xref.get("refType", "???")
+        from_func_obj = xref.get("from_function", {})
 
-        line = f"  {from_a}  {ref_type:<6}"
+        # Extract function name if from_function is a dict
+        if isinstance(from_func_obj, dict):
+            from_func = from_func_obj.get("name", "")
+        else:
+            from_func = from_func_obj or ""
+
+        line = f"  {from_a}  {ref_type:<10}"
         if from_func:
             line += f"  from {from_func}"
         lines.append(line)
