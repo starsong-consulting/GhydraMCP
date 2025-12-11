@@ -50,3 +50,5 @@ hs_err_pid*
 replay_pid*
 
 /__pycache__
+**/__pycache__/
+*.pyc
