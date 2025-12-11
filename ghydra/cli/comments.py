@@ -3,6 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
+from ..utils import rich_echo
 
 
 @click.group('comments')
@@ -51,5 +52,5 @@ def set_comment(ctx, address, comment, comment_type):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)

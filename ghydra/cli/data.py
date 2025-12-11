@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output
+from ..utils import should_page, page_output, rich_echo
 
 
 @click.group('data')
@@ -61,7 +61,7 @@ def list_data(ctx, offset, limit, addr, name, name_contains, type):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -102,7 +102,7 @@ def list_strings(ctx, offset, limit, filter):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -136,7 +136,7 @@ def create_data(ctx, address, data_type, size):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -162,7 +162,7 @@ def rename_data(ctx, address, name):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -186,7 +186,7 @@ def delete_data(ctx, address):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -213,5 +213,5 @@ def set_type(ctx, address, data_type):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)

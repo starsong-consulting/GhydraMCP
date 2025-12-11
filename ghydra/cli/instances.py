@@ -4,7 +4,7 @@ import click
 import sys
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output
+from ..utils import should_page, page_output, rich_echo
 
 
 @click.group('instances')
@@ -47,7 +47,7 @@ def list_instances(ctx):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -90,7 +90,7 @@ def discover(ctx, host, start_port, end_port):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -143,7 +143,7 @@ def register(ctx, port, url):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -224,7 +224,7 @@ def use(ctx, port):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -262,7 +262,7 @@ def current(ctx):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 

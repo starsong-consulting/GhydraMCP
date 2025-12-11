@@ -7,6 +7,7 @@ from .validators import (
     validate_hex_bytes,
     validate_port,
 )
+from .output import rich_echo
 
 __all__ = [
     "page_output",
@@ -15,4 +16,5 @@ __all__ = [
     "normalize_hex_address",
     "validate_port",
     "validate_hex_bytes",
+    "rich_echo",
 ]

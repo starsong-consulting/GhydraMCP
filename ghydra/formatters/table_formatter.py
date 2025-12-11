@@ -50,10 +50,16 @@ class TableFormatter(BaseFormatter):
         """Format function list as table."""
         result = data.get("result", [])
 
-        if not result:
-            return "[yellow]No functions found[/yellow]"
+        # Get total count from metadata
+        metadata = data.get("metadata", {})
+        total = metadata.get("size", len(result))
+        offset = metadata.get("offset", 0)
+        limit = metadata.get("limit", len(result))
 
-        table = Table(title=f"Functions ({len(result)} items)", show_lines=False)
+        if not result:
+            return f"[yellow]No functions found[/yellow] (0 total)"
+
+        table = Table(title=f"Functions ({total} total)", show_lines=False)
         table.add_column("Address", style="cyan", no_wrap=True)
         table.add_column("Name", style="green")
         table.add_column("Signature", style="yellow", overflow="fold")
@@ -65,13 +71,9 @@ class TableFormatter(BaseFormatter):
                 fn.get("signature", "")[:100]
             )
 
-        # Add pagination info if available
-        offset = data.get("offset", 0)
-        limit = data.get("limit", len(result))
-        total = data.get("size", len(result))
-
-        if total > limit:
-            table.caption = f"Showing {offset}-{offset + len(result)} of {total}"
+        # Add pagination info if showing subset
+        if total > len(result):
+            table.caption = f"Showing {offset + 1}-{offset + len(result)} of {total}"
 
         return self._capture(table)
 

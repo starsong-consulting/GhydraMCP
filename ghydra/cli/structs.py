@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output
+from ..utils import should_page, page_output, rich_echo
 
 
 @click.group('structs')
@@ -51,7 +51,7 @@ def list_structs(ctx, offset, limit, category):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -81,7 +81,7 @@ def get_struct(ctx, name):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -115,7 +115,7 @@ def create_struct(ctx, name, category, description):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -155,7 +155,7 @@ def add_field(ctx, struct_name, field_name, field_type, offset, comment):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -210,7 +210,7 @@ def update_field(ctx, struct_name, field_name, field_offset, new_name, new_type,
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -235,5 +235,5 @@ def delete_struct(ctx, name):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)

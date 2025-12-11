@@ -3,6 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
+from ..utils import rich_echo
 
 
 @click.group('ui')
@@ -33,7 +34,7 @@ def get_current_address(ctx):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
 
 
@@ -56,5 +57,5 @@ def get_current_function(ctx):
 
     except GhidraError as e:
         error_output = formatter.format_error(e)
-        click.echo(error_output, err=True)
+        rich_echo(error_output, err=True)
         ctx.exit(1)
