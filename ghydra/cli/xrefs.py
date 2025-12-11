@@ -48,9 +48,9 @@ def list_xrefs(ctx, to_addr, from_addr, type, offset, limit):
         }
 
         if to_addr:
-            params['to'] = to_addr.lstrip('0x')
+            params['to_addr'] = to_addr.lstrip('0x')
         if from_addr:
-            params['from'] = from_addr.lstrip('0x')
+            params['from_addr'] = from_addr.lstrip('0x')
         if type:
             params['type'] = type
 
