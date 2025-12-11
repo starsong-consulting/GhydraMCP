@@ -88,7 +88,7 @@ def xrefs_to(ctx, address, type, offset, limit):
 
     try:
         params = {
-            'to': address.lstrip('0x'),
+            'to_addr': address.lstrip('0x'),
             'offset': offset,
             'limit': limit
         }
@@ -130,7 +130,7 @@ def xrefs_from(ctx, address, type, offset, limit):
 
     try:
         params = {
-            'from': address.lstrip('0x'),
+            'from_addr': address.lstrip('0x'),
             'offset': offset,
             'limit': limit
         }
