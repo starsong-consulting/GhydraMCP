@@ -439,13 +439,13 @@ def format_data_list(response: dict, offset: int = 0, limit: int = 100, **kwargs
 
     for d in items:
         addr = d.get("address", "???")
-        name = d.get("name", "")
-        dtype = d.get("type", "???")
+        label = d.get("label", "")  # Java returns 'label' not 'name'
+        dtype = d.get("dataType", "???")  # Java returns 'dataType' not 'type'
         value = d.get("value", "")
 
         line = f"  {addr}  {dtype:<16}"
-        if name:
-            line += f"  {name}"
+        if label and label != "(unnamed)":
+            line += f"  {label}"
         if value:
             val_str = str(value)
             if len(val_str) > 30:
