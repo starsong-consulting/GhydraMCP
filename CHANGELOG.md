@@ -6,11 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-- **Function FQN Rename**: When an FQN is used for the new function name (e.g. `Foo::Bar()`) it will be placed in the namespace, creating it if it doesn't already exist.
-
-### Fixed
-- **Function FQN Resolution**: Updated function name searching to support fully-qualified names.
+### Changed
+- **BREAKING: Use Function FQN**: Resolve and rename functions using the fully-quanified name (e.g., `Foo::Bar()`) to avoid collisions and support moving function namespaces.
 
 ## [2.0.0] - 2025-11-11
 

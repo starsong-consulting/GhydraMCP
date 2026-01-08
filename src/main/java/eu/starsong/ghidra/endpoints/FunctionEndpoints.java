@@ -137,7 +137,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 builder.addLink("decompile", baseUrl + "/decompile");
                 builder.addLink("disassembly", baseUrl + "/disassembly");
                 builder.addLink("variables", baseUrl + "/variables");
-                builder.addLink("by_name", "/functions/by-name/" + function.getName());
+                builder.addLink("by_name", "/functions/by-name/" + function.getName(true));
                 
                 // Add xrefs links
                 builder.addLink("xrefs_to", "/xrefs?to_addr=" + function.getEntryPoint());
@@ -238,35 +238,37 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 
                 // Get all functions
                 for (Function f : program.getFunctionManager().getFunctions(true)) {
-                    // Apply filters
-                    if (nameFilter != null && !f.getName().equals(nameFilter)) {
+                    // Apply filters (use FQN for matching)
+                    String fqn = f.getName(true);
+
+                    if (nameFilter != null && !fqn.equals(nameFilter)) {
                         continue;
                     }
-                    
-                    if (nameContainsFilter != null && !f.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+
+                    if (nameContainsFilter != null && !fqn.toLowerCase().contains(nameContainsFilter.toLowerCase())) {
                         continue;
                     }
-                    
-                    if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
+
+                    if (nameRegexFilter != null && !fqn.matches(nameRegexFilter)) {
                         continue;
                     }
-                    
+
                     if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
                         continue;
                     }
-                    
+
                     Map<String, Object> func = new HashMap<>();
-                    func.put("name", f.getName());
+                    func.put("name", fqn);
                     func.put("address", f.getEntryPoint().toString());
-                    
+
                     // Add HATEOAS links
                     Map<String, Object> links = new HashMap<>();
                     Map<String, String> selfLink = new HashMap<>();
                     selfLink.put("href", "/programs/current/functions/" + f.getEntryPoint());
                     links.put("self", selfLink);
-                    
+
                     Map<String, String> byNameLink = new HashMap<>();
-                    byNameLink.put("href", "/programs/current/functions/by-name/" + f.getName());
+                    byNameLink.put("href", "/programs/current/functions/by-name/" + fqn);
                     links.put("by_name", byNameLink);
                     
                     Map<String, String> decompileLink = new HashMap<>();
@@ -413,6 +415,8 @@ public class FunctionEndpoints extends AbstractEndpoint {
                     String parentPathStr = newPath.getParentPath();
                     String funcName = newPath.getName();
 
+                    // Only change namespace if explicitly specified with ::
+                    // Otherwise keep function in its current namespace
                     if (parentPathStr != null) {
                         Namespace targetNamespace = NamespaceUtils.createNamespaceHierarchy(
                             parentPathStr,
@@ -421,8 +425,6 @@ public class FunctionEndpoints extends AbstractEndpoint {
                             SourceType.USER_DEFINED
                         );
                         function.setParentNamespace(targetNamespace);
-                    } else {
-                        function.setParentNamespace(program.getGlobalNamespace());
                     }
 
                     function.setName(funcName, SourceType.USER_DEFINED);
@@ -481,7 +483,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
         
         // Add HATEOAS links
         builder.addLink("self", "/programs/current/functions/" + function.getEntryPoint());
-        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName());
+        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName(true));
         builder.addLink("program", "/programs/current");
         
         sendJsonResponse(exchange, builder.build(), 200);
@@ -611,7 +613,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
         
         // Add HATEOAS links
         builder.addLink("self", "/programs/current/functions/" + function.getEntryPoint());
-        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName());
+        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName(true));
         builder.addLink("program", "/programs/current");
         builder.addLink("decompile", "/programs/current/functions/" + function.getEntryPoint() + "/decompile");
         builder.addLink("disassembly", "/programs/current/functions/" + function.getEntryPoint() + "/disassembly");
@@ -644,39 +646,41 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 
                 // Get all functions
                 for (Function f : program.getFunctionManager().getFunctions(true)) {
-                    // Apply filters
-                    if (nameFilter != null && !f.getName().equals(nameFilter)) {
+                    // Apply filters (use FQN for matching)
+                    String fqn = f.getName(true);
+
+                    if (nameFilter != null && !fqn.equals(nameFilter)) {
                         continue;
                     }
-                    
-                    if (nameContainsFilter != null && !f.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+
+                    if (nameContainsFilter != null && !fqn.toLowerCase().contains(nameContainsFilter.toLowerCase())) {
                         continue;
                     }
-                    
-                    if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
+
+                    if (nameRegexFilter != null && !fqn.matches(nameRegexFilter)) {
                         continue;
                     }
-                    
+
                     if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
                         continue;
                     }
-                    
+
                     Map<String, Object> func = new HashMap<>();
-                    func.put("name", f.getName());
+                    func.put("name", fqn);
                     func.put("address", f.getEntryPoint().toString());
-                    
+
                     // Add HATEOAS links (fixed to use proper URL paths)
                     Map<String, Object> links = new HashMap<>();
                     Map<String, String> selfLink = new HashMap<>();
                     selfLink.put("href", "/functions/" + f.getEntryPoint());
                     links.put("self", selfLink);
-                    
+
                     Map<String, String> programLink = new HashMap<>();
                     programLink.put("href", "/program");
                     links.put("program", programLink);
-                    
+
                     func.put("_links", links);
-                    
+
                     functions.add(func);
                 }
                 
@@ -923,6 +927,8 @@ public class FunctionEndpoints extends AbstractEndpoint {
                     String parentPathStr = newPath.getParentPath();
                     String funcName = newPath.getName();
 
+                    // Only change namespace if explicitly specified with ::
+                    // Otherwise keep function in its current namespace
                     if (parentPathStr != null) {
                         Namespace targetNamespace = NamespaceUtils.createNamespaceHierarchy(
                             parentPathStr,
@@ -931,8 +937,6 @@ public class FunctionEndpoints extends AbstractEndpoint {
                             SourceType.USER_DEFINED
                         );
                         function.setParentNamespace(targetNamespace);
-                    } else {
-                        function.setParentNamespace(program.getGlobalNamespace());
                     }
 
                     function.setName(funcName, SourceType.USER_DEFINED);
@@ -990,7 +994,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             .result(info);
         
         // Add HATEOAS links
-        builder.addLink("self", "/functions/" + function.getName());
+        builder.addLink("self", "/functions/" + function.getName(true));
         
         sendJsonResponse(exchange, builder.build(), 200);
     }
@@ -1112,7 +1116,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             .result(info);
         
         // Add HATEOAS links
-        builder.addLink("self", "/functions/" + function.getName());
+        builder.addLink("self", "/functions/" + function.getName(true));
         
         sendJsonResponse(exchange, builder.build(), 201);
     }
@@ -1171,7 +1175,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             // Create function info
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
-            functionInfo.put("name", function.getName());
+            functionInfo.put("name", function.getName(true));
 
             // Create the result structure according to GHIDRA_HTTP_API.md
             Map<String, Object> result = new HashMap<>();
@@ -1258,7 +1262,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                         disassembly.add(instrMap);
                     }
                 } catch (Exception e) {
-                    Msg.error(this, "Error getting disassembly for function: " + function.getName(), e);
+                    Msg.error(this, "Error getting disassembly for function: " + function.getName(true), e);
                 }
                 
                 // If we couldn't get real instructions, add placeholder
@@ -1278,7 +1282,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
-            functionInfo.put("name", function.getName());
+            functionInfo.put("name", function.getName(true));
             functionInfo.put("signature", function.getSignature().toString());
             
             Map<String, Object> result = new HashMap<>();
@@ -1313,7 +1317,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
-            functionInfo.put("name", function.getName());
+            functionInfo.put("name", function.getName(true));
             if (function.getReturnType() != null) {
                 functionInfo.put("returnType", function.getReturnType().getName());
             }
@@ -1327,7 +1331,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             
             // Update to use the correct paths
             String functionPath = "/functions/" + function.getEntryPoint().toString();
-            String functionByNamePath = "/functions/by-name/" + function.getName();
+            String functionByNamePath = "/functions/by-name/" + function.getName(true);
             
             ResponseBuilder builder = new ResponseBuilder(exchange, port)
                 .success(true)
@@ -1412,7 +1416,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 // Create a successful response
                 Map<String, Object> result = new HashMap<>();
                 result.put("name", newName != null ? newName : variableName);
-                result.put("function", function.getName());
+                result.put("function", function.getName(true));
                 result.put("address", function.getEntryPoint().toString());
                 result.put("message", "Variable renamed successfully");
                 
@@ -1447,15 +1451,6 @@ public class FunctionEndpoints extends AbstractEndpoint {
             }
         }
 
-        // If no match found and no :: in name, fall back to searching all functions.
-        if (symbols.isEmpty() && !name.contains("::")) {
-            for (Function f : program.getFunctionManager().getFunctions(true)) {
-                if (f.getName().equals(name)) {
-                    return f;
-                }
-            }
-        }
-
         return null;
     }
     
@@ -1478,7 +1473,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
      */
     private FunctionInfo buildFunctionInfo(Function function) {
         FunctionInfo.Builder builder = FunctionInfo.builder()
-            .name(function.getName())
+            .name(function.getName(true))
             .address(function.getEntryPoint().toString())
             .signature(function.getSignature().getPrototypeString());
         
@@ -1491,12 +1486,9 @@ public class FunctionEndpoints extends AbstractEndpoint {
         if (function.getCallingConventionName() != null) {
             builder.callingConvention(function.getCallingConventionName());
         }
-        
-        // Add namespace
-        if (function.getParentNamespace() != null) {
-            builder.namespace(function.getParentNamespace().getName());
-        }
-        
+
+        // Note: namespace is now included in the FQN name, no separate field needed
+
         // Add external flag
         builder.isExternal(function.isExternal());
         

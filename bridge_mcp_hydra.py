@@ -1280,19 +1280,19 @@ def instances_current() -> dict:
 
 # Function tools
 @mcp.tool()
-def functions_list(offset: int = 0, limit: int = 100, 
-                  name_contains: str = None, 
+def functions_list(offset: int = 0, limit: int = 100,
+                  name_contains: str = None,
                   name_matches_regex: str = None,
                   port: int = None) -> dict:
     """List functions with filtering and pagination
-    
+
     Args:
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
-        name_contains: Substring name filter (case-insensitive)
-        name_matches_regex: Regex name filter
+        name_contains: Substring filter on fully-qualified name (case-insensitive)
+        name_matches_regex: Regex filter on fully-qualified name
         port: Specific Ghidra instance port (optional)
-        
+
     Returns:
         dict: List of functions with pagination information
     """
