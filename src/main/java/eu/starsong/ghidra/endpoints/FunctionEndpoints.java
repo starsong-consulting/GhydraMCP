@@ -177,7 +177,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
             
-            Function function = findFunctionByName(functionName);
+            Function function = GhidraUtil.findFunctionByName(getCurrentProgram(), functionName);
             if (function == null) {
                 sendErrorResponse(exchange, 404, "Function not found with name: " + functionName, "FUNCTION_NOT_FOUND");
                 return;
@@ -370,7 +370,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
      * Handle requests to function resources by name like /programs/current/functions/by-name/{name}/variables
      */
     private void handleFunctionResourceByNameRESTful(HttpExchange exchange, String functionName, String resource) throws IOException {
-        Function function = findFunctionByName(functionName);
+        Function function = GhidraUtil.findFunctionByName(getCurrentProgram(), functionName);
         if (function == null) {
             sendErrorResponse(exchange, 404, "Function not found with name: " + functionName, "FUNCTION_NOT_FOUND");
             return;
@@ -817,7 +817,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
         
         // If not found by address, try by name
         if (function == null) {
-            function = findFunctionByName(functionIdent);
+            function = GhidraUtil.findFunctionByName(getCurrentProgram(), functionIdent);
         }
         
         if (function == null) {
@@ -866,7 +866,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
         
-        Function function = findFunctionByName(functionName);
+        Function function = GhidraUtil.findFunctionByName(getCurrentProgram(), functionName);
         if (function == null) {
             sendErrorResponse(exchange, 404, "Function not found: " + functionName, "FUNCTION_NOT_FOUND");
             return;
@@ -904,7 +904,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
         
-        Function function = findFunctionByName(functionName);
+        Function function = GhidraUtil.findFunctionByName(getCurrentProgram(), functionName);
         if (function == null) {
             sendErrorResponse(exchange, 404, "Function not found: " + functionName, "FUNCTION_NOT_FOUND");
             return;
@@ -1433,27 +1433,6 @@ public class FunctionEndpoints extends AbstractEndpoint {
         }
     }
 
-    /**
-     * Helper method to find a function by name
-     */
-    private Function findFunctionByName(String name) {
-        Program program = getCurrentProgram();
-        if (program == null) {
-            return null;
-        }
-
-        SymbolPath symbolPath = new SymbolPath(name);
-        List<Symbol> symbols = NamespaceUtils.getSymbols(symbolPath, program, false);
-
-        for (Symbol symbol : symbols) {
-            if (symbol.getSymbolType() == SymbolType.FUNCTION) {
-                return (Function) symbol.getObject();
-            }
-        }
-
-        return null;
-    }
-    
     private Function findFunctionByAddress(String addressString) {
         Program program = getCurrentProgram();
         if (program == null) {

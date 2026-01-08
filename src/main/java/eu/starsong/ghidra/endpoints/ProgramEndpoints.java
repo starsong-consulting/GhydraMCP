@@ -13,6 +13,7 @@ import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
@@ -395,7 +396,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
                     return;
                 }
                 
-                functionEndpoints.handleGetFunction(exchange, function.getName());
+                functionEndpoints.handleGetFunction(exchange, function.getName(true));
             } catch (Exception e) {
                 sendErrorResponse(exchange, 400, "Invalid address format: " + fullPath, "INVALID_ADDRESS");
             }
@@ -424,16 +425,10 @@ public class ProgramEndpoints extends AbstractEndpoint {
             String resource = fullPath.substring(slashIndex + 1);
             
             FunctionEndpoints functionEndpoints = new FunctionEndpoints(program, port);
-            
-            // Find the function by name
-            ghidra.program.model.listing.Function function = null;
-            for (ghidra.program.model.listing.Function f : program.getFunctionManager().getFunctions(true)) {
-                if (f.getName().equals(functionName)) {
-                    function = f;
-                    break;
-                }
-            }
-            
+
+            // Find the function by name (handles both short names and FQN)
+            Function function = GhidraUtil.findFunctionByName(program, functionName);
+
             if (function == null) {
                 sendErrorResponse(exchange, 404, "Function not found by name: " + functionName, "FUNCTION_NOT_FOUND");
                 return;
@@ -1202,9 +1197,9 @@ public class ProgramEndpoints extends AbstractEndpoint {
      */
     private String getFunctionName(Program program, ghidra.program.model.address.Address addr) {
         ghidra.program.model.listing.Function function = program.getFunctionManager().getFunctionContaining(addr);
-        return function != null ? function.getName() : null;
+        return function != null ? function.getName(true) : null;
     }
-    
+
     /**
      * Helper method to check if a reference type matches a filter
      */
@@ -1506,13 +1501,8 @@ public class ProgramEndpoints extends AbstractEndpoint {
             } 
             // Try to find function by name if address not provided or function not found
             else if (name != null) {
-                for (ghidra.program.model.listing.Function f : program.getFunctionManager().getFunctions(true)) {
-                    if (f.getName().equals(name)) {
-                        startFunction = f;
-                        break;
-                    }
-                }
-                
+                startFunction = GhidraUtil.findFunctionByName(program, name);
+
                 if (startFunction == null) {
                     sendErrorResponse(exchange, 404, "Function not found by name: " + name, "FUNCTION_NOT_FOUND");
                     return;
@@ -1574,7 +1564,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
      */
     private Map<String, Object> buildCallGraph(Program program, ghidra.program.model.listing.Function startFunction, int maxDepth) {
         Map<String, Object> graph = new HashMap<>();
-        graph.put("root", startFunction.getName());
+        graph.put("root", startFunction.getName(true));
         graph.put("root_address", startFunction.getEntryPoint().toString());
         graph.put("max_depth", maxDepth);
         
@@ -1613,7 +1603,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
         if (!processedFunctions.contains(functionId)) {
             Map<String, Object> node = new HashMap<>();
             node.put("id", functionId);
-            node.put("name", function.getName());
+            node.put("name", function.getName(true));
             node.put("address", function.getEntryPoint().toString());
             node.put("depth", currentDepth);
             

@@ -236,7 +236,7 @@ package eu.starsong.ghidra.endpoints;
             for (Symbol symbol : globalSymbols) {
                 if (currentIndex >= startIdx && currentIndex < endIdx) {
                     Map<String, String> varInfo = new HashMap<>();
-                    varInfo.put("name", symbol.getName());
+                    varInfo.put("name", symbol.getName(true));
                     varInfo.put("address", symbol.getAddress().toString());
                     varInfo.put("type", "global");
                     varInfo.put("dataType", getDataTypeName(program, symbol.getAddress()));
@@ -297,7 +297,7 @@ package eu.starsong.ghidra.endpoints;
                                                 Map<String, String> varInfo = new HashMap<>();
                                                 varInfo.put("name", symbol.getName());
                                                 varInfo.put("type", "local");
-                                                varInfo.put("function", function.getName());
+                                                varInfo.put("function", function.getName(true));
                                                 Address pcAddr = symbol.getPCAddress();
                                                 varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
                                                 varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
@@ -321,9 +321,9 @@ package eu.starsong.ghidra.endpoints;
                                     }
                                 }
                             } catch (Exception e) {
-                                Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(), e);
+                                Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(true), e);
                             }
-                            
+
                             functionsProcessed++;
                             if (functionsProcessed >= maxFunctionsToProcess || localVarIndex >= localOffset + localLimit) {
                                 // Stop processing if we've hit our limits
@@ -367,7 +367,7 @@ package eu.starsong.ghidra.endpoints;
                                                     Map<String, String> varInfo = new HashMap<>();
                                                     varInfo.put("name", symbol.getName());
                                                     varInfo.put("type", "local");
-                                                    varInfo.put("function", function.getName());
+                                                    varInfo.put("function", function.getName(true));
                                                     Address pcAddr = symbol.getPCAddress();
                                                     varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
                                                     varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
@@ -378,9 +378,9 @@ package eu.starsong.ghidra.endpoints;
                                         }
                                     }
                                 } catch (Exception e) {
-                                    Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(), e);
+                                    Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(true), e);
                                 }
-                                
+
                                 functionsProcessed++;
                                 if (functionsProcessed >= maxFunctionsToProcess || localVarsAdded >= remainingSpace) {
                                     // Stop processing if we've hit our limits
@@ -443,10 +443,10 @@ package eu.starsong.ghidra.endpoints;
                 if (symbol.isGlobal() &&
                     symbol.getSymbolType() != SymbolType.FUNCTION &&
                     symbol.getSymbolType() != SymbolType.LABEL &&
-                    symbol.getName().toLowerCase().contains(lowerSearchTerm)) {
-                    
+                    symbol.getName(true).toLowerCase().contains(lowerSearchTerm)) {
+
                     Map<String, String> varInfo = new HashMap<>();
-                    varInfo.put("name", symbol.getName());
+                    varInfo.put("name", symbol.getName(true));
                     varInfo.put("address", symbol.getAddress().toString());
                     varInfo.put("type", "global");
                     varInfo.put("dataType", getDataTypeName(program, symbol.getAddress()));
@@ -519,7 +519,7 @@ package eu.starsong.ghidra.endpoints;
                                             if (symbol.getName().toLowerCase().contains(lowerSearchTerm)) {
                                                 Map<String, String> varInfo = new HashMap<>();
                                                 varInfo.put("name", symbol.getName());
-                                                varInfo.put("function", function.getName());
+                                                varInfo.put("function", function.getName(true));
                                                 varInfo.put("type", symbol.isParameter() ? "parameter" : "local");
                                                 Address pcAddr = symbol.getPCAddress();
                                                 varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
@@ -544,9 +544,9 @@ package eu.starsong.ghidra.endpoints;
                                     }
                                 }
                             } catch (Exception e) {
-                                Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(), e);
+                                Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(true), e);
                             }
-                            
+
                             functionsProcessed++;
                             if (functionsProcessed >= maxFunctionsToProcess || localVarIndex >= localOffset + localLimit) {
                                 // Stop processing if we've hit our limits
@@ -589,7 +589,7 @@ package eu.starsong.ghidra.endpoints;
                                                 if (symbol.getName().toLowerCase().contains(lowerSearchTerm)) {
                                                     Map<String, String> varInfo = new HashMap<>();
                                                     varInfo.put("name", symbol.getName());
-                                                    varInfo.put("function", function.getName());
+                                                    varInfo.put("function", function.getName(true));
                                                     varInfo.put("type", symbol.isParameter() ? "parameter" : "local");
                                                     Address pcAddr = symbol.getPCAddress();
                                                     varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
@@ -601,9 +601,9 @@ package eu.starsong.ghidra.endpoints;
                                         }
                                     }
                                 } catch (Exception e) {
-                                    Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(), e);
+                                    Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(true), e);
                                 }
-                                
+
                                 functionsProcessed++;
                                 if (functionsProcessed >= maxFunctionsToProcess || localVarsAdded >= remainingSpace) {
                                     // Stop processing if we've hit our limits

@@ -212,7 +212,7 @@ public class XrefsEndpoints extends AbstractEndpoint {
         Function fromFunc = program.getFunctionManager().getFunctionContaining(ref.getFromAddress());
         if (fromFunc != null) {
             Map<String, Object> fromFuncMap = new HashMap<>();
-            fromFuncMap.put("name", fromFunc.getName());
+            fromFuncMap.put("name", fromFunc.getName(true));
             fromFuncMap.put("address", fromFunc.getEntryPoint().toString());
             fromFuncMap.put("offset", ref.getFromAddress().subtract(fromFunc.getEntryPoint()));
             refMap.put("from_function", fromFuncMap);
@@ -222,7 +222,7 @@ public class XrefsEndpoints extends AbstractEndpoint {
         Function toFunc = program.getFunctionManager().getFunctionContaining(ref.getToAddress());
         if (toFunc != null) {
             Map<String, Object> toFuncMap = new HashMap<>();
-            toFuncMap.put("name", toFunc.getName());
+            toFuncMap.put("name", toFunc.getName(true));
             toFuncMap.put("address", toFunc.getEntryPoint().toString());
             toFuncMap.put("offset", ref.getToAddress().subtract(toFunc.getEntryPoint()));
             refMap.put("to_function", toFuncMap);
@@ -232,13 +232,13 @@ public class XrefsEndpoints extends AbstractEndpoint {
         SymbolTable symbolTable = program.getSymbolTable();
         Symbol[] fromSymbols = symbolTable.getSymbols(ref.getFromAddress());
         if (fromSymbols != null && fromSymbols.length > 0) {
-            refMap.put("from_symbol", fromSymbols[0].getName());
+            refMap.put("from_symbol", fromSymbols[0].getName(true));
         }
         
         // Get target symbol (if any)
         Symbol[] toSymbols = symbolTable.getSymbols(ref.getToAddress());
         if (toSymbols != null && toSymbols.length > 0) {
-            refMap.put("to_symbol", toSymbols[0].getName());
+            refMap.put("to_symbol", toSymbols[0].getName(true));
         }
         
         // Get the instruction/data at the from address (if applicable)
