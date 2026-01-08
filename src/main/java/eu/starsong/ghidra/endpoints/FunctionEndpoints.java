@@ -9,6 +9,8 @@ import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.util.NamespaceUtils;
+import ghidra.app.util.SymbolPath;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
@@ -18,7 +20,10 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.HighFunctionDBUtil;
 import ghidra.program.model.pcode.HighSymbol;
+import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
 import ghidra.util.task.ConsoleTaskMonitor;
 
@@ -400,11 +405,27 @@ public class FunctionEndpoints extends AbstractEndpoint {
         // Apply changes
         boolean changed = false;
         
-        if (newName != null && !newName.isEmpty() && !newName.equals(function.getName())) {
+        if (newName != null && !newName.isEmpty() && !newName.equals(function.getName(true))) {
             // Rename function
             try {
                 TransactionHelper.executeInTransaction(program, "Rename Function", () -> {
-                    function.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
+                    SymbolPath newPath = new SymbolPath(newName);
+                    String parentPathStr = newPath.getParentPath();
+                    String funcName = newPath.getName();
+
+                    if (parentPathStr != null) {
+                        Namespace targetNamespace = NamespaceUtils.createNamespaceHierarchy(
+                            parentPathStr,
+                            program.getGlobalNamespace(),
+                            program,
+                            SourceType.USER_DEFINED
+                        );
+                        function.setParentNamespace(targetNamespace);
+                    } else {
+                        function.setParentNamespace(program.getGlobalNamespace());
+                    }
+
+                    function.setName(funcName, SourceType.USER_DEFINED);
                     return null;
                 });
                 changed = true;
@@ -894,11 +915,27 @@ public class FunctionEndpoints extends AbstractEndpoint {
         // Apply changes
         boolean changed = false;
         
-        if (newName != null && !newName.isEmpty() && !newName.equals(function.getName())) {
+        if (newName != null && !newName.isEmpty() && !newName.equals(function.getName(true))) {
             // Rename function
             try {
                 TransactionHelper.executeInTransaction(program, "Rename Function", () -> {
-                    function.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
+                    SymbolPath newPath = new SymbolPath(newName);
+                    String parentPathStr = newPath.getParentPath();
+                    String funcName = newPath.getName();
+
+                    if (parentPathStr != null) {
+                        Namespace targetNamespace = NamespaceUtils.createNamespaceHierarchy(
+                            parentPathStr,
+                            program.getGlobalNamespace(),
+                            program,
+                            SourceType.USER_DEFINED
+                        );
+                        function.setParentNamespace(targetNamespace);
+                    } else {
+                        function.setParentNamespace(program.getGlobalNamespace());
+                    }
+
+                    function.setName(funcName, SourceType.USER_DEFINED);
                     return null;
                 });
                 changed = true;
@@ -1400,13 +1437,25 @@ public class FunctionEndpoints extends AbstractEndpoint {
         if (program == null) {
             return null;
         }
-        
-        for (Function f : program.getFunctionManager().getFunctions(true)) {
-            if (f.getName().equals(name)) {
-                return f;
+
+        SymbolPath symbolPath = new SymbolPath(name);
+        List<Symbol> symbols = NamespaceUtils.getSymbols(symbolPath, program, false);
+
+        for (Symbol symbol : symbols) {
+            if (symbol.getSymbolType() == SymbolType.FUNCTION) {
+                return (Function) symbol.getObject();
             }
         }
-        
+
+        // If no match found and no :: in name, fall back to searching all functions.
+        if (symbols.isEmpty() && !name.contains("::")) {
+            for (Function f : program.getFunctionManager().getFunctions(true)) {
+                if (f.getName().equals(name)) {
+                    return f;
+                }
+            }
+        }
+
         return null;
     }
     

@@ -688,7 +688,7 @@ def decompiled_function_by_name(port: int = None, name: str = None) -> str:
     
     Args:
         port: Specific Ghidra instance port
-        name: Function name
+        name: Function fully-qualified name
         
     Returns:
         str: The decompiled C code as a string, or error message
@@ -781,7 +781,7 @@ def function_info_by_name(port: int = None, name: str = None) -> dict:
     
     Args:
         port: Specific Ghidra instance port
-        name: Function name
+        name: Function fully-qualified name
         
     Returns:
         dict: Complete function information including signature, parameters, etc.
@@ -885,7 +885,7 @@ def disassembly_by_name(port: int = None, name: str = None) -> str:
     
     Args:
         port: Specific Ghidra instance port
-        name: Function name
+        name: Function fully-qualified name
         
     Returns:
         str: Formatted disassembly listing as a string
@@ -947,13 +947,13 @@ def analyze_function_prompt(name: str = None, address: str = None, port: int = N
     """A prompt to guide the LLM through analyzing a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with address)
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
     
-    # Get function name if only address is provided
+    # Get function fully-qualified name if only address is provided
     if address and not name:
         fn_info = function_info_by_address(address=address, port=port)
         if isinstance(fn_info, dict) and "name" in fn_info:
@@ -1003,13 +1003,13 @@ def identify_vulnerabilities_prompt(name: str = None, address: str = None, port:
     """A prompt to help identify potential vulnerabilities in a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with address)
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
     
-    # Get function name if only address is provided
+    # Get function fully-qualified name if only address is provided
     if address and not name:
         fn_info = function_info_by_address(address=address, port=port)
         if isinstance(fn_info, dict) and "name" in fn_info:
@@ -1323,7 +1323,7 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
     """Get detailed information about a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
         
@@ -1358,7 +1358,7 @@ def functions_decompile(name: str = None, address: str = None,
     """Get decompiled code for a function with optional line filtering for context management
 
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         syntax_tree: Include syntax tree (default: False)
         style: Decompiler style (default: "normalize")
@@ -1421,7 +1421,7 @@ def functions_disassemble(name: str = None, address: str = None, port: int = Non
     """Get disassembly for a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
         
@@ -1483,9 +1483,9 @@ def functions_rename(old_name: str = None, address: str = None, new_name: str = 
     """Rename a function
     
     Args:
-        old_name: Current function name (mutually exclusive with address)
+        old_name: Current Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
-        new_name: New function name
+        new_name: New Function fully-qualified name
         port: Specific Ghidra instance port (optional)
         
     Returns:
@@ -1520,7 +1520,7 @@ def functions_set_signature(name: str = None, address: str = None, signature: st
     """Set function signature/prototype
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         signature: New function signature (e.g., "int func(char *data, int size)")
         port: Specific Ghidra instance port (optional)
@@ -1557,7 +1557,7 @@ def functions_get_variables(name: str = None, address: str = None, port: int = N
     """Get variables for a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
         
@@ -2198,7 +2198,7 @@ def analysis_get_callgraph(name: str = None, address: str = None, max_depth: int
     """Get function call graph visualization data
 
     Args:
-        name: Starting function name (mutually exclusive with address)
+        name: Starting Function fully-qualified name (mutually exclusive with address)
         address: Starting function address (mutually exclusive with name)
         max_depth: Maximum call depth to analyze (default: 3). Increase for deeper call chains (e.g., 10-15 for complex functions)
         port: Specific Ghidra instance port (optional)
