@@ -49,6 +49,7 @@ The API is organized into namespaces for different types of operations:
 - functions_* : For working with functions
 - data_* : For working with data items
 - structs_* : For creating and managing struct data types
+- scalars_* : For searching scalar (constant) values in instructions
 - memory_* : For memory access
 - xrefs_* : For cross-references
 - analysis_* : For program analysis
@@ -1946,6 +1947,31 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
     }
     
     response = safe_post(port, "data/type", payload)
+    return simplify_response(response)
+
+# Scalars tools
+@mcp.tool()
+def scalars_search(value: str, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """Search for occurrences of a specific scalar (constant) value in instructions
+
+    Args:
+        value: The scalar value to search for (hex "0x..." or decimal)
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of scalar occurrences with address, instruction, function context
+    """
+    port = _get_instance_port(port)
+
+    params = {
+        "value": value,
+        "offset": offset,
+        "limit": limit
+    }
+
+    response = safe_get(port, "scalars", params)
     return simplify_response(response)
 
 # Struct tools

@@ -599,6 +599,37 @@ Provides functionality for creating and managing struct (composite) data types.
   }
   ```
 
+### 6.3 Scalars
+
+Search for scalar (constant) values in instructions, similar to Ghidra's "Search For Scalar" feature.
+
+- **`GET /scalars`**: Search for occurrences of a specific scalar value in instructions.
+  - Query Parameters:
+    - `?value=[int]`: **Required.** The scalar value to search for (hex `0x...` or decimal).
+    - `?offset=[int]`: Pagination offset (default: 0).
+    - `?limit=[int]`: Maximum number of results to return (default: 100).
+  ```json
+  // Example Response for GET /scalars?value=0x1000
+  "result": [
+    {
+      "address": "0x00401234",
+      "value": 4096,
+      "hexValue": "0x1000",
+      "bitLength": 32,
+      "signed": false,
+      "operandIndex": 1,
+      "instruction": "MOV EAX, 0x1000",
+      "function": "main",
+      "functionAddress": "0x00401200"
+    }
+  ],
+  "_links": {
+    "self": { "href": "/scalars?value=0x1000&offset=0&limit=100" },
+    "next": { "href": "/scalars?value=0x1000&offset=100&limit=100" },
+    "program": { "href": "/program" }
+  }
+  ```
+
 ### 7. Memory Segments
 
 Represents memory blocks/sections defined in the program. 
