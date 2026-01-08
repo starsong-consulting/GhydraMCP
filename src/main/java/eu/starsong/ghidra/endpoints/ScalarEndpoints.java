@@ -50,6 +50,7 @@ public class ScalarEndpoints extends AbstractEndpoint {
      *
      * Query parameters:
      * - value: The scalar value to search for (required, hex 0x... or decimal)
+     * - in_function: Filter to only include results in functions whose name contains this substring (case-insensitive)
      * - offset: Pagination offset (default: 0)
      * - limit: Maximum items to return (default: 100)
      */
@@ -67,6 +68,9 @@ public class ScalarEndpoints extends AbstractEndpoint {
                     return;
                 }
 
+                // Optional function filter (filters by the containing function's name)
+                String inFunction = qparams.get("in_function");
+
                 Long targetValue = parseScalarValue(valueParam);
                 if (targetValue == null) {
                     sendErrorResponse(exchange, 400, "Invalid value format: " + valueParam, "INVALID_PARAMETER");
@@ -81,7 +85,7 @@ public class ScalarEndpoints extends AbstractEndpoint {
 
                 // Find scalars with early termination (skip offset, collect limit + 1 to check
                 // hasMore)
-                FindScalarResult findResult = findScalar(program, targetValue, offset, limit);
+                FindScalarResult findResult = findScalar(program, targetValue, inFunction, offset, limit);
 
                 // Build response with HATEOAS links
                 eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange,
@@ -100,6 +104,9 @@ public class ScalarEndpoints extends AbstractEndpoint {
 
                 // Add pagination links
                 String baseParams = "value=" + valueParam;
+                if (inFunction != null && !inFunction.isEmpty()) {
+                    baseParams += "&in_function=" + inFunction;
+                }
                 builder.addLink("self", "/scalars?" + baseParams + "&offset=" + offset + "&limit=" + limit);
 
                 if (findResult.hasMore) {
@@ -142,18 +149,21 @@ public class ScalarEndpoints extends AbstractEndpoint {
      * Find occurrences of a scalar value with offset/limit for pagination.
      * Uses early termination for performance.
      *
-     * @param program     The program to search
-     * @param targetValue The scalar value to find
-     * @param offset      Number of results to skip
-     * @param limit       Maximum results to return
+     * @param program          The program to search
+     * @param targetValue      The scalar value to find
+     * @param inFunction       Filter to only include results in functions whose name contains this substring (case-insensitive), or null for no filter
+     * @param offset           Number of results to skip
+     * @param limit            Maximum results to return
      * @return FindScalarResult containing results and hasMore flag
      */
-    private FindScalarResult findScalar(Program program, long targetValue, int offset, int limit) {
+    private FindScalarResult findScalar(Program program, long targetValue, String inFunction, int offset, int limit) {
         List<ScalarInfo> results = new ArrayList<>();
         Listing listing = program.getListing();
         int skipped = 0;
         int collected = 0;
         boolean hasMore = false;
+        String functionFilter = (inFunction != null && !inFunction.isEmpty())
+            ? inFunction.toLowerCase() : null;
 
         // Iterate through all memory blocks
         outerLoop: for (MemoryBlock block : program.getMemory().getBlocks()) {
@@ -178,6 +188,16 @@ public class ScalarEndpoints extends AbstractEndpoint {
                         if (opObj instanceof Scalar) {
                             Scalar scalar = (Scalar) opObj;
                             if (scalar.getValue() == targetValue) {
+                                ghidra.program.model.listing.Function func = listing.getFunctionContaining(instrAddr);
+
+                                // Filter scalar usage according to the function using it.
+                                if (functionFilter != null) {
+                                    if (func == null) continue;
+                                    if (!func.getName(true).toLowerCase().contains(functionFilter)) {
+                                        continue;
+                                    }
+                                }
+
                                 // Skip until we reach offset
                                 if (skipped < offset) {
                                     skipped++;
@@ -200,7 +220,6 @@ public class ScalarEndpoints extends AbstractEndpoint {
                                     .instruction(instruction.toString());
 
                                 // Add function context if available
-                                ghidra.program.model.listing.Function func = listing.getFunctionContaining(instrAddr);
                                 if (func != null) {
                                     builder.function(func.getName(true))
                                            .functionAddress(func.getEntryPoint().toString());

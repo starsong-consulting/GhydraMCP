@@ -606,10 +606,11 @@ Search for scalar (constant) values in instructions, similar to Ghidra's "Search
 - **`GET /scalars`**: Search for occurrences of a specific scalar value in instructions.
   - Query Parameters:
     - `?value=[int]`: **Required.** The scalar value to search for (hex `0x...` or decimal).
+    - `?in_function=[string]`: Filter to only include results in functions whose name contains this substring (case-insensitive). This filters by the **containing** function where the scalar appears, not by called functions.
     - `?offset=[int]`: Pagination offset (default: 0).
     - `?limit=[int]`: Maximum number of results to return (default: 100).
   ```json
-  // Example Response for GET /scalars?value=0x1000
+  // Example Response for GET /scalars?value=0x1000&in_function=main
   "result": [
     {
       "address": "0x00401234",
@@ -624,8 +625,8 @@ Search for scalar (constant) values in instructions, similar to Ghidra's "Search
     }
   ],
   "_links": {
-    "self": { "href": "/scalars?value=0x1000&offset=0&limit=100" },
-    "next": { "href": "/scalars?value=0x1000&offset=100&limit=100" },
+    "self": { "href": "/scalars?value=0x1000&in_function=main&offset=0&limit=100" },
+    "next": { "href": "/scalars?value=0x1000&in_function=main&offset=100&limit=100" },
     "program": { "href": "/program" }
   }
   ```

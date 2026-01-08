@@ -1951,11 +1951,12 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
 
 # Scalars tools
 @mcp.tool()
-def scalars_search(value: str, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def scalars_search(value: str, in_function: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
     """Search for occurrences of a specific scalar (constant) value in instructions
 
     Args:
         value: The scalar value to search for (hex "0x..." or decimal)
+        in_function: Filter to only include results in functions whose name contains this substring (case-insensitive)
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
         port: Specific Ghidra instance port (optional)
@@ -1970,6 +1971,8 @@ def scalars_search(value: str, offset: int = 0, limit: int = 100, port: int = No
         "offset": offset,
         "limit": limit
     }
+    if in_function:
+        params["in_function"] = in_function
 
     response = safe_get(port, "scalars", params)
     return simplify_response(response)
