@@ -1951,12 +1951,16 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
 
 # Scalars tools
 @mcp.tool()
-def scalars_search(value: str, in_function: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def scalars_search(value: str, in_function: str = None, to_function: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
     """Search for occurrences of a specific scalar (constant) value in instructions
+
+    Use to find where a constant appears in code. For named constants, look up
+    the value with data_list first.
 
     Args:
         value: The scalar value to search for (hex "0x..." or decimal)
-        in_function: Filter to only include results in functions whose name contains this substring (case-insensitive)
+        in_function: Filter by containing function name (case-insensitive substring)
+        to_function: Filter by called function name (case-insensitive substring)
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
         port: Specific Ghidra instance port (optional)
@@ -1973,6 +1977,8 @@ def scalars_search(value: str, in_function: str = None, offset: int = 0, limit: 
     }
     if in_function:
         params["in_function"] = in_function
+    if to_function:
+        params["to_function"] = to_function
 
     response = safe_get(port, "scalars", params)
     return simplify_response(response)

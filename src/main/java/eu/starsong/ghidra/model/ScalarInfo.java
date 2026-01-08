@@ -12,8 +12,10 @@ public class ScalarInfo {
     private boolean signed;
     private int operandIndex;
     private String instruction;
-    private String function;
-    private String functionAddress;
+    private String inFunction;
+    private String inFunctionAddress;
+    private String toFunction;
+    private String toFunctionAddress;
 
     /**
      * Default constructor for serialization frameworks
@@ -26,7 +28,8 @@ public class ScalarInfo {
      */
     public ScalarInfo(String address, long value, String hexValue, int bitLength,
                       boolean signed, int operandIndex, String instruction,
-                      String function, String functionAddress) {
+                      String inFunction, String inFunctionAddress,
+                      String toFunction, String toFunctionAddress) {
         this.address = address;
         this.value = value;
         this.hexValue = hexValue;
@@ -34,8 +37,10 @@ public class ScalarInfo {
         this.signed = signed;
         this.operandIndex = operandIndex;
         this.instruction = instruction;
-        this.function = function;
-        this.functionAddress = functionAddress;
+        this.inFunction = inFunction;
+        this.inFunctionAddress = inFunctionAddress;
+        this.toFunction = toFunction;
+        this.toFunctionAddress = toFunctionAddress;
     }
 
     public String getAddress() {
@@ -94,20 +99,36 @@ public class ScalarInfo {
         this.instruction = instruction;
     }
 
-    public String getFunction() {
-        return function;
+    public String getInFunction() {
+        return inFunction;
     }
 
-    public void setFunction(String function) {
-        this.function = function;
+    public void setInFunction(String inFunction) {
+        this.inFunction = inFunction;
     }
 
-    public String getFunctionAddress() {
-        return functionAddress;
+    public String getInFunctionAddress() {
+        return inFunctionAddress;
     }
 
-    public void setFunctionAddress(String functionAddress) {
-        this.functionAddress = functionAddress;
+    public void setInFunctionAddress(String inFunctionAddress) {
+        this.inFunctionAddress = inFunctionAddress;
+    }
+
+    public String getToFunction() {
+        return toFunction;
+    }
+
+    public void setToFunction(String toFunction) {
+        this.toFunction = toFunction;
+    }
+
+    public String getToFunctionAddress() {
+        return toFunctionAddress;
+    }
+
+    public void setToFunctionAddress(String toFunctionAddress) {
+        this.toFunctionAddress = toFunctionAddress;
     }
 
     /**
@@ -121,8 +142,10 @@ public class ScalarInfo {
         private boolean signed;
         private int operandIndex;
         private String instruction;
-        private String function;
-        private String functionAddress;
+        private String inFunction;
+        private String inFunctionAddress;
+        private String toFunction;
+        private String toFunctionAddress;
 
         public Builder address(String address) {
             this.address = address;
@@ -155,13 +178,23 @@ public class ScalarInfo {
             return this;
         }
 
-        public Builder function(String function) {
-            this.function = function;
+        public Builder inFunction(String inFunction) {
+            this.inFunction = inFunction;
             return this;
         }
 
-        public Builder functionAddress(String functionAddress) {
-            this.functionAddress = functionAddress;
+        public Builder inFunctionAddress(String inFunctionAddress) {
+            this.inFunctionAddress = inFunctionAddress;
+            return this;
+        }
+
+        public Builder toFunction(String toFunction) {
+            this.toFunction = toFunction;
+            return this;
+        }
+
+        public Builder toFunctionAddress(String toFunctionAddress) {
+            this.toFunctionAddress = toFunctionAddress;
             return this;
         }
 
@@ -169,7 +202,8 @@ public class ScalarInfo {
             return new ScalarInfo(
                 address, value, hexValue, bitLength,
                 signed, operandIndex, instruction,
-                function, functionAddress
+                inFunction, inFunctionAddress,
+                toFunction, toFunctionAddress
             );
         }
     }
