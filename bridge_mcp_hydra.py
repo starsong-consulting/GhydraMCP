@@ -522,6 +522,7 @@ def format_memory(response: dict, **kwargs) -> str:
     lines = [f"Memory at {addr} ({length} bytes):"]
 
     if hex_bytes:
+        hex_bytes = hex_bytes.replace(" ", "")  # Strip any spaces for safety
         byte_pairs = [hex_bytes[i:i+2] for i in range(0, len(hex_bytes), 2)]
 
         for i in range(0, len(byte_pairs), 16):
