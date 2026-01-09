@@ -147,7 +147,7 @@ public class MemoryEndpoints extends AbstractEndpoint {
                     byte[] bytes = new byte[length];
                     int bytesRead = memory.getBytes(address, bytes, 0, length);
                     
-                    // Format as hex string
+                    // Format as hex string (continuous, no spaces - Python bridge parses by pairs)
                     StringBuilder hexString = new StringBuilder();
                     for (int i = 0; i < bytesRead; i++) {
                         String hex = Integer.toHexString(bytes[i] & 0xFF).toUpperCase();
@@ -155,9 +155,6 @@ public class MemoryEndpoints extends AbstractEndpoint {
                             hexString.append('0');
                         }
                         hexString.append(hex);
-                        if (i < bytesRead - 1) {
-                            hexString.append(' ');
-                        }
                     }
                     
                     // Build result object
