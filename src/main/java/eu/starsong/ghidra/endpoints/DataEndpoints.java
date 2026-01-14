@@ -175,7 +175,9 @@ package eu.starsong.ghidra.endpoints;
                 Map<String, String> qparams = parseQueryParams(exchange);
                 int offset = parseIntOrDefault(qparams.get("offset"), 0);
                 int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                
+                String nameFilter = qparams.get("name");
+                String nameContainsFilter = qparams.get("name_contains");
+
                 Program program = getCurrentProgram();
                 if (program == null) {
                     sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
@@ -187,6 +189,16 @@ package eu.starsong.ghidra.endpoints;
                     DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
                     while (it.hasNext()) {
                         Data data = it.next();
+
+                        if (nameFilter != null && !data.getPathName().equals(nameFilter)) {
+                          continue;
+                        }
+
+                        if (nameContainsFilter != null && !data.getPathName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+                          continue;
+                        }
+                        
+
                         if (block.contains(data.getAddress())) {
                             // Apply addr filter if present
                             String addrFilter = qparams.get("addr");
