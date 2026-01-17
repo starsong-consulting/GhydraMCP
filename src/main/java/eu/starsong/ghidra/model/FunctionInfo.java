@@ -16,7 +16,6 @@ public class FunctionInfo {
     private String decompilation;
     private boolean isExternal;
     private String callingConvention;
-    private String namespace;
 
     /**
      * Default constructor for serialization frameworks
@@ -39,8 +38,8 @@ public class FunctionInfo {
      * Full constructor
      */
     public FunctionInfo(String name, String address, String signature, String returnType,
-                       List<ParameterInfo> parameters, String decompilation, 
-                       boolean isExternal, String callingConvention, String namespace) {
+                       List<ParameterInfo> parameters, String decompilation,
+                       boolean isExternal, String callingConvention) {
         this.name = name;
         this.address = address;
         this.signature = signature;
@@ -49,7 +48,6 @@ public class FunctionInfo {
         this.decompilation = decompilation;
         this.isExternal = isExternal;
         this.callingConvention = callingConvention;
-        this.namespace = namespace;
     }
 
     /**
@@ -165,20 +163,6 @@ public class FunctionInfo {
     }
 
     /**
-     * @return The function's namespace
-     */
-    public String getNamespace() {
-        return namespace;
-    }
-
-    /**
-     * @param namespace The function's namespace
-     */
-    public void setNamespace(String namespace) {
-        this.namespace = namespace;
-    }
-
-    /**
      * Add a parameter to the function
      * @param parameter The parameter to add
      */
@@ -200,7 +184,6 @@ public class FunctionInfo {
         private String decompilation;
         private boolean isExternal;
         private String callingConvention;
-        private String namespace;
 
         public Builder name(String name) {
             this.name = name;
@@ -247,16 +230,11 @@ public class FunctionInfo {
             return this;
         }
 
-        public Builder namespace(String namespace) {
-            this.namespace = namespace;
-            return this;
-        }
-
         public FunctionInfo build() {
             return new FunctionInfo(
                 name, address, signature, returnType,
                 parameters, decompilation, isExternal,
-                callingConvention, namespace
+                callingConvention
             );
         }
     }

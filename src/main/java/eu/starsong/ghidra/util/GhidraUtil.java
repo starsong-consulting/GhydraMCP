@@ -3,8 +3,9 @@ package eu.starsong.ghidra.util;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
-import ghidra.app.services.GoToService;
 import ghidra.app.services.ProgramManager;
+import ghidra.app.util.NamespaceUtils;
+import ghidra.app.util.SymbolPath;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
@@ -16,15 +17,10 @@ import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.ParameterImpl;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.listing.Variable;
-import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolType;
 import ghidra.program.model.pcode.HighFunction;
-import ghidra.program.model.pcode.HighVariable;
-import ghidra.program.model.pcode.PcodeOp;
-import ghidra.program.model.pcode.Varnode;
-import ghidra.program.model.symbol.SymbolTable;
-import ghidra.program.util.ProgramLocation;
 import ghidra.util.Msg;
-import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
@@ -46,7 +42,32 @@ public class GhidraUtil {
             return defaultValue;
         }
     }
-    
+
+    /**
+     * Finds a function by name using SymbolPath.
+     * Handles both short names (e.g., "main") and fully-qualified names (e.g., "Global::main").
+     *
+     * @param program The program to search in
+     * @param name The function name (short or fully-qualified)
+     * @return The Function if found, null otherwise
+     */
+    public static Function findFunctionByName(Program program, String name) {
+        if (program == null || name == null || name.isEmpty()) {
+            return null;
+        }
+
+        SymbolPath symbolPath = new SymbolPath(name);
+        List<Symbol> symbols = NamespaceUtils.getSymbols(symbolPath, program, false);
+
+        for (Symbol symbol : symbols) {
+            if (symbol.getSymbolType() == SymbolType.FUNCTION) {
+                return (Function) symbol.getObject();
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Finds a data type by name within the program's data type managers.
      * @param program The current program.
@@ -206,12 +227,7 @@ public class GhidraUtil {
         
         // If not found by address, try by name
         if (function == null) {
-            for (Function f : program.getFunctionManager().getFunctions(true)) {
-                if (f.getName().equals(addressOrName)) {
-                    function = f;
-                    break;
-                }
-            }
+            function = findFunctionByName(program, addressOrName);
         }
         
         if (function == null) {

@@ -282,22 +282,23 @@ Provides information about the current cursor position and function in Ghidra's 
 
 ### 4. Functions
 
-Represents functions within the current program.
+Represents functions within the current program. Function names are **fully-qualified** (FQN), including their namespace path (e.g., `MyClass::myMethod` or `NS1::NS2::func`). Functions in the global namespace have no prefix (e.g., `main`).
 
-- **`GET /functions`**: List functions. Supports searching (by name/address/regex) and pagination.
+- **`GET /functions`**: List functions. Supports searching (by name/address/regex) and pagination. All name filters match against the fully-qualified name.
   ```json
   // Example Response Fragment
   "result": [
     { "name": "FUN_08000004", "address": "08000004", "_links": { "self": { "href": "/functions/08000004" } } },
-    { "name": "init_peripherals", "address": "08001cf0", "_links": { "self": { "href": "/functions/08001cf0" } } }
+    { "name": "FOM::SharedMemory::ReadUInt", "address": "08001cf0", "_links": { "self": { "href": "/functions/08001cf0" } } }
   ]
   ```
 - **`POST /functions`**: Create a function at a specific address. Requires `address` in the request body. Returns the created function resource.
 - **`GET /functions/{address}`**: Get details for a specific function (name, signature, size, stack info, etc.).
+- **`GET /functions/by-name/{fqn}`**: Get details for a function by its fully-qualified name. The FQN must be URL-encoded (e.g., `FOM::ReadUInt` → `FOM%3A%3AReadUInt`).
   ```json
   // Example Response Fragment for GET /functions/0x4010a0
   "result": {
-    "name": "process_data",
+    "name": "MyNamespace::process_data",
     "address": "0x4010a0",
     "signature": "int process_data(char * data, int size)",
     "size": 128,
@@ -308,6 +309,7 @@ Represents functions within the current program.
   },
   "_links": {
     "self": { "href": "/functions/0x4010a0" },
+    "by_name": { "href": "/functions/by-name/MyNamespace%3A%3Aprocess_data" },
     "decompile": { "href": "/functions/0x4010a0/decompile" },
     "disassembly": { "href": "/functions/0x4010a0/disassembly" },
     "variables": { "href": "/functions/0x4010a0/variables" },
@@ -315,13 +317,13 @@ Represents functions within the current program.
     "xrefs_from": { "href": "/xrefs?from_addr=0x4010a0" }
   }
   ```
-- **`PATCH /functions/{address}`**: Modify a function. Addressable only by address. Payload can contain:
-  - `name`: New function name.
+- **`PATCH /functions/{address}`**: Modify a function. Payload can contain:
+  - `name`: New fully-qualified function name. Using `::` moves the function to that namespace (e.g., `MyClass::myMethod` moves to namespace `MyClass`).
   - `signature`: Full function signature string (e.g., `void my_func(int p1, char * p2)`).
   - `comment`: Set/update the function's primary comment.
   ```json
-  // Example PATCH payload
-  { "name": "calculate_checksum", "signature": "uint32_t calculate_checksum(uint8_t* buffer, size_t length)" }
+  // Example PATCH payload - renames and moves to namespace
+  { "name": "Crypto::calculate_checksum", "signature": "uint32_t calculate_checksum(uint8_t* buffer, size_t length)" }
   ```
 - **`DELETE /functions/{address}`**: Delete the function definition at the specified address.
 

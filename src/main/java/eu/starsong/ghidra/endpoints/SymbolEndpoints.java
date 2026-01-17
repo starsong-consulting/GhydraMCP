@@ -59,9 +59,8 @@ package eu.starsong.ghidra.endpoints;
                     while (symbolIterator.hasNext()) {
                         Symbol symbol = symbolIterator.next();
                         Map<String, Object> symbolInfo = new HashMap<>();
-                        symbolInfo.put("name", symbol.getName());
+                        symbolInfo.put("name", symbol.getName(true));
                         symbolInfo.put("address", symbol.getAddress().toString());
-                        symbolInfo.put("namespace", symbol.getParentNamespace().getName());
                         symbolInfo.put("type", symbol.getSymbolType().toString());
                         symbolInfo.put("isPrimary", symbol.isPrimary());
                         
@@ -114,7 +113,7 @@ package eu.starsong.ghidra.endpoints;
                     List<Map<String, Object>> imports = new ArrayList<>();
                     for (Symbol symbol : program.getSymbolTable().getExternalSymbols()) {
                         Map<String, Object> imp = new HashMap<>();
-                        imp.put("name", symbol.getName());
+                        imp.put("name", symbol.getName(true));
                         imp.put("address", symbol.getAddress().toString());
                         
                         // Add HATEOAS links
@@ -172,7 +171,7 @@ package eu.starsong.ghidra.endpoints;
                         Symbol s = it.next();
                         if (s.isExternalEntryPoint()) {
                             Map<String, Object> exp = new HashMap<>();
-                            exp.put("name", s.getName());
+                            exp.put("name", s.getName(true));
                             exp.put("address", s.getAddress().toString());
                             
                             // Add HATEOAS links

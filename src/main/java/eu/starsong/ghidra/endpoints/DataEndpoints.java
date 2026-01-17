@@ -285,7 +285,7 @@ package eu.starsong.ghidra.endpoints;
                         } else {
                             Symbol sym = program.getSymbolTable().getPrimarySymbol(addr);
                             if (sym != null) {
-                                currentName = sym.getName();
+                                currentName = sym.getName(true);
                             }
                         }
                         
@@ -359,8 +359,8 @@ package eu.starsong.ghidra.endpoints;
                             // If we didn't rename but have a name from data type change, preserve it
                             SymbolTable symTable = program.getSymbolTable();
                             Symbol symbol = symTable.getPrimarySymbol(addr);
-                            
-                            if (symbol == null || !symbol.getName().equals(currentName)) {
+
+                            if (symbol == null || !symbol.getName(true).equals(currentName)) {
                                 if (symbol != null) {
                                     symbol.setName(currentName, SourceType.USER_DEFINED);
                                 } else {
@@ -499,7 +499,7 @@ package eu.starsong.ghidra.endpoints;
                         String currentName = null;
                         Symbol symbol = program.getSymbolTable().getPrimarySymbol(addr);
                         if (symbol != null) {
-                            currentName = symbol.getName();
+                            currentName = symbol.getName(true);
                             resultMap.put("originalName", currentName);
                         }
                         
@@ -642,10 +642,10 @@ package eu.starsong.ghidra.endpoints;
                         String currentName = null;
                         Symbol symbol = program.getSymbolTable().getPrimarySymbol(addr);
                         if (symbol != null) {
-                            currentName = symbol.getName();
+                            currentName = symbol.getName(true);
                             resultMap.put("originalName", currentName);
                         }
-                        
+
                         // Handle type change if requested
                         if (dataTypeStr != null && !dataTypeStr.isEmpty()) {
                             // Remember original type
@@ -1280,7 +1280,7 @@ package eu.starsong.ghidra.endpoints;
                             // Get the name if any
                             Symbol symbol = program.getSymbolTable().getPrimarySymbol(addr);
                             if (symbol != null) {
-                                resultMap.put("original_name", symbol.getName());
+                                resultMap.put("original_name", symbol.getName(true));
                             }
                             
                             // Clear the data
@@ -1372,7 +1372,7 @@ package eu.starsong.ghidra.endpoints;
                             String name = null;
                             Symbol symbol = program.getSymbolTable().getPrimarySymbol(data.getAddress());
                             if (symbol != null) {
-                                name = symbol.getName();
+                                name = symbol.getName(true);
                             }
                             stringInfo.put("name", name != null ? name : "");
                             

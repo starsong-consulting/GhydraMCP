@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Breaking: Use Symbol FQN**: All endpoints now use fully-qualified symbol names to avoid collisions.
+  - Function lookups now supports granular searches for namespaced functions.
+  - Function renaming now supports moving the function to other namespaces.
+
 ## [2.0.0] - 2025-11-11
 
 ### Added
