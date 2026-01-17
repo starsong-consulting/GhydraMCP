@@ -599,6 +599,41 @@ Provides functionality for creating and managing struct (composite) data types.
   }
   ```
 
+### 6.3 Scalars
+
+Search for scalar (constant) values in instructions, similar to Ghidra's "Search For Scalar" feature.
+
+- **`GET /scalars`**: Search for occurrences of a specific scalar value in instructions.
+  - Query Parameters:
+    - `?value=[int]`: **Required.** The scalar value to search for (hex `0x...` or decimal).
+    - `?in_function=[string]`: Filter to only include results in functions whose name contains this substring (case-insensitive). This filters by the **containing** function where the scalar appears.
+    - `?to_function=[string]`: Filter to only include results where the instruction is a call to a function whose name contains this substring (case-insensitive). Useful for finding specific arguments passed to a function.
+    - `?offset=[int]`: Pagination offset (default: 0).
+    - `?limit=[int]`: Maximum number of results to return (default: 100).
+  ```json
+  // Example Response for GET /scalars?value=0&to_function=memset
+  "result": [
+    {
+      "address": "0x00401234",
+      "value": 0,
+      "hexValue": "0x0",
+      "bitLength": 32,
+      "signed": false,
+      "operandIndex": 1,
+      "instruction": "PUSH 0x0",
+      "inFunction": "main",
+      "inFunctionAddress": "0x00401200",
+      "toFunction": "memset",
+      "toFunctionAddress": "0x00402000"
+    }
+  ],
+  "_links": {
+    "self": { "href": "/scalars?value=0&to_function=memset&offset=0&limit=100" },
+    "next": { "href": "/scalars?value=0&to_function=memset&offset=100&limit=100" },
+    "program": { "href": "/program" }
+  }
+  ```
+
 ### 7. Memory Segments
 
 Represents memory blocks/sections defined in the program. 

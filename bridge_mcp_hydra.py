@@ -49,6 +49,7 @@ The API is organized into namespaces for different types of operations:
 - functions_* : For working with functions
 - data_* : For working with data items
 - structs_* : For creating and managing struct data types
+- scalars_* : For searching scalar (constant) values in instructions
 - memory_* : For memory access
 - xrefs_* : For cross-references
 - analysis_* : For program analysis
@@ -1946,6 +1947,40 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
     }
     
     response = safe_post(port, "data/type", payload)
+    return simplify_response(response)
+
+# Scalars tools
+@mcp.tool()
+def scalars_search(value: str, in_function: str = None, to_function: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """Search for occurrences of a specific scalar (constant) value in instructions
+
+    Use to find where a constant appears in code. For named constants, look up
+    the value with data_list first.
+
+    Args:
+        value: The scalar value to search for (hex "0x..." or decimal)
+        in_function: Filter by containing function name (case-insensitive substring)
+        to_function: Filter by called function name (case-insensitive substring)
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of scalar occurrences with address, instruction, function context
+    """
+    port = _get_instance_port(port)
+
+    params = {
+        "value": value,
+        "offset": offset,
+        "limit": limit
+    }
+    if in_function:
+        params["in_function"] = in_function
+    if to_function:
+        params["to_function"] = to_function
+
+    response = safe_get(port, "scalars", params)
     return simplify_response(response)
 
 # Struct tools

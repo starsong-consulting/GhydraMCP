@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Scalar Search**: New `scalars_search` tool for finding scalars within a program.
+  - Supports `in_function` filter to narrow results to scalars within specific containing functions (case-insensitive substring match on function name).
+  - Supports `to_function` filter to find scalars used as arguments in calls to specific functions (e.g., find all `0` values passed to `memset`).
+
 ## [2.0.0] - 2025-11-11
 
 ### Added
