@@ -6,15 +6,15 @@ import javax.swing.SwingUtilities;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class TransactionHelper {
-    
+
     @FunctionalInterface
     public interface GhidraSupplier<T> {
         T get() throws Exception;
     }
 
-    public static <T> T executeInTransaction(Program program, String transactionName, GhidraSupplier<T> operation) 
+    public static <T> T executeInTransaction(Program program, String transactionName, GhidraSupplier<T> operation)
         throws TransactionException {
-        
+
         if (program == null) {
             throw new IllegalArgumentException("Program cannot be null for transaction");
         }

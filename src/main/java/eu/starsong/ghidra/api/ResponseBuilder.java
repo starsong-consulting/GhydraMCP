@@ -69,7 +69,7 @@ public class ResponseBuilder {
         links.add(rel, link);
         return this;
     }
-    
+
     // Overload to add link with method
     public ResponseBuilder addLink(String rel, String href, String method) {
         JsonObject link = new JsonObject();

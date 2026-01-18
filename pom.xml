@@ -9,7 +9,7 @@
   <version>dev</version>
   <name>GhydraMCP</name>
   <url>https://github.com/starsong-consulting/GhydraMCP</url>
-  
+
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -88,7 +88,7 @@
       <scope>system</scope>
       <systemPath>${ghidra.base.jar}</systemPath>
     </dependency>
-    
+
     <!-- Test dependencies -->
     <dependency>
       <groupId>junit</groupId>
@@ -117,7 +117,7 @@
           <compilerArgument>-Xlint:-path</compilerArgument>
         </configuration>
       </plugin>
-      
+
       <!-- Git Commit ID plugin to generate version info -->
       <plugin>
         <groupId>io.github.git-commit-id</groupId>
@@ -141,8 +141,8 @@
           <commitIdGenerationMode>full</commitIdGenerationMode>
         </configuration>
       </plugin>
-      
-      
+
+
       <!-- Use custom MANIFEST.MF -->
       <plugin>
         <artifactId>maven-jar-plugin</artifactId>
@@ -169,7 +169,7 @@
           <outputDirectory>${project.build.directory}</outputDirectory>
         </configuration>
       </plugin>
-      
+
       <!-- The Assembly Plugin -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -179,7 +179,7 @@
           <!-- Execution for the Ghidra extension zip -->
           <execution>
             <id>plugin-assembly</id>
-            <phase>package</phase> 
+            <phase>package</phase>
             <goals>
               <goal>single</goal>
             </goals>
@@ -191,11 +191,11 @@
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
-          
+
           <!-- Execution for the complete package -->
           <execution>
             <id>complete-package</id>
-            <phase>package</phase> 
+            <phase>package</phase>
             <goals>
               <goal>single</goal>
             </goals>
@@ -209,7 +209,7 @@
           </execution>
         </executions>
       </plugin>
-      
+
       <!-- Copy dependencies and validate system paths -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -228,7 +228,7 @@
               <includeScope>runtime</includeScope>
             </configuration>
           </execution>
-          
+
           <!-- Validate system dependency paths -->
           <execution>
             <id>validate-system-dependencies</id>
@@ -257,7 +257,7 @@
       </plugin>
     </plugins>
   </build>
-  
+
   <profiles>
     <!-- Profile activated when GHIDRA_HOME environment variable is set -->
     <profile>
@@ -297,7 +297,7 @@
         </plugins>
       </build>
     </profile>
-    
+
     <!-- Profile for building just the complete package -->
     <profile>
       <id>complete-only</id>

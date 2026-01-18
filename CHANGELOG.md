@@ -108,7 +108,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - Initial release of GhydraMCP bridge
 - Basic Ghidra instance management tools
-- Function analysis tools 
+- Function analysis tools
 - Variable manipulation tools
 
 ## [1.0] - 2025-03-24

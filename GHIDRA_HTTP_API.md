@@ -601,14 +601,14 @@ Provides functionality for creating and managing struct (composite) data types.
 
 ### 7. Memory Segments
 
-Represents memory blocks/sections defined in the program. 
+Represents memory blocks/sections defined in the program.
 
 - **`GET /segments`**: List all memory segments (e.g., `.text`, `.data`, `.bss`).
 - **`GET /segments/{segment_name}`**: Get details for a specific segment (address range, permissions, size).
 
 ### 8. Memory Access
 
-Provides raw memory access. 
+Provides raw memory access.
 
 - **`GET /memory/{address}`**: Read bytes from memory.
   - Query Parameters:
