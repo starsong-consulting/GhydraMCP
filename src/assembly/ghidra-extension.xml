@@ -1,15 +1,15 @@
 <assembly
     xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3 
+    xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.3
         http://maven.apache.org/xsd/assembly-1.1.3.xsd">
-    
+
     <id>ghidra-extension</id>
     <formats>
         <format>zip</format>
     </formats>
     <includeBaseDirectory>false</includeBaseDirectory>
-    
+
     <fileSets>
         <!-- Copy extension files to GhydraMCP/ directory -->
         <fileSet>
@@ -21,7 +21,7 @@
             <outputDirectory>GhydraMCP</outputDirectory>
         </fileSet>
     </fileSets>
-    
+
     <dependencySets>
         <!-- Include the main project JAR as GhydraMCP.jar -->
         <dependencySet>

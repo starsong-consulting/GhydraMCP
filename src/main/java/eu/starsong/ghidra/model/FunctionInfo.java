@@ -39,7 +39,7 @@ public class FunctionInfo {
      * Full constructor
      */
     public FunctionInfo(String name, String address, String signature, String returnType,
-                       List<ParameterInfo> parameters, String decompilation, 
+                       List<ParameterInfo> parameters, String decompilation,
                        boolean isExternal, String callingConvention, String namespace) {
         this.name = name;
         this.address = address;

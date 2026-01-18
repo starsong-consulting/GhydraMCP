@@ -37,18 +37,18 @@ GhydraMCP version 2.1 provides a comprehensive set of reverse engineering capabi
 ## Advanced Program Analysis
 
 - **Enhanced Decompilation**:
-  - Convert binary functions to readable C code 
+  - Convert binary functions to readable C code
   - Toggle between clean C-like pseudocode and raw decompiler output
   - Show/hide syntax trees for detailed analysis
   - Multiple simplification styles for different analysis approaches
-  
-- **Comprehensive Static Analysis**: 
+
+- **Comprehensive Static Analysis**:
   - Cross-reference analysis (find callers and callees)
   - Complete call graph generation and traversal
   - Data flow analysis with variable tracking
   - Type propagation and reconstruction
   - Function relationship mapping
-  
+
 - **Memory Operations**:
   - Direct memory reading with hex and raw byte representation
   - Address space navigation and mapping
@@ -67,9 +67,9 @@ GhydraMCP version 2.1 provides a comprehensive set of reverse engineering capabi
   - Analyze data structures and complex types
   - View disassembly with linking to decompiled code
   - Examine function prototypes and signatures
-  
+
 - **Comprehensive Annotation**:
-  - Rename functions, variables, and data 
+  - Rename functions, variables, and data
   - Add multiple comment types (EOL, plate, pre/post)
   - Create and modify data types
   - Set and update function signatures and prototypes

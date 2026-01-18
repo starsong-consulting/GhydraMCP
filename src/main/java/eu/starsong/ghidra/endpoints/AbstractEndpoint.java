@@ -17,23 +17,23 @@ import java.util.List;
 import java.util.Map;
 
 public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
-    
+
     @Override
     public void handle(HttpExchange exchange) throws IOException {
         // Handle OPTIONS requests
         if (HttpUtil.handleOptionsRequest(exchange)) {
             return;
         }
-        
+
         // This method is required by HttpHandler interface
         // Each endpoint will register its own context handlers with specific paths
         // so this default implementation should never be called
         sendErrorResponse(exchange, 404, "Endpoint not found", "ENDPOINT_NOT_FOUND");
     }
-    
+
     /**
      * Helper method to handle pagination of collections and add pagination links to the response.
-     * 
+     *
      * @param <T> the type of items in the collection
      * @param items the full collection to paginate
      * @param offset the starting offset for pagination
@@ -43,45 +43,45 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
      * @param additionalQueryParams additional query parameters to include in pagination links or null
      * @return a list containing the paginated items
      */
-    protected <T> List<T> applyPagination(List<T> items, int offset, int limit, 
+    protected <T> List<T> applyPagination(List<T> items, int offset, int limit,
             eu.starsong.ghidra.api.ResponseBuilder builder, String basePath, String additionalQueryParams) {
         // Apply pagination
         int start = Math.max(0, offset);
         int end = Math.min(items.size(), offset + limit);
         List<T> paginated = items.subList(start, end);
-        
+
         // Add pagination metadata
         Map<String, Object> metadata = new HashMap<>();
         metadata.put("size", items.size());
         metadata.put("offset", offset);
         metadata.put("limit", limit);
         builder.metadata(metadata);
-        
+
         // Format the query string
-        String queryParams = (additionalQueryParams != null && !additionalQueryParams.isEmpty()) 
-            ? additionalQueryParams + "&" 
+        String queryParams = (additionalQueryParams != null && !additionalQueryParams.isEmpty())
+            ? additionalQueryParams + "&"
             : "";
-        
+
         // Add HATEOAS links
         builder.addLink("self", basePath + "?" + queryParams + "offset=" + offset + "&limit=" + limit);
-        
+
         // Add next/prev links if applicable
         if (end < items.size()) {
             builder.addLink("next", basePath + "?" + queryParams + "offset=" + end + "&limit=" + limit);
         }
-        
+
         if (offset > 0) {
             int prevOffset = Math.max(0, offset - limit);
             builder.addLink("prev", basePath + "?" + queryParams + "offset=" + prevOffset + "&limit=" + limit);
         }
-        
+
         return paginated;
     }
-    
+
     /**
      * Overload of applyPagination without additional query parameters
      */
-    protected <T> List<T> applyPagination(List<T> items, int offset, int limit, 
+    protected <T> List<T> applyPagination(List<T> items, int offset, int limit,
             eu.starsong.ghidra.api.ResponseBuilder builder, String basePath) {
         return applyPagination(items, offset, limit, builder, basePath, null);
     }
@@ -95,7 +95,7 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
         this.currentProgram = program;
         this.port = port;
     }
-    
+
     // Get the current program - dynamically checks for program availability at runtime
     protected Program getCurrentProgram() {
         // ALWAYS try to get the current program from the tool first, regardless of the stored program
@@ -114,15 +114,15 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
         } catch (Exception e) {
             Msg.error(this, "Error getting current program from tool", e);
         }
-        
+
         // Only fall back to the stored program if dynamic lookup fails
         if (currentProgram != null) {
             return currentProgram;
         }
-        
+
         return null;
     }
-    
+
     // Can be overridden by subclasses that have a tool reference
     protected PluginTool getTool() {
         return null;
@@ -133,19 +133,19 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
     protected void sendJsonResponse(HttpExchange exchange, JsonObject data, int statusCode) throws IOException {
         HttpUtil.sendJsonResponse(exchange, data, statusCode, this.port);
     }
-    
+
     // Overload for sending success responses easily using ResponseBuilder
     protected void sendSuccessResponse(HttpExchange exchange, Object resultData) throws IOException {
         // No longer check if program is required here
         // Each handler method should check for program availability at runtime if needed
-        
+
         ResponseBuilder builder = new ResponseBuilder(exchange, port)
             .success(true)
             .result(resultData);
         // Add common links if desired here
         HttpUtil.sendJsonResponse(exchange, builder.build(), 200, this.port);
     }
-    
+
     /**
      * Override this method in endpoint implementations that require a program to function.
      * @return true if this endpoint requires a program, false otherwise
@@ -158,7 +158,7 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
     protected void sendErrorResponse(HttpExchange exchange, int code, String message, String errorCode) throws IOException {
         HttpUtil.sendErrorResponse(exchange, code, message, errorCode, this.port);
     }
-    
+
     // Overload without error code
     protected void sendErrorResponse(HttpExchange exchange, int code, String message) throws IOException {
         HttpUtil.sendErrorResponse(exchange, code, message, null, this.port);
@@ -171,12 +171,12 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
     protected Map<String, String> parseJsonPostParams(HttpExchange exchange) throws IOException {
         return HttpUtil.parseJsonPostParams(exchange);
     }
-    
+
     // --- Methods using GhidraUtil ---
-    
+
     protected int parseIntOrDefault(String val, int defaultValue) {
         return GhidraUtil.parseIntOrDefault(val, defaultValue);
     }
-    
+
     // Add other common Ghidra related utilities here or call GhidraUtil directly
 }

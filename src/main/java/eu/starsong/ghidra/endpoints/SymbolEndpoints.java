@@ -16,17 +16,17 @@ package eu.starsong.ghidra.endpoints;
     public class SymbolEndpoints extends AbstractEndpoint {
 
         private PluginTool tool;
-        
+
         // Updated constructor to accept port
         public SymbolEndpoints(Program program, int port) {
             super(program, port); // Call super constructor
         }
-        
+
         public SymbolEndpoints(Program program, int port, PluginTool tool) {
             super(program, port);
             this.tool = tool;
         }
-        
+
         @Override
         protected PluginTool getTool() {
             return tool;
@@ -38,24 +38,24 @@ package eu.starsong.ghidra.endpoints;
             server.createContext("/symbols/exports", this::handleExports);
             server.createContext("/symbols", this::handleSymbols);
         }
-        
+
         public void handleSymbols(HttpExchange exchange) throws IOException {
             try {
                 if ("GET".equals(exchange.getRequestMethod())) {
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    
+
                     Program program = getCurrentProgram();
                     if (program == null) {
                         sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                         return;
                     }
-                    
+
                     List<Map<String, Object>> symbols = new ArrayList<>();
                     SymbolTable symbolTable = program.getSymbolTable();
                     SymbolIterator symbolIterator = symbolTable.getAllSymbols(true);
-                    
+
                     while (symbolIterator.hasNext()) {
                         Symbol symbol = symbolIterator.next();
                         Map<String, Object> symbolInfo = new HashMap<>();
@@ -64,30 +64,30 @@ package eu.starsong.ghidra.endpoints;
                         symbolInfo.put("namespace", symbol.getParentNamespace().getName());
                         symbolInfo.put("type", symbol.getSymbolType().toString());
                         symbolInfo.put("isPrimary", symbol.isPrimary());
-                        
+
                         // Add HATEOAS links
                         Map<String, Object> links = new HashMap<>();
                         Map<String, String> selfLink = new HashMap<>();
                         selfLink.put("href", "/symbols/" + symbol.getAddress().toString());
                         links.put("self", selfLink);
                         symbolInfo.put("_links", links);
-                        
+
                         symbols.add(symbolInfo);
                     }
-                    
+
                     // Build response with HATEOAS links
                     eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
                         .success(true);
-                    
+
                     // Apply pagination and get paginated items
                     List<Map<String, Object>> paginatedSymbols = applyPagination(symbols, offset, limit, builder, "/symbols");
-                    
+
                     // Set the paginated result
                     builder.result(paginatedSymbols);
-                    
+
                     // Add program link
                     builder.addLink("program", "/program");
-                    
+
                     sendJsonResponse(exchange, builder.build(), 200);
                 } else {
                     sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
@@ -104,43 +104,43 @@ package eu.starsong.ghidra.endpoints;
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    
+
                     Program program = getCurrentProgram();
                     if (program == null) {
                         sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                         return;
                     }
-                    
+
                     List<Map<String, Object>> imports = new ArrayList<>();
                     for (Symbol symbol : program.getSymbolTable().getExternalSymbols()) {
                         Map<String, Object> imp = new HashMap<>();
                         imp.put("name", symbol.getName());
                         imp.put("address", symbol.getAddress().toString());
-                        
+
                         // Add HATEOAS links
                         Map<String, Object> links = new HashMap<>();
                         Map<String, String> selfLink = new HashMap<>();
                         selfLink.put("href", "/symbols/imports/" + symbol.getAddress().toString());
                         links.put("self", selfLink);
                         imp.put("_links", links);
-                        
+
                         imports.add(imp);
                     }
-                    
+
                     // Build response with HATEOAS links
                     eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
                         .success(true);
-                    
+
                     // Apply pagination and get paginated items
                     List<Map<String, Object>> paginated = applyPagination(imports, offset, limit, builder, "/symbols/imports");
-                    
+
                     // Set the paginated result
                     builder.result(paginated);
-                    
+
                     // Add additional links
                     builder.addLink("program", "/program");
                     builder.addLink("symbols", "/symbols");
-                    
+
                     sendJsonResponse(exchange, builder.build(), 200);
                 } else {
                     sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
@@ -157,49 +157,49 @@ package eu.starsong.ghidra.endpoints;
                     Map<String, String> qparams = parseQueryParams(exchange);
                     int offset = parseIntOrDefault(qparams.get("offset"), 0);
                     int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                    
+
                     Program program = getCurrentProgram();
                     if (program == null) {
                         sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                         return;
                     }
-                    
+
                     List<Map<String, Object>> exports = new ArrayList<>();
                     SymbolTable table = program.getSymbolTable();
                     SymbolIterator it = table.getAllSymbols(true);
-                    
+
                     while (it.hasNext()) {
                         Symbol s = it.next();
                         if (s.isExternalEntryPoint()) {
                             Map<String, Object> exp = new HashMap<>();
                             exp.put("name", s.getName());
                             exp.put("address", s.getAddress().toString());
-                            
+
                             // Add HATEOAS links
                             Map<String, Object> links = new HashMap<>();
                             Map<String, String> selfLink = new HashMap<>();
                             selfLink.put("href", "/symbols/exports/" + s.getAddress().toString());
                             links.put("self", selfLink);
                             exp.put("_links", links);
-                            
+
                             exports.add(exp);
                         }
                     }
-                    
+
                     // Build response with HATEOAS links
                     eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
                         .success(true);
-                    
+
                     // Apply pagination and get paginated items
                     List<Map<String, Object>> paginated = applyPagination(exports, offset, limit, builder, "/symbols/exports");
-                    
+
                     // Set the paginated result
                     builder.result(paginated);
-                    
+
                     // Add additional links
                     builder.addLink("program", "/program");
                     builder.addLink("symbols", "/symbols");
-                    
+
                     sendJsonResponse(exchange, builder.build(), 200);
                 } else {
                     sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");

@@ -23,7 +23,7 @@ logger = logging.getLogger("mcp_client_test")
 
 async def assert_standard_mcp_success_response(response_content, expected_result_type=None):
     """Helper to assert the standard HATEOAS response structure for MCP tool calls.
-    
+
     HATEOAS API responses must include:
     - id: A UUID for the request
     - instance: The URL of the responding instance
@@ -43,21 +43,21 @@ async def assert_standard_mcp_success_response(response_content, expected_result
     assert "success" in data, "Response missing 'success' field"
     assert data["success"] is True, f"API call failed: {data.get('error', 'Unknown error')}"
     assert "result" in data, "Response missing 'result' field"
-    
+
     # HATEOAS links might be provided in several ways depending on API version
     has_links = False
     if "_links" in data:
         has_links = True
     elif "api_links" in data:
         has_links = True
-        
+
     assert has_links, "Response missing navigation links for HATEOAS (neither '_links' nor 'api_links' found)"
-    
+
     # Check result type if specified
     if expected_result_type:
         assert isinstance(data["result"], expected_result_type), \
             f"'result' field type mismatch: expected {expected_result_type}, got {type(data['result'])}"
-            
+
     return data # Return parsed data for further checks if needed
 
 async def test_bridge():
@@ -67,7 +67,7 @@ async def test_bridge():
         command=sys.executable,
         args=["bridge_mcp_hydra.py"],
     )
-    
+
     # Connect to the bridge
     logger.info("Connecting to bridge...")
     async with stdio_client(server_parameters) as (read_stream, write_stream):
@@ -144,7 +144,7 @@ async def test_bridge():
                     if not isinstance(first_func, dict):
                         logger.warning(f"First item in functions_list is not a dict: {first_func} - skipping mutating tests")
                         return
-                        
+
                     func_name = first_func.get("name", "")
                     func_address = first_func.get("address", "")
 
@@ -426,7 +426,7 @@ async def test_bridge():
                 # Test callgraph functionality using analysis_get_callgraph with both address and name parameters
                 if func_address and func_name:
                     logger.info("Testing analysis_get_callgraph with address and name parameters")
-                    
+
                     # Test with address parameter
                     try:
                         logger.info(f"Calling analysis_get_callgraph with address: {func_address}")
@@ -440,7 +440,7 @@ async def test_bridge():
                             logger.warning(f"Get callgraph by address failed: {callgraph_address_data.get('error', {}).get('message', 'Unknown error')}")
                     except Exception as e:
                         logger.warning(f"Error during callgraph by address test: {e} - This is not critical")
-                    
+
                     # Test with name parameter
                     try:
                         logger.info(f"Calling analysis_get_callgraph with name: {func_name}")

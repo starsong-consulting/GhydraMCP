@@ -114,10 +114,10 @@ def test_new_endpoint(self):
     """Test the /new_endpoint endpoint"""
     response = requests.get(f"{BASE_URL}/new_endpoint")
     self.assertEqual(response.status_code, 200)
-    
+
     # Verify response is valid JSON
     data = response.json()
-    
+
     # Check required fields in the standard response format
     self.assertIn("success", data)
     self.assertTrue(data["success"])
@@ -145,11 +145,11 @@ def test_new_tool(self):
             "param2": "value2"
         }
     })
-    
+
     # Check basic response structure
     self.assertIn("result", response)
     self.assertIn("content", response["result"])
-    
+
     # Parse the content
     content = response["result"]["content"]
     self.assertIsInstance(content, list)

@@ -32,7 +32,7 @@ public class HttpUtil {
         headers.set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID");
         headers.set("Access-Control-Max-Age", "3600");
     }
-    
+
     /**
      * Handle OPTIONS requests for CORS preflight
      * @return true if the request was handled (OPTIONS request), false otherwise
@@ -45,23 +45,23 @@ public class HttpUtil {
         }
         return false;
     }
-    
+
     public static void sendJsonResponse(HttpExchange exchange, JsonObject jsonObj, int statusCode, int port) throws IOException {
          try {
             // Handle OPTIONS requests for CORS preflight
             if (handleOptionsRequest(exchange)) {
                 return;
             }
-            
+
             String json = gson.toJson(jsonObj);
             byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
-            
+
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
             addCorsHeaders(exchange);
-            
-            long responseLength = (statusCode == 204) ? -1 : bytes.length; 
-            exchange.sendResponseHeaders(statusCode, responseLength); 
-            
+
+            long responseLength = (statusCode == 204) ? -1 : bytes.length;
+            exchange.sendResponseHeaders(statusCode, responseLength);
+
             if (responseLength != -1) {
                 try (OutputStream os = exchange.getResponseBody()) {
                     os.write(bytes);
@@ -82,10 +82,10 @@ public class HttpUtil {
                      Msg.error(HttpUtil.class, "Failed to send even plain text error response", writeErr);
                  }
             }
-            throw new IOException("Failed to send JSON response", e); 
+            throw new IOException("Failed to send JSON response", e);
         }
     }
-    
+
     /**
      * Sends a standardized error response using ResponseBuilder.
      */
@@ -101,7 +101,7 @@ public class HttpUtil {
      */
      public static Map<String, String> parseQueryParams(HttpExchange exchange) {
         Map<String, String> result = new HashMap<>();
-        String query = exchange.getRequestURI().getQuery(); 
+        String query = exchange.getRequestURI().getQuery();
         if (query != null) {
             String[] pairs = query.split("&");
             for (String p : pairs) {
@@ -109,12 +109,12 @@ public class HttpUtil {
                 if (kv.length == 2) {
                     try {
                          result.put(kv[0], java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8));
-                    } catch (Exception e) { 
+                    } catch (Exception e) {
                          Msg.warn(HttpUtil.class, "Failed to decode query parameter: " + kv[0]);
-                         result.put(kv[0], kv[1]); 
+                         result.put(kv[0], kv[1]);
                     }
                 } else if (kv.length == 1 && !kv[0].isEmpty()) {
-                     result.put(kv[0], ""); 
+                     result.put(kv[0], "");
                 }
             }
         }
@@ -127,15 +127,15 @@ public class HttpUtil {
     public static Map<String, String> parseJsonPostParams(HttpExchange exchange) throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
         String bodyStr = new String(body, StandardCharsets.UTF_8);
-        
+
         // Debug - log raw request body
         ghidra.util.Msg.info(HttpUtil.class, "DEBUG Raw request body: " + bodyStr);
-        
+
         Map<String, String> params = new HashMap<>();
 
         try {
             JsonObject json = gson.fromJson(bodyStr, JsonObject.class);
-            if (json == null) { 
+            if (json == null) {
                  return params;
             }
             for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
