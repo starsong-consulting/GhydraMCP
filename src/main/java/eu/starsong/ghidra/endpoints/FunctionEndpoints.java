@@ -1182,31 +1182,32 @@ public class FunctionEndpoints extends AbstractEndpoint {
      */
     public void handleDisassembleFunction(HttpExchange exchange, Function function) throws IOException {
         if ("GET".equals(exchange.getRequestMethod())) {
-            List<Map<String, Object>> disassembly = new ArrayList<>();
-            
+            Map<String, String> params = parseQueryParams(exchange);
+            int offset = parseIntOrDefault(params.get("offset"), 0);
+            int limit = parseIntOrDefault(params.get("limit"), 0);
+
+            List<Map<String, Object>> allInstructions = new ArrayList<>();
+
             Program program = function.getProgram();
             if (program != null) {
                 try {
-                    // Get actual disassembly from the program
                     Address startAddr = function.getEntryPoint();
                     Address endAddr = function.getBody().getMaxAddress();
-                    
+
                     ghidra.program.model.listing.Listing listing = program.getListing();
-                    ghidra.program.model.listing.InstructionIterator instrIter = 
+                    ghidra.program.model.listing.InstructionIterator instrIter =
                         listing.getInstructions(startAddr, true);
-                    
-                    while (instrIter.hasNext() && disassembly.size() < 100) {
+
+                    while (instrIter.hasNext()) {
                         ghidra.program.model.listing.Instruction instr = instrIter.next();
-                        
-                        // Stop if we've gone past the end of the function
+
                         if (instr.getAddress().compareTo(endAddr) > 0) {
                             break;
                         }
-                        
+
                         Map<String, Object> instrMap = new HashMap<>();
                         instrMap.put("address", instr.getAddress().toString());
-                        
-                        // Get actual bytes
+
                         byte[] bytes = new byte[instr.getLength()];
                         program.getMemory().getBytes(instr.getAddress(), bytes);
                         StringBuilder hexBytes = new StringBuilder();
@@ -1214,19 +1215,17 @@ public class FunctionEndpoints extends AbstractEndpoint {
                             hexBytes.append(String.format("%02X", b & 0xFF));
                         }
                         instrMap.put("bytes", hexBytes.toString());
-                        
-                        // Get mnemonic and operands
+
                         instrMap.put("mnemonic", instr.getMnemonicString());
                         instrMap.put("operands", instr.toString().substring(instr.getMnemonicString().length()).trim());
-                        
-                        disassembly.add(instrMap);
+
+                        allInstructions.add(instrMap);
                     }
                 } catch (Exception e) {
                     Msg.error(this, "Error getting disassembly for function: " + function.getName(), e);
                 }
-                
-                // If we couldn't get real instructions, add placeholder
-                if (disassembly.isEmpty()) {
+
+                if (allInstructions.isEmpty()) {
                     Address addr = function.getEntryPoint();
                     for (int i = 0; i < 5; i++) {
                         Map<String, Object> instruction = new HashMap<>();
@@ -1234,34 +1233,55 @@ public class FunctionEndpoints extends AbstractEndpoint {
                         instruction.put("mnemonic", "???");
                         instruction.put("operands", "???");
                         instruction.put("bytes", "????");
-                        disassembly.add(instruction);
+                        allInstructions.add(instruction);
                         addr = addr.add(2);
                     }
                 }
             }
-            
+
+            int totalCount = allInstructions.size();
+
+            // Apply pagination: offset/limit. limit=0 means return all.
+            int startIndex = Math.min(offset, totalCount);
+            int endIndex = (limit > 0) ? Math.min(startIndex + limit, totalCount) : totalCount;
+            List<Map<String, Object>> page = allInstructions.subList(startIndex, endIndex);
+
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
             functionInfo.put("name", function.getName());
             functionInfo.put("signature", function.getSignature().toString());
-            
+
             Map<String, Object> result = new HashMap<>();
             result.put("function", functionInfo);
-            result.put("instructions", disassembly);
-            
+            result.put("instructions", page);
+            result.put("totalCount", totalCount);
+            result.put("offset", startIndex);
+            result.put("limit", limit);
+
             ResponseBuilder builder = new ResponseBuilder(exchange, port)
                 .success(true)
                 .result(result);
-            
-            // Update to use the correct paths
+
             String functionPath = "/functions/" + function.getEntryPoint().toString();
-            
-            builder.addLink("self", functionPath + "/disassembly");
+            String basePath = functionPath + "/disassembly";
+
+            if (limit > 0) {
+                builder.addLink("self", basePath + "?offset=" + startIndex + "&limit=" + limit);
+                if (endIndex < totalCount) {
+                    builder.addLink("next", basePath + "?offset=" + endIndex + "&limit=" + limit);
+                }
+                if (startIndex > 0) {
+                    int prevOffset = Math.max(0, startIndex - limit);
+                    builder.addLink("prev", basePath + "?offset=" + prevOffset + "&limit=" + limit);
+                }
+            } else {
+                builder.addLink("self", basePath);
+            }
             builder.addLink("function", functionPath);
             builder.addLink("decompile", functionPath + "/decompile");
             builder.addLink("variables", functionPath + "/variables");
             builder.addLink("program", "/program");
-            
+
             sendJsonResponse(exchange, builder.build(), 200);
         } else {
             sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");

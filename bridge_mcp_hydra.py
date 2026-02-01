@@ -1429,14 +1429,16 @@ def functions_decompile(name: str = None, address: str = None,
     return simplified
 
 @mcp.tool()
-def functions_disassemble(name: str = None, address: str = None, port: int = None) -> dict:
+def functions_disassemble(name: str = None, address: str = None, offset: int = 0, limit: int = 0, port: int = None) -> dict:
     """Get disassembly for a function
-    
+
     Args:
         name: Function name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
+        offset: Number of instructions to skip (default 0)
+        limit: Maximum number of instructions to return (default 0 = all)
         port: Specific Ghidra instance port (optional)
-        
+
     Returns:
         dict: Contains function information and disassembly text
     """
@@ -1449,15 +1451,21 @@ def functions_disassemble(name: str = None, address: str = None, port: int = Non
             },
             "timestamp": int(time.time() * 1000)
         }
-    
+
     port = _get_instance_port(port)
-    
+
     if address:
         endpoint = f"functions/{address}/disassembly"
     else:
         endpoint = f"functions/by-name/{quote(name)}/disassembly"
-    
-    response = safe_get(port, endpoint)
+
+    params = {}
+    if offset > 0:
+        params["offset"] = offset
+    if limit > 0:
+        params["limit"] = limit
+
+    response = safe_get(port, endpoint, params)
     return simplify_response(response)
 
 @mcp.tool()
