@@ -194,8 +194,10 @@ def decompile(ctx, name, address, syntax_tree, style, no_constants, timeout, sta
 @functions.command('disassemble')
 @click.option('--name', '-n', help='Function name')
 @click.option('--address', '-a', help='Function address (hex)')
+@click.option('--offset', '-o', default=0, type=int, help='Number of instructions to skip')
+@click.option('--limit', '-l', default=0, type=int, help='Max instructions to return (0 = all)')
 @click.pass_context
-def disassemble(ctx, name, address):
+def disassemble(ctx, name, address, offset, limit):
     """Get disassembly for a function.
 
     Either --name or --address must be specified.
@@ -204,6 +206,7 @@ def disassemble(ctx, name, address):
     Examples:
         ghydra functions disassemble --name main
         ghydra functions disassemble --address 0x401000
+        ghydra functions disassemble --name main --offset 50 --limit 100
     """
     if not name and not address:
         rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
@@ -218,14 +221,18 @@ def disassemble(ctx, name, address):
     config = ctx.obj['config']
 
     try:
-        # Build endpoint
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}/disassemble'
+            endpoint = f'functions/{address.lstrip("0x")}/disassembly'
         else:
-            endpoint = f'functions/by-name/{quote(name)}/disassemble'
+            endpoint = f'functions/by-name/{quote(name)}/disassembly'
 
-        # Make API request
-        response = client.get(endpoint)
+        params = {}
+        if offset > 0:
+            params['offset'] = offset
+        if limit > 0:
+            params['limit'] = limit
+
+        response = client.get(endpoint, params=params)
 
         output = formatter.format_disassembly(response)
 
