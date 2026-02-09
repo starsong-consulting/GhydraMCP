@@ -187,9 +187,9 @@ class TableFormatter(BaseFormatter):
 
         for xref in result:
             table.add_row(
-                xref.get("from", "?"),
-                xref.get("to", "?"),
-                xref.get("type", "?")
+                xref.get("from_addr", "?"),
+                xref.get("to_addr", "?"),
+                xref.get("refType", "?")
             )
 
         return self._capture(table)
@@ -214,8 +214,8 @@ class TableFormatter(BaseFormatter):
 
             table.add_row(
                 item.get("address", "?"),
-                item.get("name", ""),
-                item.get("type", "?"),
+                item.get("label", ""),
+                item.get("dataType", "?"),
                 str(value)
             )
 
