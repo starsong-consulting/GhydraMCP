@@ -14,11 +14,12 @@ GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI 
 
 ## Overview
 
-GhydraMCP v2.2.0 integrates three key components:
+GhydraMCP v2.2.0 integrates four key components:
 
 1. **Modular Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a HATEOAS-driven REST API
 2. **MCP Bridge**: A Python script that translates MCP requests into API calls with comprehensive type checking
-3. **Multi-instance Architecture**: Connect multiple Ghidra instances to analyze different binaries simultaneously
+3. **CLI Tool (`ghydra`)**: A standalone command-line interface for direct interaction with Ghidra — human-readable tables, syntax highlighting, and `--json` mode for scripting
+4. **Multi-instance Architecture**: Connect multiple Ghidra instances to analyze different binaries simultaneously
 
 This architecture enables AI assistants like Claude to seamlessly:
 - Decompile and analyze binary code with customizable output formats
@@ -144,6 +145,32 @@ First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/rel
 Video Installation Guide:
 
 https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
+
+## CLI Tool
+
+GhydraMCP includes `ghydra`, a command-line tool for interacting with Ghidra directly from the terminal. It works standalone — no MCP client needed.
+
+```bash
+# Install
+pip install -e .
+
+# List running Ghidra instances
+ghydra instances list
+
+# Decompile a function
+ghydra functions decompile --name main
+
+# List strings matching a pattern
+ghydra data list-strings --filter "password"
+
+# Read memory as hex dump
+ghydra memory read --address 0x401000 --length 64
+
+# JSON output for scripting and piping
+ghydra --json functions list | jq '.result[].name'
+```
+
+All commands support `--host`, `--port`, `--json`, and `--no-color` flags. See [GHYDRA_CLI.md](GHYDRA_CLI.md) for the full reference.
 
 ## MCP Clients
 
