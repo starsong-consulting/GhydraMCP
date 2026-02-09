@@ -1309,9 +1309,10 @@ public class FunctionEndpoints extends AbstractEndpoint {
             Map<String, Object> result = new HashMap<>();
             result.put("function", functionInfo);
             result.put("instructions", page);
-            result.put("totalCount", totalCount);
+            result.put("totalInstructions", totalCount);
             result.put("offset", startIndex);
             result.put("limit", limit);
+            result.put("returned", page.size());
 
             ResponseBuilder builder = new ResponseBuilder(exchange, port)
                 .success(true)

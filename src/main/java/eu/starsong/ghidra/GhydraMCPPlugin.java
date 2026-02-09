@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 
 // For JSON response handling
 import com.google.gson.Gson;
@@ -90,8 +91,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     private void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(port), 0);
         
-        // Use a cached thread pool for better performance with multiple concurrent requests
-        server.setExecutor(Executors.newCachedThreadPool());
+        // Use a cached thread pool with larger stack size to handle deep B-tree
+        // traversals in Ghidra's database (large binaries have deep index trees)
+        final long STACK_SIZE = 4 * 1024 * 1024; // 4 MB
+        ThreadFactory threadFactory = r -> new Thread(null, r, "GhydraMCP-handler", STACK_SIZE);
+        server.setExecutor(Executors.newCachedThreadPool(threadFactory));
 
         // --- Register Endpoints ---
         Program currentProgram = getCurrentProgram(); // Get program once

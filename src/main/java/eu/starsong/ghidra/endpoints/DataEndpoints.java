@@ -1320,57 +1320,54 @@ package eu.starsong.ghidra.endpoints;
                 }
                 
                 List<Map<String, Object>> strings = new ArrayList<>();
-                
+
                 for (MemoryBlock block : program.getMemory().getBlocks()) {
                     if (!block.isInitialized()) continue;
-                    
+
                     DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
                     while (it.hasNext()) {
                         Data data = it.next();
                         if (!block.contains(data.getAddress())) continue;
-                        
+
                         // Check if the data type is a string type
                         String dataTypeName = data.getDataType().getName().toLowerCase();
-                        boolean isString = dataTypeName.contains("string") || 
-                                          dataTypeName.contains("unicode") || 
+                        boolean isString = dataTypeName.contains("string") ||
+                                          dataTypeName.contains("unicode") ||
                                           (dataTypeName.contains("char") && data.getLength() > 1); // Array of chars
-                        
+
                         if (isString) {
-                            // Get the string value
                             String value = data.getDefaultValueRepresentation();
                             if (value == null) value = "";
-                            
-                            // Skip if it doesn't match the filter
+
                             if (filter != null && !filter.isEmpty() && !value.toLowerCase().contains(filter.toLowerCase())) {
                                 continue;
                             }
-                            
+
                             Map<String, Object> stringInfo = new HashMap<>();
                             stringInfo.put("address", data.getAddress().toString());
                             stringInfo.put("value", value);
                             stringInfo.put("length", data.getLength());
                             stringInfo.put("type", data.getDataType().getName());
-                            
-                            // If the data has a label/name, include it
+
                             String name = null;
                             Symbol symbol = program.getSymbolTable().getPrimarySymbol(data.getAddress());
                             if (symbol != null) {
-                                name = symbol.getName();
+                                name = safeGetSymbolName(symbol, program);
                             }
                             stringInfo.put("name", name != null ? name : "");
-                            
+
                             // Add HATEOAS links
                             Map<String, Object> links = new HashMap<>();
                             Map<String, String> selfLink = new HashMap<>();
                             selfLink.put("href", "/data/" + data.getAddress().toString());
                             links.put("self", selfLink);
-                            
+
                             Map<String, String> memoryLink = new HashMap<>();
                             memoryLink.put("href", "/memory?address=" + data.getAddress().toString());
                             links.put("memory", memoryLink);
-                            
+
                             stringInfo.put("_links", links);
-                            
+
                             strings.add(stringInfo);
                         }
                     }
