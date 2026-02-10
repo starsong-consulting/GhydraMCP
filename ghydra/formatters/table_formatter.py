@@ -175,21 +175,27 @@ class TableFormatter(BaseFormatter):
 
     def format_xrefs(self, data: Dict[str, Any]) -> str:
         """Format cross-references as table."""
-        result = data.get("result", [])
+        result = data.get("result", {})
+        references = result.get("references", []) if isinstance(result, dict) else result
 
-        if not result:
+        if not references:
             return "[yellow]No cross-references found[/yellow]"
 
         table = Table(title="Cross-References", show_lines=False)
         table.add_column("From", style="cyan", no_wrap=True)
         table.add_column("To", style="green", no_wrap=True)
         table.add_column("Type", style="yellow")
+        table.add_column("From Function", style="dim")
 
-        for xref in result:
+        for xref in references:
+            from_func = ""
+            if isinstance(xref.get("from_function"), dict):
+                from_func = xref["from_function"].get("name", "")
             table.add_row(
                 xref.get("from_addr", "?"),
                 xref.get("to_addr", "?"),
-                xref.get("refType", "?")
+                xref.get("refType", "?"),
+                from_func
             )
 
         return self._capture(table)
