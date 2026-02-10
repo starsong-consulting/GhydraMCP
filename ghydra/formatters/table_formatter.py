@@ -57,7 +57,7 @@ class TableFormatter(BaseFormatter):
         limit = metadata.get("limit", len(result))
 
         if not result:
-            return f"[yellow]No functions found[/yellow] (0 total)"
+            return self._capture("[yellow]No functions found[/yellow] (0 total)")
 
         table = Table(title=f"Functions ({total} total)", show_lines=False)
         table.add_column("Address", style="cyan", no_wrap=True)
@@ -82,7 +82,7 @@ class TableFormatter(BaseFormatter):
         result = data.get("result", {})
 
         if not result:
-            return "[yellow]No function info available[/yellow]"
+            return self._capture("[yellow]No function info available[/yellow]")
 
         lines = [
             f"[cyan]Address:[/cyan] {result.get('address', '?')}",
@@ -105,7 +105,7 @@ class TableFormatter(BaseFormatter):
         code = result.get("decompiled") or result.get("ccode") or result.get("decompiled_text", "")
 
         if not code:
-            return "[red]No decompiled code available[/red]"
+            return self._capture("[red]No decompiled code available[/red]")
 
         # Create syntax-highlighted code
         syntax = Syntax(
@@ -124,7 +124,7 @@ class TableFormatter(BaseFormatter):
         instructions = result.get("instructions", [])
 
         if not instructions:
-            return "[red]No disassembly available[/red]"
+            return self._capture("[red]No disassembly available[/red]")
 
         func_info = result.get("function", {})
         title = func_info.get("name", "Disassembly")
@@ -149,7 +149,7 @@ class TableFormatter(BaseFormatter):
         )
 
         header = f"[cyan]{title}[/cyan] ({total} instructions)\n"
-        return header + self._capture(syntax)
+        return self._capture(header) + "\n" + self._capture(syntax)
 
     def format_memory(self, data: Dict[str, Any]) -> str:
         """Format memory as hex dump."""
@@ -158,7 +158,7 @@ class TableFormatter(BaseFormatter):
         hex_bytes = result.get("hexBytes", "")
 
         if not hex_bytes:
-            return "[red]No memory data available[/red]"
+            return self._capture("[red]No memory data available[/red]")
 
         lines = [f"[cyan]Memory at 0x{addr}:[/cyan]\n"]
 
@@ -193,7 +193,7 @@ class TableFormatter(BaseFormatter):
         references = result.get("references", []) if isinstance(result, dict) else result
 
         if not references:
-            return "[yellow]No cross-references found[/yellow]"
+            return self._capture("[yellow]No cross-references found[/yellow]")
 
         table = Table(title="Cross-References", show_lines=False)
         table.add_column("From", style="cyan", no_wrap=True)
@@ -219,7 +219,7 @@ class TableFormatter(BaseFormatter):
         result = data.get("result", [])
 
         if not result:
-            return "[yellow]No data items found[/yellow]"
+            return self._capture("[yellow]No data items found[/yellow]")
 
         table = Table(title=f"Data Items ({len(result)} items)", show_lines=False)
         table.add_column("Address", style="cyan", no_wrap=True)
@@ -246,7 +246,7 @@ class TableFormatter(BaseFormatter):
         result = data.get("result", [])
 
         if not result:
-            return "[yellow]No strings found[/yellow]"
+            return self._capture("[yellow]No strings found[/yellow]")
 
         table = Table(title=f"Strings ({len(result)} items)", show_lines=False)
         table.add_column("Address", style="cyan", no_wrap=True)
@@ -269,7 +269,7 @@ class TableFormatter(BaseFormatter):
         result = data.get("result", [])
 
         if not result:
-            return "[yellow]No structs found[/yellow]"
+            return self._capture("[yellow]No structs found[/yellow]")
 
         table = Table(title=f"Structs ({len(result)} items)", show_lines=False)
         table.add_column("Name", style="cyan")
@@ -290,7 +290,7 @@ class TableFormatter(BaseFormatter):
         result = data.get("result", {})
 
         if not result:
-            return "[yellow]No struct info available[/yellow]"
+            return self._capture("[yellow]No struct info available[/yellow]")
 
         tree = Tree(f"[cyan]{result.get('name', '?')}[/cyan] (size: {result.get('size', 0)})")
 
@@ -310,7 +310,7 @@ class TableFormatter(BaseFormatter):
         result = data.get("result", {})
 
         if not result:
-            return "[yellow]No project info available[/yellow]"
+            return self._capture("[yellow]No project info available[/yellow]")
 
         lines = [
             f"[cyan]Name:[/cyan] {result.get('name', '?')}",
@@ -328,7 +328,7 @@ class TableFormatter(BaseFormatter):
         instances = data.get("instances", [])
 
         if not instances:
-            return "[yellow]No Ghidra instances found[/yellow]"
+            return self._capture("[yellow]No Ghidra instances found[/yellow]")
 
         table = Table(title=f"Ghidra Instances ({len(instances)} found)", show_lines=False)
         table.add_column("Port", style="cyan", justify="right")
@@ -350,24 +350,21 @@ class TableFormatter(BaseFormatter):
         """Format simple success/info response."""
         result = data.get("result", {})
 
-        # If result is a string, just return it
         if isinstance(result, str):
-            return f"[green]{result}[/green]"
+            return self._capture(f"[green]{result}[/green]")
 
-        # If result has a message, use that
         if isinstance(result, dict) and "message" in result:
-            return f"[green]{result['message']}[/green]"
+            return self._capture(f"[green]{result['message']}[/green]")
 
-        # Otherwise show formatted dict
         lines = []
         for key, value in result.items():
-            if key not in ("_links",):  # Skip HATEOAS links
+            if key not in ("_links",):
                 lines.append(f"[cyan]{key}:[/cyan] {value}")
 
         if lines:
-            return "\n".join(lines)
+            return self._capture("\n".join(lines))
 
-        return "[green]Success[/green]"
+        return self._capture("[green]Success[/green]")
 
     def format_error(self, error: Exception) -> str:
         """Format error message."""
