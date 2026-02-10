@@ -4,7 +4,7 @@ import json
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output, rich_echo
+from ..utils import should_page, page_output, rich_echo, validate_address
 
 
 @click.group('analysis')
@@ -79,7 +79,7 @@ def get_callgraph(ctx, name, address, max_depth):
             from urllib.parse import quote
             endpoint = f'analysis/callgraph/by-name/{quote(name)}'
         elif address:
-            endpoint = f'analysis/callgraph/{address.lstrip("0x")}'
+            endpoint = f'analysis/callgraph/{validate_address(address)}'
         else:
             endpoint = 'analysis/callgraph'
 
@@ -120,7 +120,7 @@ def get_dataflow(ctx, address, direction, max_steps):
             'max_steps': max_steps
         }
 
-        response = client.get(f'analysis/dataflow/{address.lstrip("0x")}', params=params)
+        response = client.get(f'analysis/dataflow/{validate_address(address)}', params=params)
         output = formatter.format_simple_result(response)
 
         if should_page(config, ctx.obj['output_json']):

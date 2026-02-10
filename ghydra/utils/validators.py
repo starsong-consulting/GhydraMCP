@@ -6,13 +6,13 @@ import re
 def validate_address(addr: str) -> str:
     """Validate and normalize hex address.
 
-    Accepts hex addresses with or without "0x" prefix.
+    Accepts formats: 0x401000, 401000, 401000h
 
     Args:
         addr: Address string to validate
 
     Returns:
-        Normalized address string
+        Normalized address string (bare hex, no prefix/suffix)
 
     Raises:
         ValueError: If address format is invalid
@@ -20,12 +20,12 @@ def validate_address(addr: str) -> str:
     if not addr:
         raise ValueError("Address cannot be empty")
 
-    # Remove 0x prefix if present
-    normalized = addr.lower()
+    normalized = addr.strip().lower()
     if normalized.startswith("0x"):
         normalized = normalized[2:]
+    elif normalized.endswith("h"):
+        normalized = normalized[:-1]
 
-    # Validate hex format
     if not re.match(r'^[0-9a-f]+$', normalized):
         raise ValueError(f"Invalid hex address format: {addr}")
 

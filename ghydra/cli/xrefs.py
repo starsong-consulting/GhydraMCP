@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output, rich_echo
+from ..utils import should_page, page_output, rich_echo, validate_address
 
 
 @click.group('xrefs')
@@ -48,9 +48,9 @@ def list_xrefs(ctx, to_addr, from_addr, type, offset, limit):
         }
 
         if to_addr:
-            params['to_addr'] = to_addr.lstrip('0x')
+            params['to_addr'] = validate_address(to_addr)
         if from_addr:
-            params['from_addr'] = from_addr.lstrip('0x')
+            params['from_addr'] = validate_address(from_addr)
         if type:
             params['type'] = type
 
@@ -88,7 +88,7 @@ def xrefs_to(ctx, address, type, offset, limit):
 
     try:
         params = {
-            'to_addr': address.lstrip('0x'),
+            'to_addr': validate_address(address),
             'offset': offset,
             'limit': limit
         }
@@ -130,7 +130,7 @@ def xrefs_from(ctx, address, type, offset, limit):
 
     try:
         params = {
-            'from_addr': address.lstrip('0x'),
+            'from_addr': validate_address(address),
             'offset': offset,
             'limit': limit
         }

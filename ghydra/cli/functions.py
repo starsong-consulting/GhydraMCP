@@ -4,7 +4,7 @@ import click
 from urllib.parse import quote
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output, rich_echo
+from ..utils import should_page, page_output, rich_echo, validate_address
 
 
 @click.group('functions')
@@ -52,7 +52,7 @@ def list_functions(ctx, offset, limit, name_contains, name_matches, containing_a
             params['name_matches_regex'] = name_matches
 
         if containing_address:
-            params['containing_addr'] = containing_address.lstrip('0x')
+            params['containing_addr'] = validate_address(containing_address)
 
         # Make API request
         response = client.get('functions', params=params)
@@ -99,7 +99,7 @@ def get_function(ctx, name, address):
     try:
         # Build endpoint
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}'
+            endpoint = f'functions/{validate_address(address)}'
         else:
             endpoint = f'functions/by-name/{quote(name)}'
 
@@ -156,7 +156,7 @@ def decompile(ctx, name, address, syntax_tree, style, no_constants, timeout, sta
     try:
         # Build endpoint
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}/decompile'
+            endpoint = f'functions/{validate_address(address)}/decompile'
         else:
             endpoint = f'functions/by-name/{quote(name)}/decompile'
 
@@ -222,7 +222,7 @@ def disassemble(ctx, name, address, offset, limit):
 
     try:
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}/disassembly'
+            endpoint = f'functions/{validate_address(address)}/disassembly'
         else:
             endpoint = f'functions/by-name/{quote(name)}/disassembly'
 
@@ -262,7 +262,7 @@ def create_function(ctx, address):
 
     try:
         # Make API request
-        endpoint = f'functions/{address.lstrip("0x")}'
+        endpoint = f'functions/{validate_address(address)}'
         response = client.post(endpoint)
 
         output = formatter.format_simple_result(response)
@@ -303,7 +303,7 @@ def rename_function(ctx, old_name, address, new_name):
     try:
         # Build endpoint
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}'
+            endpoint = f'functions/{validate_address(address)}'
         else:
             endpoint = f'functions/by-name/{quote(old_name)}'
 
@@ -349,7 +349,7 @@ def set_signature(ctx, name, address, signature):
     try:
         # Build endpoint
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}/signature'
+            endpoint = f'functions/{validate_address(address)}/signature'
         else:
             endpoint = f'functions/by-name/{quote(name)}/signature'
 
@@ -395,7 +395,7 @@ def get_variables(ctx, name, address):
     try:
         # Build endpoint
         if address:
-            endpoint = f'functions/{address.lstrip("0x")}/variables'
+            endpoint = f'functions/{validate_address(address)}/variables'
         else:
             endpoint = f'functions/by-name/{quote(name)}/variables'
 
@@ -431,7 +431,7 @@ def set_comment(ctx, address, comment):
 
     try:
         # Build endpoint - using comments API
-        endpoint = f'comments/{address.lstrip("0x")}'
+        endpoint = f'comments/{validate_address(address)}'
 
         # Make API request
         data = {'comment': comment, 'type': 'plate'}

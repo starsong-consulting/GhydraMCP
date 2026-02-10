@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import rich_echo
+from ..utils import rich_echo, validate_address
 
 
 @click.group('comments')
@@ -46,7 +46,7 @@ def set_comment(ctx, address, comment, comment_type):
             'type': comment_type
         }
 
-        response = client.post(f'comments/{address.lstrip("0x")}', json_data=data)
+        response = client.post(f'comments/{validate_address(address)}', json_data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
 

@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output, rich_echo
+from ..utils import should_page, page_output, rich_echo, validate_address
 
 
 @click.group('memory')
@@ -35,7 +35,7 @@ def read_memory(ctx, address, length, format):
 
     try:
         params = {
-            'address': address.lstrip("0x"),
+            'address': validate_address(address),
             'length': length,
             'format': format
         }
@@ -76,7 +76,7 @@ def write_memory(ctx, address, bytes_data, format):
             'format': format
         }
 
-        response = client.post(f'memory/{address.lstrip("0x")}', json_data=data)
+        response = client.post(f'memory/{validate_address(address)}', json_data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
 

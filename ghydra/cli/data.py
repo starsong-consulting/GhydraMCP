@@ -3,7 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
-from ..utils import should_page, page_output, rich_echo
+from ..utils import should_page, page_output, rich_echo, validate_address
 
 
 @click.group('data')
@@ -43,7 +43,7 @@ def list_data(ctx, offset, limit, addr, name, name_contains, type):
         }
 
         if addr:
-            params['addr'] = addr.lstrip('0x')
+            params['addr'] = validate_address(addr)
         if name:
             params['name'] = name
         if name_contains:
@@ -130,7 +130,7 @@ def create_data(ctx, address, data_type, size):
         if size:
             data['size'] = size
 
-        response = client.post(f'data/{address.lstrip("0x")}', json_data=data)
+        response = client.post(f'data/{validate_address(address)}', json_data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
 
@@ -156,7 +156,7 @@ def rename_data(ctx, address, name):
 
     try:
         data = {'name': name}
-        response = client.patch(f'data/{address.lstrip("0x")}', data=data)
+        response = client.patch(f'data/{validate_address(address)}', data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
 
@@ -180,7 +180,7 @@ def delete_data(ctx, address):
     formatter = ctx.obj['formatter']
 
     try:
-        response = client.delete(f'data/{address.lstrip("0x")}')
+        response = client.delete(f'data/{validate_address(address)}')
         output = formatter.format_simple_result(response)
         click.echo(output)
 
@@ -207,7 +207,7 @@ def set_type(ctx, address, data_type):
 
     try:
         data = {'type': data_type}
-        response = client.patch(f'data/{address.lstrip("0x")}/type', data=data)
+        response = client.patch(f'data/{validate_address(address)}/type', data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
 
