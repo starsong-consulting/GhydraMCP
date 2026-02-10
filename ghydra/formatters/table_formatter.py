@@ -121,21 +121,35 @@ class TableFormatter(BaseFormatter):
     def format_disassembly(self, data: Dict[str, Any]) -> str:
         """Format disassembly listing."""
         result = data.get("result", {})
-        disasm = result.get("disassembly", "")
+        instructions = result.get("instructions", [])
 
-        if not disasm:
+        if not instructions:
             return "[red]No disassembly available[/red]"
 
-        # Simple syntax highlighting for assembly
+        func_info = result.get("function", {})
+        title = func_info.get("name", "Disassembly")
+        total = result.get("totalInstructions", len(instructions))
+
+        lines = []
+        for instr in instructions:
+            addr = instr.get("address", "?")
+            bytez = instr.get("bytes", "")
+            mnemonic = instr.get("mnemonic", "?")
+            operands = instr.get("operands", "")
+            lines.append(f"{addr}  {bytez:<20s} {mnemonic:<8s} {operands}")
+
+        disasm_text = "\n".join(lines)
+
         syntax = Syntax(
-            disasm,
+            disasm_text,
             "asm",
             theme="monokai",
             line_numbers=False,
             word_wrap=False
         )
 
-        return self._capture(syntax)
+        header = f"[cyan]{title}[/cyan] ({total} instructions)\n"
+        return header + self._capture(syntax)
 
     def format_memory(self, data: Dict[str, Any]) -> str:
         """Format memory as hex dump."""
