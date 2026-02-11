@@ -206,6 +206,12 @@ package eu.starsong.ghidra.endpoints;
                     return;
                 }
                 
+                // Get filter parameters
+                String addrFilter = qparams.get("addr");
+                String nameFilter = qparams.get("name");
+                String nameContainsFilter = qparams.get("name_contains");
+                String typeFilter = qparams.get("type");
+
                 List<Map<String, Object>> dataItems = new ArrayList<>();
                 for (MemoryBlock block : program.getMemory().getBlocks()) {
                     DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
@@ -213,14 +219,41 @@ package eu.starsong.ghidra.endpoints;
                         Data data = it.next();
                         if (block.contains(data.getAddress())) {
                             // Apply addr filter if present
-                            String addrFilter = qparams.get("addr");
                             if (addrFilter != null && !data.getAddress().toString().equals(addrFilter)) {
-                                continue; // Skip this data item if address doesn't match filter
+                                continue;
+                            }
+
+                            // Get the name/label for this data item (use FQN for consistency)
+                            String dataName = data.getLabel();
+                            if (dataName == null) {
+                                Symbol sym = program.getSymbolTable().getPrimarySymbol(data.getAddress());
+                                if (sym != null) {
+                                    dataName = sym.getName(true);
+                                }
+                            }
+
+                            // Apply name filter (exact match, case-sensitive)
+                            if (nameFilter != null) {
+                                if (dataName == null || !dataName.equals(nameFilter)) {
+                                    continue;
+                                }
+                            }
+
+                            // Apply name_contains filter (substring, case-insensitive)
+                            if (nameContainsFilter != null) {
+                                if (dataName == null || !dataName.toLowerCase().contains(nameContainsFilter.toLowerCase())) {
+                                    continue;
+                                }
+                            }
+
+                            // Apply type filter
+                            if (typeFilter != null && !data.getDataType().getName().equalsIgnoreCase(typeFilter)) {
+                                continue;
                             }
 
                             Map<String, Object> item = new HashMap<>();
                             item.put("address", data.getAddress().toString());
-                            item.put("label", data.getLabel() != null ? data.getLabel() : "(unnamed)");
+                            item.put("label", dataName != null ? dataName : "(unnamed)");
                             item.put("value", data.getDefaultValueRepresentation());
                             item.put("dataType", data.getDataType().getName());
                             
