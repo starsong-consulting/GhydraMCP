@@ -523,81 +523,38 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
         
-        // Attempt to disassemble the code at the specified address before creating a function
+        // Use CreateFunctionCmd — same as pressing F in the UI
         try {
-            TransactionHelper.executeInTransaction(program, "Disassemble Before Function Creation", () -> {
-                // Check if there's already a defined instruction at the address
-                if (program.getListing().getInstructionAt(address) == null) {
-                    // Attempt to directly disassemble at the address
-                    try {
-                        ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
-                            new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
-                        cmd.applyTo(program);
-                    } catch (Exception ex) {
-                        Msg.warn(this, "Basic disassembly failed: " + ex.getMessage());
-                    }
+            Function function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+                ghidra.app.cmd.function.CreateFunctionCmd cmd =
+                    new ghidra.app.cmd.function.CreateFunctionCmd(address);
+                if (!cmd.applyTo(program)) {
+                    throw new Exception(cmd.getStatusMsg());
                 }
-                return null;
+                return program.getFunctionManager().getFunctionAt(address);
             });
-        } catch (Exception e) {
-            // Log the error but proceed with function creation attempt anyway
-            Msg.warn(this, "Disassembly before function creation failed: " + e.getMessage());
-        }
-        
-        // Create function
-        Function function;
-        try {
-            function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
-                return program.getFunctionManager().createFunction(null, address, null, null);
-            });
-        } catch (Exception e) {
-            // If function creation initially fails, try a different approach
-            try {
-                Msg.info(this, "Initial function creation failed, attempting with code unit clearing");
-                
-                // Clear any existing data at this location and try disassembling again
-                TransactionHelper.executeInTransaction(program, "Clear and Disassemble", () -> {
-                    // Clear existing data at the address
-                    program.getListing().clearCodeUnits(address, address, false);
-                    
-                    // Try disassembling again
-                    ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
-                        new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
-                    cmd.applyTo(program);
-                    return null;
-                });
-                
-                // Try creating the function again
-                function = TransactionHelper.executeInTransaction(program, "Create Function Retry", () -> {
-                    return program.getFunctionManager().createFunction(null, address, null, null);
-                });
-            } catch (Exception e2) {
-                // Both attempts failed, return the error
-                sendErrorResponse(exchange, 400, "Failed to create function after multiple attempts: " + e.getMessage(), "CREATE_FAILED");
+
+            if (function == null) {
+                sendErrorResponse(exchange, 500, "Function created but not found at address", "CREATE_FAILED");
                 return;
             }
+
+            FunctionInfo info = buildFunctionInfo(function);
+
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                .success(true)
+                .result(info);
+
+            builder.addLink("self", "/functions/" + function.getEntryPoint());
+            builder.addLink("by_name", "/functions/by-name/" + function.getName());
+            builder.addLink("program", "/program");
+            builder.addLink("decompile", "/functions/" + function.getEntryPoint() + "/decompile");
+            builder.addLink("disassembly", "/functions/" + function.getEntryPoint() + "/disassembly");
+
+            sendJsonResponse(exchange, builder.build(), 201);
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Failed to create function: " + e.getMessage(), "CREATE_FAILED");
         }
-        
-        if (function == null) {
-            sendErrorResponse(exchange, 500, "Failed to create function", "CREATE_FAILED");
-            return;
-        }
-        
-        // Return created function with RESTful response structure
-        FunctionInfo info = buildFunctionInfo(function);
-        
-        ResponseBuilder builder = new ResponseBuilder(exchange, port)
-            .success(true)
-            .result(info);
-        
-        // Add HATEOAS links
-        builder.addLink("self", "/programs/current/functions/" + function.getEntryPoint());
-        builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName());
-        builder.addLink("program", "/programs/current");
-        builder.addLink("decompile", "/programs/current/functions/" + function.getEntryPoint() + "/decompile");
-        builder.addLink("disassembly", "/programs/current/functions/" + function.getEntryPoint() + "/disassembly");
-        
-        sendJsonResponse(exchange, builder.build(), 201);
     }
 
     /**
@@ -1062,77 +1019,36 @@ public class FunctionEndpoints extends AbstractEndpoint {
             return;
         }
 
-        // Attempt to disassemble the code at the specified address before creating a function
+        // Use CreateFunctionCmd — same as pressing F in the UI
         try {
-            TransactionHelper.executeInTransaction(program, "Disassemble Before Function Creation", () -> {
-                // Check if there's already a defined instruction at the address
-                if (program.getListing().getInstructionAt(address) == null) {
-                    // Attempt to directly disassemble at the address
-                    try {
-                        ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
-                            new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
-                        cmd.applyTo(program);
-                    } catch (Exception ex) {
-                        Msg.warn(this, "Basic disassembly failed: " + ex.getMessage());
-                    }
+            Function function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+                ghidra.app.cmd.function.CreateFunctionCmd cmd =
+                    new ghidra.app.cmd.function.CreateFunctionCmd(address);
+                if (!cmd.applyTo(program)) {
+                    throw new Exception(cmd.getStatusMsg());
                 }
-                return null;
+                return program.getFunctionManager().getFunctionAt(address);
             });
-        } catch (Exception e) {
-            // Log the error but proceed with function creation attempt anyway
-            Msg.warn(this, "Disassembly before function creation failed: " + e.getMessage());
-        }
-        
-        // Create function
-        Function function;
-        try {
-            function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
-                return program.getFunctionManager().createFunction(null, address, null, null);
-            });
-        } catch (Exception e) {
-            // If function creation initially fails, try a different approach
-            try {
-                Msg.info(this, "Initial function creation failed, attempting with code unit clearing");
-                
-                // Clear any existing data at this location and try disassembling again
-                TransactionHelper.executeInTransaction(program, "Clear and Disassemble", () -> {
-                    // Clear existing data at the address
-                    program.getListing().clearCodeUnits(address, address, false);
-                    
-                    // Try disassembling again
-                    ghidra.app.cmd.disassemble.DisassembleCommand cmd = 
-                        new ghidra.app.cmd.disassemble.DisassembleCommand(address, null, true);
-                    cmd.applyTo(program);
-                    return null;
-                });
-                
-                // Try creating the function again
-                function = TransactionHelper.executeInTransaction(program, "Create Function Retry", () -> {
-                    return program.getFunctionManager().createFunction(null, address, null, null);
-                });
-            } catch (Exception e2) {
-                // Both attempts failed, return the error
-                sendErrorResponse(exchange, 400, "Failed to create function after multiple attempts: " + e.getMessage(), "CREATE_FAILED");
+
+            if (function == null) {
+                sendErrorResponse(exchange, 500, "Function created but not found at address", "CREATE_FAILED");
                 return;
             }
+
+            FunctionInfo info = buildFunctionInfo(function);
+
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                .success(true)
+                .result(info);
+
+            builder.addLink("self", "/functions/" + function.getEntryPoint());
+            builder.addLink("by_name", "/functions/by-name/" + function.getName());
+            builder.addLink("program", "/program");
+
+            sendJsonResponse(exchange, builder.build(), 201);
+        } catch (Exception e) {
+            sendErrorResponse(exchange, 400, "Failed to create function: " + e.getMessage(), "CREATE_FAILED");
         }
-        
-        if (function == null) {
-            sendErrorResponse(exchange, 500, "Failed to create function", "CREATE_FAILED");
-            return;
-        }
-        
-        // Return created function
-        FunctionInfo info = buildFunctionInfo(function);
-        
-        ResponseBuilder builder = new ResponseBuilder(exchange, port)
-            .success(true)
-            .result(info);
-        
-        // Add HATEOAS links
-        builder.addLink("self", "/functions/" + function.getName());
-        
-        sendJsonResponse(exchange, builder.build(), 201);
     }
 
     /**
