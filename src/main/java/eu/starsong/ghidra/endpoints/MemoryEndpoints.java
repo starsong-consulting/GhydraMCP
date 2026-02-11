@@ -23,7 +23,7 @@ import java.util.*;
 public class MemoryEndpoints extends AbstractEndpoint {
 
     private static final int DEFAULT_MEMORY_LENGTH = 16;
-    private static final int MAX_MEMORY_LENGTH = 4096;
+    private static final int MAX_MEMORY_LENGTH = 1048576;
     private PluginTool tool;
     
     public MemoryEndpoints(Program program, int port) {
@@ -93,15 +93,21 @@ public class MemoryEndpoints extends AbstractEndpoint {
                 
                 // Parse length parameter
                 int length = DEFAULT_MEMORY_LENGTH;
+                int requestedLength = length;
+                boolean lengthCapped = false;
                 if (lengthStr != null && !lengthStr.isEmpty()) {
                     try {
                         length = Integer.parseInt(lengthStr);
+                        requestedLength = length;
                         if (length <= 0) {
                             sendErrorResponse(exchange, 400, "Length must be positive", "INVALID_PARAMETER");
                             return;
                         }
                         if (length > MAX_MEMORY_LENGTH) {
+                            Msg.warn(this, "Requested memory read length " + length +
+                                     " exceeds maximum " + MAX_MEMORY_LENGTH + ", capping to " + MAX_MEMORY_LENGTH);
                             length = MAX_MEMORY_LENGTH;
+                            lengthCapped = true;
                         }
                     } catch (NumberFormatException e) {
                         sendErrorResponse(exchange, 400, "Invalid length parameter", "INVALID_PARAMETER");
@@ -163,6 +169,10 @@ public class MemoryEndpoints extends AbstractEndpoint {
                     result.put("bytesRead", bytesRead);
                     result.put("hexBytes", hexString.toString());
                     result.put("rawBytes", Base64.getEncoder().encodeToString(bytes));
+                    if (lengthCapped) {
+                        result.put("warning", "Requested length " + requestedLength +
+                                   " exceeds maximum " + MAX_MEMORY_LENGTH + "; result was capped");
+                    }
                     
                     // Add next/prev links
                     builder.addLink("next", "/memory?address=" + address.add(length) + "&length=" + length);
