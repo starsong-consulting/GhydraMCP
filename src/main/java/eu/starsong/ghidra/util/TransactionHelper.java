@@ -50,7 +50,8 @@ public class TransactionHelper {
         }
 
         if (exception.get() != null) {
-            throw new TransactionException("Operation failed", exception.get());
+            String causeMsg = exception.get().getMessage();
+            throw new TransactionException("Operation failed: " + causeMsg, exception.get());
         }
         return result.get();
     }
