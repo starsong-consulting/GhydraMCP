@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.api.ResponseBuilder;
     import eu.starsong.ghidra.util.HttpUtil;
     import eu.starsong.ghidra.util.TransactionHelper;
     import eu.starsong.ghidra.util.TransactionHelper.TransactionException;
@@ -83,69 +84,109 @@ package eu.starsong.ghidra.endpoints;
 
         public void handleData(HttpExchange exchange) throws IOException {
             try {
-                if ("GET".equals(exchange.getRequestMethod())) {
-                    handleListData(exchange);
-                } else if ("POST".equals(exchange.getRequestMethod())) {
-                    // Determine what kind of operation this is based on parameters
-                    Map<String, String> params = parseJsonPostParams(exchange);
-                    // Debug - log the params
-                    StringBuilder debugInfo = new StringBuilder("DEBUG - Received parameters: ");
-                    for (Map.Entry<String, String> entry : params.entrySet()) {
-                        debugInfo.append(entry.getKey()).append("=").append(entry.getValue()).append(", ");
-                    }
-                    Msg.info(this, debugInfo.toString());
-                    
-                    boolean hasNewName = params.containsKey("newName") && params.get("newName") != null && !params.get("newName").isEmpty();
-                    boolean hasType = params.containsKey("type") && params.get("type") != null && !params.get("type").isEmpty();
-                    boolean hasSize = params.containsKey("size") && params.get("size") != null && !params.get("size").isEmpty();
-                    
-                    // Add more detailed debugging
-                    Msg.info(this, "Decision logic: hasNewName=" + hasNewName + ", hasType=" + hasType + ", hasSize=" + hasSize);
-                    Msg.info(this, "Raw newName value: " + params.get("newName"));
-                    Msg.info(this, "Raw type value: " + params.get("type"));
-                    Msg.info(this, "Raw address value: " + params.get("address"));
-                    Msg.info(this, "Raw size value: " + params.get("size"));
-                    
-                    // Check if this is a create operation (address + type without checking for existing data)
-                    if (params.containsKey("address") && hasType) {
-                        // Check if the data already exists at the address
-                        try {
+                String path = exchange.getRequestURI().getPath();
+                String method = exchange.getRequestMethod();
+
+                if (path.equals("/data") || path.equals("/data/")) {
+                    // Base /data endpoint
+                    if ("GET".equals(method)) {
+                        handleListData(exchange);
+                    } else if ("POST".equals(method)) {
+                        // Legacy POST routing for bridge backward compat
+                        Map<String, String> params = parseJsonPostParams(exchange);
+                        boolean hasNewName = params.containsKey("newName") && params.get("newName") != null && !params.get("newName").isEmpty();
+                        boolean hasName = params.containsKey("name") && params.get("name") != null && !params.get("name").isEmpty();
+                        boolean hasType = params.containsKey("type") && params.get("type") != null && !params.get("type").isEmpty();
+
+                        if (params.containsKey("address") && hasType) {
                             Program program = getCurrentProgram();
                             if (program != null) {
-                                Address addr = program.getAddressFactory().getAddress(params.get("address"));
-                                Listing listing = program.getListing();
-                                Data data = listing.getDefinedDataAt(addr);
-                                
-                                if (data == null) {
-                                    // No data exists at this address, so treat as a create operation
-                                    Msg.info(this, "Selected route: handleCreateData - creating new data");
-                                    handleCreateData(exchange, params);
-                                    return;
+                                try {
+                                    Address addr = program.getAddressFactory().getAddress(params.get("address"));
+                                    Data data = program.getListing().getDefinedDataAt(addr);
+                                    if (data == null) {
+                                        handleCreateData(exchange, params);
+                                        return;
+                                    }
+                                } catch (Exception e) {
+                                    Msg.warn(this, "Error checking for existing data: " + e.getMessage());
                                 }
                             }
-                        } catch (Exception e) {
-                            Msg.warn(this, "Error checking for existing data: " + e.getMessage());
-                            // Continue with normal processing
                         }
-                    }
-                    
-                    // Proceeding with update operations if not create
-                    if (params.containsKey("address") && hasNewName && hasType) {
-                        Msg.info(this, "Selected route: handleUpdateData - both name and type");
-                        handleUpdateData(exchange, params);
-                    } else if (params.containsKey("address") && hasNewName) {
-                        Msg.info(this, "Selected route: handleRenameData - only name");
-                        handleRenameData(exchange, params);
-                    } else if (params.containsKey("address") && hasType) {
-                        Msg.info(this, "Selected route: handleTypeChangeData - only type");
-                        handleTypeChangeData(exchange, params);
+
+                        if (params.containsKey("address") && (hasNewName || hasName) && hasType) {
+                            if (hasName && !hasNewName) {
+                                params.put("newName", params.get("name"));
+                            }
+                            handleUpdateData(exchange, params);
+                        } else if (params.containsKey("address") && (hasNewName || hasName)) {
+                            if (hasName && !hasNewName) {
+                                params.put("newName", params.get("name"));
+                            }
+                            handleRenameData(exchange, params);
+                        } else if (params.containsKey("address") && hasType) {
+                            handleTypeChangeData(exchange, params);
+                        } else {
+                            sendErrorResponse(exchange, 400, "Missing required parameters", "MISSING_PARAMETERS");
+                        }
                     } else {
-                        Msg.info(this, "Selected route: Error - missing parameters");
-                        // Neither parameter was provided
-                        sendErrorResponse(exchange, 400, "Missing required parameters: at least one of newName or type must be provided", "MISSING_PARAMETERS");
+                        sendErrorResponse(exchange, 405, "Method Not Allowed");
                     }
                 } else {
-                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    // Path-based routing: /data/{address} or /data/{address}/type
+                    String remainder = path.substring("/data/".length());
+                    String addressStr;
+                    String subResource = null;
+
+                    if (remainder.contains("/")) {
+                        int slashIdx = remainder.indexOf('/');
+                        addressStr = remainder.substring(0, slashIdx);
+                        subResource = remainder.substring(slashIdx + 1);
+                    } else {
+                        addressStr = remainder;
+                    }
+
+                    // URL-decode the address
+                    addressStr = java.net.URLDecoder.decode(addressStr, java.nio.charset.StandardCharsets.UTF_8);
+
+                    if ("GET".equals(method)) {
+                        // GET /data/{address} - list filtered by address
+                        Map<String, String> qparams = parseQueryParams(exchange);
+                        qparams.put("addr", addressStr);
+                        // Reuse the list handler by setting the filter
+                        handleListData(exchange);
+                    } else if ("POST".equals(method)) {
+                        // POST /data/{address} - create data at address
+                        Map<String, String> params = parseJsonPostParams(exchange);
+                        params.put("address", addressStr);
+                        handleCreateData(exchange, params);
+                    } else if ("PATCH".equals(method)) {
+                        Map<String, String> params = parseJsonPostParams(exchange);
+                        params.put("address", addressStr);
+
+                        if ("type".equals(subResource)) {
+                            // PATCH /data/{address}/type
+                            handleTypeChangeData(exchange, params);
+                        } else {
+                            // PATCH /data/{address} - rename
+                            // Accept "name" field (CLI convention), map to "newName" for internal use
+                            if (params.containsKey("name") && !params.containsKey("newName")) {
+                                params.put("newName", params.get("name"));
+                            }
+                            if (params.containsKey("type")) {
+                                handleUpdateData(exchange, params);
+                            } else {
+                                handleRenameData(exchange, params);
+                            }
+                        }
+                    } else if ("DELETE".equals(method)) {
+                        // DELETE /data/{address}
+                        Map<String, String> params = new HashMap<>();
+                        params.put("address", addressStr);
+                        handleDeleteData(exchange, params);
+                    } else {
+                        sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    }
                 }
             } catch (Exception e) {
                 Msg.error(this, "Error in /data endpoint", e);
@@ -217,15 +258,10 @@ package eu.starsong.ghidra.endpoints;
 
         private void handleRenameData(HttpExchange exchange, Map<String, String> params) throws IOException {
             try {
-                // Debug - log the params again
-                StringBuilder debugInfo = new StringBuilder("DEBUG handleRenameData - Received parameters: ");
-                for (Map.Entry<String, String> entry : params.entrySet()) {
-                    debugInfo.append(entry.getKey()).append("=").append(entry.getValue()).append(", ");
-                }
-                Msg.info(this, debugInfo.toString());
-                
                 final String addressStr = params.get("address");
-                final String newName = params.get("newName");
+                // Accept both "name" (RESTful) and "newName" (legacy)
+                final String newName = params.containsKey("newName") ? params.get("newName") :
+                                       params.containsKey("name") ? params.get("name") : null;
                 final String dataTypeStr = params.get("type");
                 
                 // Address is always required
@@ -765,7 +801,7 @@ package eu.starsong.ghidra.endpoints;
                 final String addressStr = params.get("address");
                 final String dataTypeStr = params.get("type");
                 final String sizeStr = params.get("size");
-                final String nameStr = params.get("newName"); // Optional name for the new data
+                final String nameStr = params.containsKey("name") ? params.get("name") : params.get("newName");
                 
                 // Validate required parameters
                 if (addressStr == null || addressStr.isEmpty()) {

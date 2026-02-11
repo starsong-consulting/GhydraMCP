@@ -2343,15 +2343,11 @@ def data_create(address: str, data_type: str, size: int = None, port: int = None
     
     port = _get_instance_port(port)
     
-    payload = {
-        "address": address,
-        "type": data_type
-    }
-    
+    payload = {"type": data_type}
     if size is not None:
         payload["size"] = size
-    
-    response = safe_post(port, "data", payload)
+
+    response = safe_post(port, f"data/{address}", payload)
     return simplify_response(response)
 
 @mcp.tool()
@@ -2405,13 +2401,8 @@ def data_rename(address: str, name: str, port: int = None) -> dict:
         }
     
     port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "newName": name
-    }
-    
-    response = safe_post(port, "data", payload)
+
+    response = safe_patch(port, f"data/{address}", {"name": name})
     return simplify_response(response)
 
 @mcp.tool()
@@ -2437,13 +2428,8 @@ def data_delete(address: str, port: int = None) -> dict:
         }
     
     port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "action": "delete"
-    }
-    
-    response = safe_post(port, "data/delete", payload)
+
+    response = safe_delete(port, f"data/{address}")
     return simplify_response(response)
 
 @mcp.tool()
@@ -2470,13 +2456,8 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
         }
     
     port = _get_instance_port(port)
-    
-    payload = {
-        "address": address,
-        "type": data_type
-    }
-    
-    response = safe_post(port, "data/type", payload)
+
+    response = safe_patch(port, f"data/{address}/type", {"type": data_type})
     return simplify_response(response)
 
 # Struct tools
@@ -2538,8 +2519,7 @@ def structs_get(name: str, port: int = None) -> dict:
 
     port = _get_instance_port(port)
 
-    params = {"name": name}
-    response = safe_get(port, "structs", params)
+    response = safe_get(port, f"structs/{quote(name)}")
     return simplify_response(response)
 
 @mcp.tool()
@@ -2574,7 +2554,7 @@ def structs_create(name: str, category: str = None, description: str = None, por
     if description:
         payload["description"] = description
 
-    response = safe_post(port, "structs/create", payload)
+    response = safe_post(port, "structs", payload)
     return simplify_response(response)
 
 @mcp.tool()
@@ -2607,16 +2587,15 @@ def structs_add_field(struct_name: str, field_name: str, field_type: str,
     port = _get_instance_port(port)
 
     payload = {
-        "struct": struct_name,
-        "fieldName": field_name,
-        "fieldType": field_type
+        "name": field_name,
+        "type": field_type
     }
     if offset is not None:
         payload["offset"] = offset
     if comment:
         payload["comment"] = comment
 
-    response = safe_post(port, "structs/addfield", payload)
+    response = safe_post(port, f"structs/{quote(struct_name)}/fields", payload)
     return simplify_response(response)
 
 @mcp.tool()
@@ -2670,19 +2649,18 @@ def structs_update_field(struct_name: str, field_name: str = None, field_offset:
 
     port = _get_instance_port(port)
 
-    payload = {"struct": struct_name}
-    if field_name:
-        payload["fieldName"] = field_name
-    if field_offset is not None:
-        payload["fieldOffset"] = field_offset
-    if new_name:
-        payload["newName"] = new_name
-    if new_type:
-        payload["newType"] = new_type
-    if new_comment is not None:
-        payload["newComment"] = new_comment
+    # Identify field by offset (preferred) or name
+    field_id = str(field_offset) if field_offset is not None else quote(field_name)
 
-    response = safe_post(port, "structs/updatefield", payload)
+    payload = {}
+    if new_name:
+        payload["name"] = new_name
+    if new_type:
+        payload["type"] = new_type
+    if new_comment is not None:
+        payload["comment"] = new_comment
+
+    response = safe_patch(port, f"structs/{quote(struct_name)}/fields/{field_id}", payload)
     return simplify_response(response)
 
 @mcp.tool()
@@ -2709,8 +2687,7 @@ def structs_delete(name: str, port: int = None) -> dict:
 
     port = _get_instance_port(port)
 
-    payload = {"name": name}
-    response = safe_post(port, "structs/delete", payload)
+    response = safe_delete(port, f"structs/{quote(name)}")
     return simplify_response(response)
 
 # Analysis tools

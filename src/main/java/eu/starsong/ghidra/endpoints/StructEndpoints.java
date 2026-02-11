@@ -11,6 +11,8 @@ import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
 
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
@@ -92,22 +94,121 @@ public class StructEndpoints extends AbstractEndpoint {
         });
     }
 
-    /**
-     * Handle GET /structs - list all structs, or GET /structs?name=X - get specific struct details
-     */
     private void handleStructs(HttpExchange exchange) throws IOException {
         try {
-            if ("GET".equals(exchange.getRequestMethod())) {
-                Map<String, String> qparams = parseQueryParams(exchange);
-                String structName = qparams.get("name");
+            String path = exchange.getRequestURI().getPath();
+            String method = exchange.getRequestMethod();
 
-                if (structName != null && !structName.isEmpty()) {
-                    handleGetStruct(exchange, structName);
+            if (path.equals("/structs") || path.equals("/structs/")) {
+                // Base /structs endpoint
+                if ("GET".equals(method)) {
+                    Map<String, String> qparams = parseQueryParams(exchange);
+                    String structName = qparams.get("name");
+                    if (structName != null && !structName.isEmpty()) {
+                        handleGetStruct(exchange, structName);
+                    } else {
+                        handleListStructs(exchange);
+                    }
+                } else if ("POST".equals(method)) {
+                    // POST /structs - create struct
+                    Map<String, String> params = parseJsonPostParams(exchange);
+                    handleCreateStruct(exchange, params);
                 } else {
-                    handleListStructs(exchange);
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
                 }
             } else {
-                sendErrorResponse(exchange, 405, "Method Not Allowed");
+                // Path-based routing: /structs/{name}, /structs/{name}/fields, etc.
+                String remainder = path.substring("/structs/".length());
+
+                // Skip legacy action paths handled by their own contexts
+                if (remainder.equals("create") || remainder.equals("delete") ||
+                    remainder.equals("addfield") || remainder.equals("updatefield")) {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    return;
+                }
+
+                String structName;
+                String subResource = null;
+                String subId = null;
+
+                // Parse: {name}, {name}/fields, {name}/fields/{fieldId}
+                if (remainder.contains("/")) {
+                    int firstSlash = remainder.indexOf('/');
+                    structName = URLDecoder.decode(remainder.substring(0, firstSlash), StandardCharsets.UTF_8);
+                    String afterName = remainder.substring(firstSlash + 1);
+
+                    if (afterName.contains("/")) {
+                        int secondSlash = afterName.indexOf('/');
+                        subResource = afterName.substring(0, secondSlash);
+                        subId = URLDecoder.decode(afterName.substring(secondSlash + 1), StandardCharsets.UTF_8);
+                    } else {
+                        subResource = afterName;
+                    }
+                } else {
+                    structName = URLDecoder.decode(remainder, StandardCharsets.UTF_8);
+                }
+
+                if (subResource == null) {
+                    // /structs/{name}
+                    if ("GET".equals(method)) {
+                        handleGetStruct(exchange, structName);
+                    } else if ("DELETE".equals(method)) {
+                        Map<String, String> params = new HashMap<>();
+                        params.put("name", structName);
+                        handleDeleteStruct(exchange, params);
+                    } else {
+                        sendErrorResponse(exchange, 405, "Method Not Allowed");
+                    }
+                } else if ("fields".equals(subResource)) {
+                    if (subId == null) {
+                        // /structs/{name}/fields
+                        if ("POST".equals(method)) {
+                            Map<String, String> params = parseJsonPostParams(exchange);
+                            params.put("struct", structName);
+                            // Accept both "name"/"type" (RESTful) and "fieldName"/"fieldType" (legacy)
+                            if (params.containsKey("name") && !params.containsKey("fieldName")) {
+                                params.put("fieldName", params.get("name"));
+                            }
+                            if (params.containsKey("type") && !params.containsKey("fieldType")) {
+                                params.put("fieldType", params.get("type"));
+                            }
+                            handleAddField(exchange, params);
+                        } else {
+                            sendErrorResponse(exchange, 405, "Method Not Allowed");
+                        }
+                    } else {
+                        // /structs/{name}/fields/{fieldId}
+                        if ("PATCH".equals(method)) {
+                            Map<String, String> params = parseJsonPostParams(exchange);
+                            params.put("struct", structName);
+
+                            // fieldId can be an offset (numeric) or field name
+                            try {
+                                Integer.parseInt(subId);
+                                params.put("fieldOffset", subId);
+                            } catch (NumberFormatException e) {
+                                params.put("fieldName", subId);
+                            }
+
+                            // Accept RESTful field names and map to legacy names
+                            if (params.containsKey("name") && !params.containsKey("newName")) {
+                                params.put("newName", params.get("name"));
+                            }
+                            if (params.containsKey("type") && !params.containsKey("newType")) {
+                                params.put("newType", params.get("type"));
+                            }
+                            if (params.containsKey("comment") && !params.containsKey("newComment")) {
+                                params.put("newComment", params.get("comment"));
+                            }
+
+                            handleUpdateField(exchange, params);
+                        } else {
+                            sendErrorResponse(exchange, 405, "Method Not Allowed");
+                        }
+                    }
+                } else {
+                    sendErrorResponse(exchange, 404, "Unknown resource: " + subResource, "RESOURCE_NOT_FOUND");
+                }
             }
         } catch (Exception e) {
             Msg.error(this, "Error in /structs endpoint", e);
@@ -327,8 +428,9 @@ public class StructEndpoints extends AbstractEndpoint {
     private void handleAddField(HttpExchange exchange, Map<String, String> params) throws IOException {
         try {
             String structName = params.get("struct");
-            String fieldName = params.get("fieldName");
-            String fieldType = params.get("fieldType");
+            // Accept both "fieldName"/"fieldType" (legacy) and "name"/"type" (RESTful)
+            String fieldName = params.containsKey("fieldName") ? params.get("fieldName") : params.get("name");
+            String fieldType = params.containsKey("fieldType") ? params.get("fieldType") : params.get("type");
             String offsetStr = params.get("offset");
             String comment = params.get("comment");
 
@@ -448,9 +550,10 @@ public class StructEndpoints extends AbstractEndpoint {
             String structName = params.get("struct");
             String fieldOffsetStr = params.get("fieldOffset");
             String fieldName = params.get("fieldName");
-            String newName = params.get("newName");
-            String newType = params.get("newType");
-            String newComment = params.get("newComment");
+            // Accept both "newName"/"newType"/"newComment" (legacy) and "name"/"type"/"comment" (RESTful)
+            String newName = params.containsKey("newName") ? params.get("newName") : params.get("name");
+            String newType = params.containsKey("newType") ? params.get("newType") : params.get("type");
+            String newComment = params.containsKey("newComment") ? params.get("newComment") : params.get("comment");
 
             if (structName == null || structName.isEmpty()) {
                 sendErrorResponse(exchange, 400, "Missing required parameter: struct", "MISSING_PARAMETERS");
