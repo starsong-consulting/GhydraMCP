@@ -42,8 +42,11 @@ class TableFormatter(BaseFormatter):
         buffer = io.StringIO()
         # Create console with same color settings
         color_sys = "auto" if self.console._color_system else None
-        temp_console = Console(file=buffer, color_system=color_sys, force_terminal=True)
-        temp_console.print(renderable)
+        temp_console = Console(
+            file=buffer, color_system=color_sys,
+            force_terminal=self.console._force_terminal
+        )
+        temp_console.print(renderable, soft_wrap=True)
         return buffer.getvalue().rstrip()
 
     def format_functions_list(self, data: Dict[str, Any]) -> str:
@@ -107,7 +110,8 @@ class TableFormatter(BaseFormatter):
         if not code:
             return self._capture("[red]No decompiled code available[/red]")
 
-        # Create syntax-highlighted code
+        code = code.strip()
+
         syntax = Syntax(
             code,
             "c",
