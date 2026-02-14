@@ -18,7 +18,54 @@ from typing import Dict, List, Optional, Union, Any
 from urllib.parse import quote, urlencode, urlparse
 
 import requests
+from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP
+
+# ================= Pydantic Models for Prompts =================
+
+class ProgramInfo(BaseModel):
+    """Program information model for binary analysis context"""
+    port: int = Field(description="Ghidra instance port")
+    url: str = Field(description="Ghidra instance URL")
+    program_name: str = Field(default="unknown", description="Name of the loaded program")
+    program_id: str = Field(default="unknown", description="Unique program identifier")
+    language: str = Field(default="unknown", description="Processor language (e.g., x86:LE:64:default)")
+    compiler: str = Field(default="unknown", description="Compiler specification")
+    base_address: str = Field(default="0x0", description="Image base address")
+    memory_size: int = Field(default=0, description="Total memory size in bytes")
+    analysis_complete: bool = Field(default=False, description="Whether auto-analysis is complete")
+    project: Optional[str] = Field(default=None, description="Project name if available")
+
+
+class FunctionContext(BaseModel):
+    """Context information for function analysis prompts"""
+    name: Optional[str] = Field(default=None, description="Function name")
+    address: Optional[str] = Field(default=None, description="Function address in hex")
+    decompiled_code: str = Field(default="", description="Decompiled C code")
+    disassembly: str = Field(default="", description="Assembly disassembly")
+    signature: Optional[str] = Field(default=None, description="Function signature")
+    calling_convention: Optional[str] = Field(default=None, description="Calling convention")
+    return_type: Optional[str] = Field(default=None, description="Return type")
+    parameters: Optional[List[dict]] = Field(default=None, description="Function parameters")
+
+    def format_info(self) -> str:
+        """Format function info as readable string"""
+        lines = []
+        if self.name:
+            lines.append(f"- Name: {self.name}")
+        if self.address:
+            lines.append(f"- Address: {self.address}")
+        if self.signature:
+            lines.append(f"- Signature: {self.signature}")
+        if self.calling_convention:
+            lines.append(f"- Calling Convention: {self.calling_convention}")
+        if self.return_type:
+            lines.append(f"- Return Type: {self.return_type}")
+        if self.parameters:
+            params_str = ", ".join([f"{p.get('name', '?')}: {p.get('dataType', '?')}" for p in self.parameters])
+            lines.append(f"- Parameters: {params_str}")
+        return "\n".join(lines) if lines else "No additional info available"
+
 
 # ================= Core Infrastructure =================
 
@@ -145,7 +192,7 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
             json=json_data,
             data=data,
             headers=request_headers,
-            timeout=10
+            timeout=30  # For content with large amounts of data, it may take some time
         )
 
         try:
@@ -1430,13 +1477,38 @@ def disassembly_by_name(port: int = None, name: str = None) -> str:
 # ================= MCP Prompts =================
 # Prompts define reusable templates for LLM interactions
 
+def _build_function_context(name: str = None, address: str = None, port: int = None) -> FunctionContext:
+    """Helper to build FunctionContext from Ghidra data"""
+    ctx = FunctionContext(name=name, address=address)
+    fn_info = None
+    
+    if address:
+        ctx.decompiled_code = decompiled_function_by_address(address=address, port=port) or ""
+        ctx.disassembly = disassembly_by_address(address=address, port=port) or ""
+        fn_info = function_info_by_address(address=address, port=port)
+    elif name:
+        ctx.decompiled_code = decompiled_function_by_name(name=name, port=port) or ""
+        ctx.disassembly = disassembly_by_name(name=name, port=port) or ""
+        fn_info = function_info_by_name(name=name, port=port)
+    
+    if isinstance(fn_info, dict):
+        ctx.name = fn_info.get("name", ctx.name)
+        ctx.address = fn_info.get("address", ctx.address)
+        ctx.signature = fn_info.get("signature")
+        ctx.calling_convention = fn_info.get("callingConvention")
+        ctx.return_type = fn_info.get("returnType")
+        ctx.parameters = fn_info.get("parameters")
+    
+    return ctx
+
+
 @mcp.prompt("analyze_function")
-def analyze_function_prompt(name: str = None, address: str = None, port: int = None):
+def analyze_function_prompt(name: str = None, address: str = None, port: int = None) -> str:
     """A prompt to guide the LLM through analyzing a function
     
     Args:
         name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with address)
+        address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
@@ -1447,52 +1519,40 @@ def analyze_function_prompt(name: str = None, address: str = None, port: int = N
         if isinstance(fn_info, dict) and "name" in fn_info:
             name = fn_info["name"]
     
-    # Create the template that guides analysis
-    decompiled = ""
-    disasm = ""
-    fn_info = None
+    ctx = _build_function_context(name=name, address=address, port=port)
     
-    if address:
-        decompiled = decompiled_function_by_address(address=address, port=port)
-        disasm = disassembly_by_address(address=address, port=port)
-        fn_info = function_info_by_address(address=address, port=port)
-    elif name:
-        decompiled = decompiled_function_by_name(name=name, port=port)
-        disasm = disassembly_by_name(name=name, port=port)
-        fn_info = function_info_by_name(name=name, port=port)
-    
-    return {
-        "prompt": f"""
-        Analyze the following function: {name or address}
-        
-        Decompiled code:
-        ```c
-        {decompiled}
-        ```
-        
-        Disassembly:
-        ```
-        {disasm}
-        ```
-        
-        1. What is the purpose of this function?
-        2. What are the key parameters and their uses?
-        3. What are the return values and their meanings?
-        4. Are there any security concerns in this implementation?
-        5. Describe the algorithm or process being implemented.
-        """,
-        "context": {
-            "function_info": fn_info
-        }
-    }
+    return f"""# Function Analysis: {ctx.name or ctx.address}
+
+## Function Information
+{ctx.format_info()}
+
+## Decompiled Code
+```c
+{ctx.decompiled_code}
+```
+
+## Disassembly
+```asm
+{ctx.disassembly}
+```
+
+## Analysis Tasks
+Please analyze this function and answer the following:
+
+1. **Purpose**: What is the purpose of this function?
+2. **Parameters**: What are the key parameters and their uses?
+3. **Return Values**: What are the return values and their meanings?
+4. **Security Concerns**: Are there any security concerns in this implementation?
+5. **Algorithm**: Describe the algorithm or process being implemented.
+"""
 
 @mcp.prompt("identify_vulnerabilities")
-def identify_vulnerabilities_prompt(name: str = None, address: str = None, port: int = None):
+def identify_vulnerabilities_prompt(name: str = None, address: str = None, port: int = None) -> str:
     """A prompt to help identify potential vulnerabilities in a function
     
     Args:
         name: Function name (mutually exclusive with address)
-        address: Function address in hex format (mutually exclusive with address)
+        address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
@@ -1503,139 +1563,160 @@ def identify_vulnerabilities_prompt(name: str = None, address: str = None, port:
         if isinstance(fn_info, dict) and "name" in fn_info:
             name = fn_info["name"]
     
-    # Create the template focused on security analysis
-    decompiled = ""
-    disasm = ""
-    fn_info = None
+    ctx = _build_function_context(name=name, address=address, port=port)
     
-    if address:
-        decompiled = decompiled_function_by_address(address=address, port=port)
-        disasm = disassembly_by_address(address=address, port=port)
-        fn_info = function_info_by_address(address=address, port=port)
-    elif name:
-        decompiled = decompiled_function_by_name(name=name, port=port)
-        disasm = disassembly_by_name(name=name, port=port)
-        fn_info = function_info_by_name(name=name, port=port)
+    return f"""# Security Vulnerability Analysis: {ctx.name or ctx.address}
+
+## Function Information
+{ctx.format_info()}
+
+## Decompiled Code
+```c
+{ctx.decompiled_code}
+```
+
+## Disassembly (for reference)
+```asm
+{ctx.disassembly}
+```
+
+## Vulnerability Analysis Checklist
+
+Analyze this function for the following vulnerability types:
+
+1. **Buffer Overflows/Underflows**: Check array bounds, string operations
+2. **Integer Overflow/Underflow**: Arithmetic operations, size calculations
+3. **Use-After-Free / Double-Free**: Memory lifecycle issues
+4. **Format String Vulnerabilities**: Printf-family function usage
+5. **Missing Bounds Checks**: Input validation, loop conditions
+6. **Insecure Memory Operations**: memcpy, strcpy without size limits
+7. **Race Conditions**: Shared resource access, TOCTOU issues
+8. **Input Validation Problems**: Untrusted data handling
+
+## Report Format
+
+For each potential vulnerability found:
+- **Location**: Where in the code does it occur?
+- **Description**: What is the vulnerability?
+- **Impact**: What is the security impact (severity)?
+- **Exploitation**: How could it be exploited?
+- **Remediation**: How should it be fixed?
+"""
+
+def _build_program_info(port: int) -> ProgramInfo:
+    """Helper to build ProgramInfo from Ghidra instance data"""
+    raw_info = ghidra_instance(port=port)
     
-    return {
-        "prompt": f"""
-        Analyze the following function for security vulnerabilities: {name or address}
-        
-        Decompiled code:
-        ```c
-        {decompiled}
-        ```
-        
-        Look for these vulnerability types:
-        1. Buffer overflows or underflows
-        2. Integer overflow/underflow
-        3. Use-after-free or double-free bugs
-        4. Format string vulnerabilities
-        5. Missing bounds checks
-        6. Insecure memory operations
-        7. Race conditions or timing issues
-        8. Input validation problems
-        
-        For each potential vulnerability:
-        - Describe the vulnerability and where it occurs
-        - Explain the security impact
-        - Suggest how it could be exploited
-        - Recommend a fix
-        """,
-        "context": {
-            "function_info": fn_info,
-            "disassembly": disasm
-        }
-    }
+    if isinstance(raw_info, dict):
+        return ProgramInfo(
+            port=raw_info.get("port", port),
+            url=raw_info.get("url", f"http://localhost:{port}"),
+            program_name=raw_info.get("program_name", "unknown"),
+            program_id=raw_info.get("program_id", "unknown"),
+            language=raw_info.get("language", "unknown"),
+            compiler=raw_info.get("compiler", "unknown"),
+            base_address=raw_info.get("base_address", "0x0"),
+            memory_size=raw_info.get("memory_size", 0),
+            analysis_complete=raw_info.get("analysis_complete", False),
+            project=raw_info.get("project")
+        )
+    
+    return ProgramInfo(port=port, url=f"http://localhost:{port}")
+
 
 @mcp.prompt("reverse_engineer_binary")
-def reverse_engineer_binary_prompt(port: int = None):
+def reverse_engineer_binary_prompt(port: int = None) -> str:
     """A comprehensive prompt to guide the process of reverse engineering an entire binary
     
     Args:
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
+    info = _build_program_info(port)
     
-    # Get program info for context
-    program_info = ghidra_instance(port=port)
-    
-    # Create a comprehensive reverse engineering guide
-    return {
-        "prompt": f"""
-        # Comprehensive Binary Reverse Engineering Plan
-        
-        Begin reverse engineering the binary {program_info.get('program_name', 'unknown')} using a methodical approach.
-        
-        ## Phase 1: Initial Reconnaissance
-        1. Analyze entry points and the main function
-        2. Identify and catalog key functions and libraries
-        3. Map the overall program structure
-        4. Identify important data structures
-        
-        ## Phase 2: Functional Analysis
-        1. Start with main() or entry point functions and trace the control flow
-        2. Find and rename all unnamed functions (FUN_*) called from main
-        3. For each function:
-           - Decompile and analyze its purpose
-           - Rename with descriptive names following consistent patterns
-           - Add comments for complex logic
-           - Identify parameters and return values
-        4. Follow cross-references (xrefs) to understand context of function usage
-        5. Pay special attention to:
-           - File I/O operations
-           - Network communication
-           - Memory allocation/deallocation
-           - Authentication/encryption routines
-           - Data processing algorithms
-        
-        ## Phase 3: Data Flow Mapping
-        1. Identify key data structures and rename them meaningfully
-        2. Track global variables and their usage across functions
-        3. Map data transformations through the program
-        4. Identify sensitive data handling (keys, credentials, etc.)
-        
-        ## Phase 4: Deep Analysis
-        1. For complex functions, perform deeper analysis using:
-           - Data flow analysis
-           - Call graph analysis
-           - Security vulnerability scanning
-        2. Look for interesting patterns:
-           - Command processing routines
-           - State machines
-           - Protocol implementations
-           - Cryptographic operations
-        
-        ## Implementation Strategy
-        1. Start with functions called from main
-        2. Search for unnamed functions with pattern "FUN_*"
-        3. Decompile each function and analyze its purpose
-        4. Look at its call graph and cross-references to understand context
-        5. Rename the function based on its behavior
-        6. Document key insights
-        7. Continue iteratively until the entire program flow is mapped
-        
-        ## Function Prioritization
-        1. Start with entry points and initialization functions
-        2. Focus on functions with high centrality in the call graph
-        3. Pay special attention to functions with:
-           - Command processing logic
-           - Error handling
-           - Security checks
-           - Data transformation
-        
-        Remember to use the available GhydraMCP tools:
-        - Use functions_list to find functions matching patterns
-        - Use xrefs_list to find cross-references
-        - Use functions_decompile for C-like representations
-        - Use functions_disassemble for lower-level analysis
-        - Use functions_rename to apply meaningful names
-        - Use data_* tools to work with program data
-        """,
-        "context": {
-            "program_info": program_info 
-        }
-    }
+    return f"""# Comprehensive Binary Reverse Engineering Plan
+
+## Target Binary Information
+- **Program Name**: {info.program_name}
+- **Language/Architecture**: {info.language}
+- **Compiler**: {info.compiler}
+- **Base Address**: {info.base_address}
+- **Memory Size**: {info.memory_size:,} bytes
+- **Analysis Complete**: {info.analysis_complete}
+
+---
+
+## Phase 1: Initial Reconnaissance
+1. Analyze entry points and the main function
+2. Identify and catalog key functions and libraries
+3. Map the overall program structure
+4. Identify important data structures
+
+## Phase 2: Functional Analysis
+1. Start with main() or entry point functions and trace the control flow
+2. Find and rename all unnamed functions (FUN_*) called from main
+3. For each function:
+   - Decompile and analyze its purpose
+   - Rename with descriptive names following consistent patterns
+   - Add comments for complex logic
+   - Identify parameters and return values
+4. Follow cross-references (xrefs) to understand context of function usage
+5. Pay special attention to:
+   - File I/O operations
+   - Network communication
+   - Memory allocation/deallocation
+   - Authentication/encryption routines
+   - Data processing algorithms
+
+## Phase 3: Data Flow Mapping
+1. Identify key data structures and rename them meaningfully
+2. Track global variables and their usage across functions
+3. Map data transformations through the program
+4. Identify sensitive data handling (keys, credentials, etc.)
+
+## Phase 4: Deep Analysis
+1. For complex functions, perform deeper analysis using:
+   - Data flow analysis
+   - Call graph analysis
+   - Security vulnerability scanning
+2. Look for interesting patterns:
+   - Command processing routines
+   - State machines
+   - Protocol implementations
+   - Cryptographic operations
+
+---
+
+## Implementation Strategy
+1. Start with functions called from main
+2. Search for unnamed functions with pattern "FUN_*"
+3. Decompile each function and analyze its purpose
+4. Look at its call graph and cross-references to understand context
+5. Rename the function based on its behavior
+6. Document key insights
+7. Continue iteratively until the entire program flow is mapped
+
+## Function Prioritization
+1. Start with entry points and initialization functions
+2. Focus on functions with high centrality in the call graph
+3. Pay special attention to functions with:
+   - Command processing logic
+   - Error handling
+   - Security checks
+   - Data transformation
+
+---
+
+## Available GhydraMCP Tools
+- `functions_list` - Find functions matching patterns
+- `xrefs_list` - Find cross-references
+- `functions_decompile` - Get C-like representations
+- `functions_disassemble` - Get lower-level analysis
+- `functions_rename` - Apply meaningful names
+- `analysis_get_callgraph` - Visualize call relationships
+- `analysis_get_dataflow` - Track data flow
+- `data_*` tools - Work with program data
+"""
 
 # ================= MCP Tools =================
 # Since we can't use tool groups, we'll use namespaces in the function names
