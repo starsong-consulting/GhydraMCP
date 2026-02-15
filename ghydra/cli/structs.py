@@ -178,15 +178,15 @@ def update_field(ctx, struct_name, field_name, field_offset, new_name, new_type,
         ghydra structs update-field --struct-name "MyStruct" --field-offset 0 --new-name "newField1"
     """
     if not field_name and field_offset is None:
-        click.echo("Error: Either --field-name or --field-offset is required", err=True)
+        rich_echo("[red]Error:[/red] Either --field-name or --field-offset is required", err=True)
         ctx.exit(1)
 
     if field_name and field_offset is not None:
-        click.echo("Error: Cannot specify both --field-name and --field-offset", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --field-name and --field-offset", err=True)
         ctx.exit(1)
 
     if not new_name and not new_type and not new_comment:
-        click.echo("Error: At least one of --new-name, --new-type, or --new-comment is required", err=True)
+        rich_echo("[red]Error:[/red] At least one of --new-name, --new-type, or --new-comment is required", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']

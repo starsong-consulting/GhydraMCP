@@ -290,11 +290,11 @@ def rename_function(ctx, old_name, address, new_name):
         ghydra functions rename --address 0x401000 --new-name main
     """
     if not old_name and not address:
-        click.echo("Error: Either --old-name or --address is required", err=True)
+        rich_echo("[red]Error:[/red] Either --old-name or --address is required", err=True)
         ctx.exit(1)
 
     if old_name and address:
-        click.echo("Error: Cannot specify both --old-name and --address", err=True)
+        rich_echo("[red]Error:[/red] Cannot specify both --old-name and --address", err=True)
         ctx.exit(1)
 
     client = ctx.obj['client']
