@@ -72,6 +72,86 @@ public class GhidraUtil {
     }
     
     /**
+     * Resolves a data type by name using multiple lookup strategies.
+     * Tries direct path lookup, search by name, function signature parser,
+     * and built-in primitive type constructors as fallbacks.
+     *
+     * @param program The current program (used for DataTypeManager access)
+     * @param dataTypeName The name of the data type to resolve
+     * @return The resolved DataType, or null if not found by any strategy
+     */
+    public static DataType resolveDataType(Program program, String dataTypeName) {
+        if (program == null || dataTypeName == null || dataTypeName.isEmpty()) {
+            return null;
+        }
+
+        DataTypeManager dtm = program.getDataTypeManager();
+
+        // Try direct path lookup
+        DataType dataType = dtm.getDataType("/" + dataTypeName);
+
+        // Try search by name
+        if (dataType == null) {
+            dataType = dtm.findDataType("/" + dataTypeName);
+        }
+
+        // Try function signature parser
+        if (dataType == null) {
+            try {
+                ghidra.app.util.parser.FunctionSignatureParser parser =
+                    new ghidra.app.util.parser.FunctionSignatureParser(dtm, null);
+                dataType = parser.parse(null, dataTypeName);
+            } catch (Exception e) {
+                Msg.debug(GhidraUtil.class, "Function signature parser failed for '" + dataTypeName + "': " + e.getMessage());
+            }
+        }
+
+        // Try built-in primitive types as a last resort
+        if (dataType == null) {
+            switch (dataTypeName.toLowerCase()) {
+                case "byte":
+                    dataType = new ghidra.program.model.data.ByteDataType();
+                    break;
+                case "char":
+                    dataType = new ghidra.program.model.data.CharDataType();
+                    break;
+                case "word":
+                    dataType = new ghidra.program.model.data.WordDataType();
+                    break;
+                case "dword":
+                    dataType = new ghidra.program.model.data.DWordDataType();
+                    break;
+                case "qword":
+                    dataType = new ghidra.program.model.data.QWordDataType();
+                    break;
+                case "float":
+                    dataType = new ghidra.program.model.data.FloatDataType();
+                    break;
+                case "double":
+                    dataType = new ghidra.program.model.data.DoubleDataType();
+                    break;
+                case "int":
+                    dataType = new ghidra.program.model.data.IntegerDataType();
+                    break;
+                case "uint32_t":
+                    dataType = new ghidra.program.model.data.UnsignedIntegerDataType();
+                    break;
+                case "long":
+                    dataType = new ghidra.program.model.data.LongDataType();
+                    break;
+                case "pointer":
+                    dataType = new ghidra.program.model.data.PointerDataType();
+                    break;
+                case "string":
+                    dataType = new ghidra.program.model.data.StringDataType();
+                    break;
+            }
+        }
+
+        return dataType;
+    }
+
+    /**
      * Gets the current address as a string from the Ghidra tool.
      * @param tool The Ghidra plugin tool.
      * @return The current address as a string, or null if not available.
@@ -380,6 +460,85 @@ public class GhidraUtil {
         }
     }
     
+    /**
+     * Gets information about variables in a function using a pre-decompiled HighFunction.
+     * Avoids creating a new DecompInterface when results are already cached.
+     *
+     * @param function The function to get variables from.
+     * @param highFunc The pre-decompiled HighFunction (may be null, in which case
+     *                 only database variables are returned).
+     * @return A list of maps containing information about each variable.
+     */
+    public static List<Map<String, Object>> getFunctionVariables(Function function, HighFunction highFunc) {
+        List<Map<String, Object>> variables = new ArrayList<>();
+
+        if (function == null) {
+            return variables;
+        }
+
+        // Add parameters
+        for (Parameter param : function.getParameters()) {
+            Map<String, Object> varInfo = new HashMap<>();
+            varInfo.put("name", param.getName());
+            varInfo.put("type", param.getDataType().getName());
+            varInfo.put("isParameter", true);
+            varInfo.put("storage", param.getVariableStorage().toString());
+            varInfo.put("source", "database");
+            variables.add(varInfo);
+        }
+
+        // Add local variables from database
+        for (Variable var : function.getAllVariables()) {
+            if (var instanceof Parameter) {
+                continue;
+            }
+
+            Map<String, Object> varInfo = new HashMap<>();
+            varInfo.put("name", var.getName());
+            varInfo.put("type", var.getDataType().getName());
+            varInfo.put("isParameter", false);
+            varInfo.put("storage", var.getVariableStorage().toString());
+            varInfo.put("source", "database");
+            variables.add(varInfo);
+        }
+
+        // Add decompiler-generated variables from the provided HighFunction
+        if (highFunc != null) {
+            for (java.util.Iterator<ghidra.program.model.pcode.HighSymbol> iter =
+                    highFunc.getLocalSymbolMap().getSymbols(); iter.hasNext(); ) {
+
+                ghidra.program.model.pcode.HighSymbol highSymbol = iter.next();
+
+                boolean alreadyAdded = false;
+                for (Map<String, Object> var : variables) {
+                    if (var.get("name").equals(highSymbol.getName())) {
+                        alreadyAdded = true;
+                        break;
+                    }
+                }
+
+                if (!alreadyAdded) {
+                    Map<String, Object> varInfo = new HashMap<>();
+                    varInfo.put("name", highSymbol.getName());
+                    varInfo.put("type", highSymbol.getDataType() != null ?
+                        highSymbol.getDataType().getName() : "unknown");
+                    varInfo.put("isParameter", highSymbol.isParameter());
+                    varInfo.put("storage", highSymbol.getStorage() != null ?
+                        highSymbol.getStorage().toString() : "unknown");
+                    varInfo.put("source", "decompiler");
+
+                    if (highSymbol.getPCAddress() != null) {
+                        varInfo.put("pcAddress", highSymbol.getPCAddress().toString());
+                    }
+
+                    variables.add(varInfo);
+                }
+            }
+        }
+
+        return variables;
+    }
+
     /**
      * Gets information about variables in a function, including decompiler variables.
      * @param function The function to get variables from.

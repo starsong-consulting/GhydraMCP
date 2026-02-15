@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.util.DecompilerCache;
     import eu.starsong.ghidra.util.TransactionHelper;
     import eu.starsong.ghidra.util.TransactionHelper.TransactionException;
     import ghidra.app.decompiler.DecompInterface;
@@ -47,6 +48,11 @@ package eu.starsong.ghidra.endpoints;
         
         public VariableEndpoints(Program program, int port, PluginTool tool) {
             super(program, port);
+            this.tool = tool;
+        }
+
+        public VariableEndpoints(Program program, int port, PluginTool tool, DecompilerCache cache) {
+            super(program, port, cache);
             this.tool = tool;
         }
         
@@ -270,30 +276,87 @@ package eu.starsong.ghidra.endpoints;
             
             // If we don't need locals for the current page, return globals with estimation
             if (startIdx >= globalVarCount) {
-                // Adjust for local variable processing
                 int localOffset = startIdx - globalVarCount;
                 int localLimit = limit;
-                
-                // Process functions to get the local variables
-                DecompInterface decomp = null;
+
+                DecompInterface fallbackDecomp = createFallbackDecomp(program);
                 try {
-                    decomp = new DecompInterface();
-                    if (decomp.openProgram(program)) {
-                        int localVarIndex = 0;
+                    int localVarIndex = 0;
+                    int functionsProcessed = 0;
+                    int maxFunctionsToProcess = 20;
+
+                    for (Function function : program.getFunctionManager().getFunctions(true)) {
+                        try {
+                            DecompileResults results = decompileForVariables(function, fallbackDecomp, 10);
+                            if (results != null && results.decompileCompleted()) {
+                                HighFunction highFunc = results.getHighFunction();
+                                if (highFunc != null) {
+                                    List<Map<String, String>> functionVars = new ArrayList<>();
+                                    Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
+                                    while (symbolIter.hasNext()) {
+                                        HighSymbol symbol = symbolIter.next();
+                                        if (!symbol.isParameter()) {
+                                            Map<String, String> varInfo = new HashMap<>();
+                                            varInfo.put("name", symbol.getName());
+                                            varInfo.put("type", "local");
+                                            varInfo.put("function", function.getName());
+                                            Address pcAddr = symbol.getPCAddress();
+                                            varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
+                                            varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
+                                            functionVars.add(varInfo);
+                                        }
+                                    }
+
+                                    functionVars.sort(Comparator.comparing(a -> a.get("name")));
+
+                                    for (Map<String, String> varInfo : functionVars) {
+                                        if (localVarIndex >= localOffset && localVarIndex < localOffset + localLimit) {
+                                            variables.add(varInfo);
+                                        }
+                                        localVarIndex++;
+                                        if (localVarIndex >= localOffset + localLimit) {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(), e);
+                        }
+
+                        functionsProcessed++;
+                        if (functionsProcessed >= maxFunctionsToProcess || localVarIndex >= localOffset + localLimit) {
+                            break;
+                        }
+                    }
+
+                    hasMore = functionsProcessed < funcCount || localVarIndex >= localOffset + localLimit;
+                } catch (Exception e) {
+                    Msg.error(this, "listVariablesPaginated: Error during local variable processing", e);
+                } finally {
+                    if (fallbackDecomp != null) {
+                        fallbackDecomp.dispose();
+                    }
+                }
+            } else {
+                int remainingSpace = limit - variables.size();
+                if (remainingSpace > 0) {
+                    DecompInterface fallbackDecomp = createFallbackDecomp(program);
+                    try {
                         int functionsProcessed = 0;
-                        int maxFunctionsToProcess = 20; // Limit how many functions we process per request
-                        
+                        int maxFunctionsToProcess = 5;
+                        int localVarsAdded = 0;
+
                         for (Function function : program.getFunctionManager().getFunctions(true)) {
                             try {
-                                DecompileResults results = decomp.decompileFunction(function, 10, new ConsoleTaskMonitor());
+                                DecompileResults results = decompileForVariables(function, fallbackDecomp, 10);
                                 if (results != null && results.decompileCompleted()) {
                                     HighFunction highFunc = results.getHighFunction();
                                     if (highFunc != null) {
-                                        List<Map<String, String>> functionVars = new ArrayList<>();
                                         Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
-                                        while (symbolIter.hasNext()) {
+                                        while (symbolIter.hasNext() && localVarsAdded < remainingSpace) {
                                             HighSymbol symbol = symbolIter.next();
-                                            if (!symbol.isParameter()) { // Only list locals
+                                            if (!symbol.isParameter()) {
                                                 Map<String, String> varInfo = new HashMap<>();
                                                 varInfo.put("name", symbol.getName());
                                                 varInfo.put("type", "local");
@@ -301,21 +364,8 @@ package eu.starsong.ghidra.endpoints;
                                                 Address pcAddr = symbol.getPCAddress();
                                                 varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
                                                 varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
-                                                functionVars.add(varInfo);
-                                            }
-                                        }
-                                        
-                                        // Sort function variables by name
-                                        functionVars.sort(Comparator.comparing(a -> a.get("name")));
-                                        
-                                        // Add only the needed variables for this page
-                                        for (Map<String, String> varInfo : functionVars) {
-                                            if (localVarIndex >= localOffset && localVarIndex < localOffset + localLimit) {
                                                 variables.add(varInfo);
-                                            }
-                                            localVarIndex++;
-                                            if (localVarIndex >= localOffset + localLimit) {
-                                                break;
+                                                localVarsAdded++;
                                             }
                                         }
                                     }
@@ -323,79 +373,19 @@ package eu.starsong.ghidra.endpoints;
                             } catch (Exception e) {
                                 Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(), e);
                             }
-                            
+
                             functionsProcessed++;
-                            if (functionsProcessed >= maxFunctionsToProcess || localVarIndex >= localOffset + localLimit) {
-                                // Stop processing if we've hit our limits
+                            if (functionsProcessed >= maxFunctionsToProcess || localVarsAdded >= remainingSpace) {
                                 break;
                             }
                         }
-                        
-                        // Determine if we have more variables
-                        hasMore = functionsProcessed < funcCount || localVarIndex >= localOffset + localLimit;
-                    }
-                } catch (Exception e) {
-                    Msg.error(this, "listVariablesPaginated: Error during local variable processing", e);
-                } finally {
-                    if (decomp != null) {
-                        decomp.dispose();
-                    }
-                }
-            } else {
-                // This means we already have some globals and may need a few locals to complete the page
-                int remainingSpace = limit - variables.size();
-                if (remainingSpace > 0) {
-                    // Process just enough functions to fill the page
-                    DecompInterface decomp = null;
-                    try {
-                        decomp = new DecompInterface();
-                        if (decomp.openProgram(program)) {
-                            int functionsProcessed = 0;
-                            int maxFunctionsToProcess = 5; // Limit how many functions we process
-                            int localVarsAdded = 0;
-                            
-                            for (Function function : program.getFunctionManager().getFunctions(true)) {
-                                try {
-                                    DecompileResults results = decomp.decompileFunction(function, 10, new ConsoleTaskMonitor());
-                                    if (results != null && results.decompileCompleted()) {
-                                        HighFunction highFunc = results.getHighFunction();
-                                        if (highFunc != null) {
-                                            Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
-                                            while (symbolIter.hasNext() && localVarsAdded < remainingSpace) {
-                                                HighSymbol symbol = symbolIter.next();
-                                                if (!symbol.isParameter()) { // Only list locals
-                                                    Map<String, String> varInfo = new HashMap<>();
-                                                    varInfo.put("name", symbol.getName());
-                                                    varInfo.put("type", "local");
-                                                    varInfo.put("function", function.getName());
-                                                    Address pcAddr = symbol.getPCAddress();
-                                                    varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
-                                                    varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
-                                                    variables.add(varInfo);
-                                                    localVarsAdded++;
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch (Exception e) {
-                                    Msg.warn(this, "listVariablesPaginated: Error processing function " + function.getName(), e);
-                                }
-                                
-                                functionsProcessed++;
-                                if (functionsProcessed >= maxFunctionsToProcess || localVarsAdded >= remainingSpace) {
-                                    // Stop processing if we've hit our limits
-                                    break;
-                                }
-                            }
-                            
-                            // Determine if we have more variables
-                            hasMore = functionsProcessed < funcCount || localVarsAdded >= remainingSpace;
-                        }
+
+                        hasMore = functionsProcessed < funcCount || localVarsAdded >= remainingSpace;
                     } catch (Exception e) {
                         Msg.error(this, "listVariablesPaginated: Error during local variable processing", e);
                     } finally {
-                        if (decomp != null) {
-                            decomp.dispose();
+                        if (fallbackDecomp != null) {
+                            fallbackDecomp.dispose();
                         }
                     }
                 }
@@ -493,28 +483,85 @@ package eu.starsong.ghidra.endpoints;
             
             // If we don't need locals for the current page, return globals with estimation
             if (startIdx >= globalCount) {
-                // Adjust for local variable processing
                 int localOffset = startIdx - globalCount;
                 int localLimit = limit;
-                
-                // Process functions to get the local variables
-                DecompInterface decomp = null;
+
+                DecompInterface fallbackDecomp = createFallbackDecomp(program);
                 try {
-                    decomp = new DecompInterface();
-                    if (decomp.openProgram(program)) {
-                        int localVarIndex = 0;
+                    int localVarIndex = 0;
+                    int functionsProcessed = 0;
+                    int maxFunctionsToProcess = 30;
+
+                    for (Function function : program.getFunctionManager().getFunctions(true)) {
+                        try {
+                            DecompileResults results = decompileForVariables(function, fallbackDecomp, 5);
+                            if (results != null && results.decompileCompleted()) {
+                                HighFunction highFunc = results.getHighFunction();
+                                if (highFunc != null) {
+                                    List<Map<String, String>> functionMatches = new ArrayList<>();
+                                    Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
+                                    while (symbolIter.hasNext()) {
+                                        HighSymbol symbol = symbolIter.next();
+                                        if (symbol.getName().toLowerCase().contains(lowerSearchTerm)) {
+                                            Map<String, String> varInfo = new HashMap<>();
+                                            varInfo.put("name", symbol.getName());
+                                            varInfo.put("function", function.getName());
+                                            varInfo.put("type", symbol.isParameter() ? "parameter" : "local");
+                                            Address pcAddr = symbol.getPCAddress();
+                                            varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
+                                            varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
+                                            functionMatches.add(varInfo);
+                                        }
+                                    }
+
+                                    functionMatches.sort(Comparator.comparing(a -> a.get("name")));
+
+                                    for (Map<String, String> varInfo : functionMatches) {
+                                        if (localVarIndex >= localOffset && localVarIndex < localOffset + localLimit) {
+                                            matchedVars.add(varInfo);
+                                        }
+                                        localVarIndex++;
+                                        if (localVarIndex >= localOffset + localLimit) {
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(), e);
+                        }
+
+                        functionsProcessed++;
+                        if (functionsProcessed >= maxFunctionsToProcess || localVarIndex >= localOffset + localLimit) {
+                            break;
+                        }
+                    }
+
+                    hasMore = functionsProcessed < funcCount || localVarIndex >= localOffset + localLimit;
+                } catch (Exception e) {
+                    Msg.error(this, "searchVariablesPaginated: Error during local variable search", e);
+                } finally {
+                    if (fallbackDecomp != null) {
+                        fallbackDecomp.dispose();
+                    }
+                }
+            } else {
+                int remainingSpace = limit - matchedVars.size();
+                if (remainingSpace > 0) {
+                    DecompInterface fallbackDecomp = createFallbackDecomp(program);
+                    try {
                         int functionsProcessed = 0;
-                        int maxFunctionsToProcess = 30; // Limit how many functions we process for search
-                        
+                        int maxFunctionsToProcess = 5;
+                        int localVarsAdded = 0;
+
                         for (Function function : program.getFunctionManager().getFunctions(true)) {
                             try {
-                                DecompileResults results = decomp.decompileFunction(function, 5, new ConsoleTaskMonitor());
+                                DecompileResults results = decompileForVariables(function, fallbackDecomp, 5);
                                 if (results != null && results.decompileCompleted()) {
                                     HighFunction highFunc = results.getHighFunction();
                                     if (highFunc != null) {
-                                        List<Map<String, String>> functionMatches = new ArrayList<>();
                                         Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
-                                        while (symbolIter.hasNext()) {
+                                        while (symbolIter.hasNext() && localVarsAdded < remainingSpace) {
                                             HighSymbol symbol = symbolIter.next();
                                             if (symbol.getName().toLowerCase().contains(lowerSearchTerm)) {
                                                 Map<String, String> varInfo = new HashMap<>();
@@ -524,21 +571,8 @@ package eu.starsong.ghidra.endpoints;
                                                 Address pcAddr = symbol.getPCAddress();
                                                 varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
                                                 varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
-                                                functionMatches.add(varInfo);
-                                            }
-                                        }
-                                        
-                                        // Sort function matches by name
-                                        functionMatches.sort(Comparator.comparing(a -> a.get("name")));
-                                        
-                                        // Add only the needed variables for this page
-                                        for (Map<String, String> varInfo : functionMatches) {
-                                            if (localVarIndex >= localOffset && localVarIndex < localOffset + localLimit) {
                                                 matchedVars.add(varInfo);
-                                            }
-                                            localVarIndex++;
-                                            if (localVarIndex >= localOffset + localLimit) {
-                                                break;
+                                                localVarsAdded++;
                                             }
                                         }
                                     }
@@ -546,79 +580,19 @@ package eu.starsong.ghidra.endpoints;
                             } catch (Exception e) {
                                 Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(), e);
                             }
-                            
+
                             functionsProcessed++;
-                            if (functionsProcessed >= maxFunctionsToProcess || localVarIndex >= localOffset + localLimit) {
-                                // Stop processing if we've hit our limits
+                            if (functionsProcessed >= maxFunctionsToProcess || localVarsAdded >= remainingSpace) {
                                 break;
                             }
                         }
-                        
-                        // Determine if we have more variables
-                        hasMore = functionsProcessed < funcCount || localVarIndex >= localOffset + localLimit;
-                    }
-                } catch (Exception e) {
-                    Msg.error(this, "searchVariablesPaginated: Error during local variable search", e);
-                } finally {
-                    if (decomp != null) {
-                        decomp.dispose();
-                    }
-                }
-            } else {
-                // This means we already have some globals and may need a few locals to complete the page
-                int remainingSpace = limit - matchedVars.size();
-                if (remainingSpace > 0) {
-                    // Process functions until we've filled the page
-                    DecompInterface decomp = null;
-                    try {
-                        decomp = new DecompInterface();
-                        if (decomp.openProgram(program)) {
-                            int functionsProcessed = 0;
-                            int maxFunctionsToProcess = 5; // Limit how many functions we process
-                            int localVarsAdded = 0;
-                            
-                            for (Function function : program.getFunctionManager().getFunctions(true)) {
-                                try {
-                                    DecompileResults results = decomp.decompileFunction(function, 5, new ConsoleTaskMonitor());
-                                    if (results != null && results.decompileCompleted()) {
-                                        HighFunction highFunc = results.getHighFunction();
-                                        if (highFunc != null) {
-                                            Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols();
-                                            while (symbolIter.hasNext() && localVarsAdded < remainingSpace) {
-                                                HighSymbol symbol = symbolIter.next();
-                                                if (symbol.getName().toLowerCase().contains(lowerSearchTerm)) {
-                                                    Map<String, String> varInfo = new HashMap<>();
-                                                    varInfo.put("name", symbol.getName());
-                                                    varInfo.put("function", function.getName());
-                                                    varInfo.put("type", symbol.isParameter() ? "parameter" : "local");
-                                                    Address pcAddr = symbol.getPCAddress();
-                                                    varInfo.put("address", pcAddr != null ? pcAddr.toString() : "N/A");
-                                                    varInfo.put("dataType", symbol.getDataType() != null ? symbol.getDataType().getName() : "unknown");
-                                                    matchedVars.add(varInfo);
-                                                    localVarsAdded++;
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch (Exception e) {
-                                    Msg.warn(this, "searchVariablesPaginated: Error processing function " + function.getName(), e);
-                                }
-                                
-                                functionsProcessed++;
-                                if (functionsProcessed >= maxFunctionsToProcess || localVarsAdded >= remainingSpace) {
-                                    // Stop processing if we've hit our limits
-                                    break;
-                                }
-                            }
-                            
-                            // Determine if we have more variables
-                            hasMore = functionsProcessed < funcCount || localVarsAdded >= remainingSpace;
-                        }
+
+                        hasMore = functionsProcessed < funcCount || localVarsAdded >= remainingSpace;
                     } catch (Exception e) {
                         Msg.error(this, "searchVariablesPaginated: Error during local variable search", e);
                     } finally {
-                        if (decomp != null) {
-                            decomp.dispose();
+                        if (fallbackDecomp != null) {
+                            fallbackDecomp.dispose();
                         }
                     }
                 }
@@ -628,6 +602,36 @@ package eu.starsong.ghidra.endpoints;
             matchedVars.sort(Comparator.comparing(a -> a.get("name")));
             
             return new PaginatedResult(matchedVars, hasMore, totalEstimate);
+        }
+
+        /**
+         * Get DecompileResults for a function, using the cache if available.
+         */
+        private DecompileResults decompileForVariables(Function function, DecompInterface fallbackDecomp, int timeout) {
+            DecompilerCache cache = getDecompilerCache();
+            if (cache != null) {
+                return cache.getDecompileResults(function, timeout);
+            }
+            if (fallbackDecomp != null) {
+                try {
+                    return fallbackDecomp.decompileFunction(function, timeout, new ConsoleTaskMonitor());
+                } catch (Exception e) {
+                    Msg.warn(this, "Decompilation failed for " + function.getName(), e);
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Create a fallback DecompInterface if no cache is available. Returns null if cache exists.
+         */
+        private DecompInterface createFallbackDecomp(Program program) {
+            if (getDecompilerCache() != null) {
+                return null;
+            }
+            DecompInterface decomp = new DecompInterface();
+            decomp.openProgram(program);
+            return decomp;
         }
 
         // --- Helper Methods ---

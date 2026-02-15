@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.model.FunctionInfo;
+import eu.starsong.ghidra.util.DecompilerCache;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.HttpUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
@@ -43,9 +44,14 @@ public class FunctionEndpoints extends AbstractEndpoint {
     public FunctionEndpoints(Program program, int port) {
         super(program, port);
     }
-    
+
     public FunctionEndpoints(Program program, int port, PluginTool tool) {
         super(program, port);
+        this.tool = tool;
+    }
+
+    public FunctionEndpoints(Program program, int port, PluginTool tool, DecompilerCache cache) {
+        super(program, port, cache);
         this.tool = tool;
     }
     
@@ -96,10 +102,10 @@ public class FunctionEndpoints extends AbstractEndpoint {
             // Get the current program
             Program program = getCurrentProgram();
             if (program == null) {
-                sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+                sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
                 return;
             }
-            
+
             // Extract function address from path
             String functionAddress = path.substring("/functions/".length());
             
@@ -405,7 +411,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
         if (newName != null && !newName.isEmpty() && !newName.equals(function.getName())) {
             // Rename function
             try {
-                TransactionHelper.executeInTransaction(program, "Rename Function", () -> {
+                TransactionHelper.executeInTransaction(program, "Rename function to " + newName, () -> {
                     function.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
                     return null;
                 });
@@ -415,14 +421,13 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
         }
-        
+
         if (signature != null && !signature.isEmpty()) {
-            // Update function signature using our utility method
             try {
-                boolean success = TransactionHelper.executeInTransaction(program, "Set Function Signature", () -> {
+                boolean success = TransactionHelper.executeInTransaction(program, "Set function signature for " + function.getName(), () -> {
                     return GhidraUtil.setFunctionSignature(function, signature);
                 });
-                
+
                 if (!success) {
                     sendErrorResponse(exchange, 400, "Failed to set function signature: invalid signature format", "SIGNATURE_FAILED");
                     return;
@@ -433,11 +438,10 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
         }
-        
+
         if (comment != null) {
-            // Update comment
             try {
-                TransactionHelper.executeInTransaction(program, "Set Function Comment", () -> {
+                TransactionHelper.executeInTransaction(program, "Set comment on function " + function.getName(), () -> {
                     function.setComment(comment);
                     return null;
                 });
@@ -447,24 +451,24 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
         }
-        
+
         if (!changed) {
             sendErrorResponse(exchange, 400, "No changes specified", "NO_CHANGES");
             return;
         }
-        
+
         // Return updated function with RESTful response structure
         FunctionInfo info = buildFunctionInfo(function);
-        
+
         ResponseBuilder builder = new ResponseBuilder(exchange, port)
             .success(true)
             .result(info);
-        
+
         // Add HATEOAS links
         builder.addLink("self", "/programs/current/functions/" + function.getEntryPoint());
         builder.addLink("by_name", "/programs/current/functions/by-name/" + function.getName());
         builder.addLink("program", "/programs/current");
-        
+
         sendJsonResponse(exchange, builder.build(), 200);
     }
     
@@ -525,7 +529,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
         
         // Use CreateFunctionCmd — same as pressing F in the UI
         try {
-            Function function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+            Function function = TransactionHelper.executeInTransaction(program, "Create function at " + addressStr, () -> {
                 ghidra.app.cmd.function.CreateFunctionCmd cmd =
                     new ghidra.app.cmd.function.CreateFunctionCmd(address);
                 if (!cmd.applyTo(program)) {
@@ -565,10 +569,10 @@ public class FunctionEndpoints extends AbstractEndpoint {
             // Always check for program availability first
             Program program = getCurrentProgram();
             if (program == null) {
-                sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+                sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
                 return;
             }
-            
+
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> params = parseQueryParams(exchange);
                 int offset = parseIntOrDefault(params.get("offset"), 0);
@@ -849,7 +853,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
     public void handleGetFunction(HttpExchange exchange, String functionName) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+            sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
             return;
         }
         
@@ -887,7 +891,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
     private void handleUpdateFunction(HttpExchange exchange, String functionName) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+            sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
             return;
         }
         
@@ -909,7 +913,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
         if (newName != null && !newName.isEmpty() && !newName.equals(function.getName())) {
             // Rename function
             try {
-                TransactionHelper.executeInTransaction(program, "Rename Function", () -> {
+                TransactionHelper.executeInTransaction(program, "Rename function to " + newName, () -> {
                     function.setName(newName, ghidra.program.model.symbol.SourceType.USER_DEFINED);
                     return null;
                 });
@@ -919,14 +923,13 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
         }
-        
+
         if (signature != null && !signature.isEmpty()) {
-            // Update function signature using our utility method
             try {
-                boolean success = TransactionHelper.executeInTransaction(program, "Set Function Signature", () -> {
+                boolean success = TransactionHelper.executeInTransaction(program, "Set function signature for " + function.getName(), () -> {
                     return GhidraUtil.setFunctionSignature(function, signature);
                 });
-                
+
                 if (!success) {
                     sendErrorResponse(exchange, 400, "Failed to set function signature: invalid signature format", "SIGNATURE_FAILED");
                     return;
@@ -937,11 +940,10 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
         }
-        
+
         if (comment != null) {
-            // Update comment
             try {
-                TransactionHelper.executeInTransaction(program, "Set Function Comment", () -> {
+                TransactionHelper.executeInTransaction(program, "Set comment on function " + function.getName(), () -> {
                     function.setComment(comment);
                     return null;
                 });
@@ -951,12 +953,12 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
         }
-        
+
         if (!changed) {
             sendErrorResponse(exchange, 400, "No changes specified", "NO_CHANGES");
             return;
         }
-        
+
         // Return updated function
         FunctionInfo info = buildFunctionInfo(function);
         
@@ -984,7 +986,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
     private void handleCreateFunction(HttpExchange exchange) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 503, "No program is currently loaded", "NO_PROGRAM_LOADED");
+            sendErrorResponse(exchange, 400, "No program is currently loaded", "NO_PROGRAM_LOADED");
             return;
         }
         
@@ -1021,7 +1023,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
 
         // Use CreateFunctionCmd — same as pressing F in the UI
         try {
-            Function function = TransactionHelper.executeInTransaction(program, "Create Function", () -> {
+            Function function = TransactionHelper.executeInTransaction(program, "Create function at " + addressStr, () -> {
                 ghidra.app.cmd.function.CreateFunctionCmd cmd =
                     new ghidra.app.cmd.function.CreateFunctionCmd(address);
                 if (!cmd.applyTo(program)) {
@@ -1068,8 +1070,14 @@ public class FunctionEndpoints extends AbstractEndpoint {
             int endLine = parseIntOrDefault(params.get("end_line"), -1);
             int maxLines = parseIntOrDefault(params.get("max_lines"), -1);
 
-            // Decompile function with configurable options
-            String decompilation = GhidraUtil.decompileFunction(function, showConstants, timeout);
+            // Decompile function — use cache if available, fall back to static method
+            String decompilation;
+            DecompilerCache cache = getDecompilerCache();
+            if (cache != null) {
+                decompilation = cache.getDecompiledCode(function, timeout);
+            } else {
+                decompilation = GhidraUtil.decompileFunction(function, showConstants, timeout);
+            }
 
             // Apply line filtering if requested
             String filteredDecompilation = decompilation;
@@ -1265,7 +1273,15 @@ public class FunctionEndpoints extends AbstractEndpoint {
      */
     public void handleFunctionVariables(HttpExchange exchange, Function function) throws IOException {
         if ("GET".equals(exchange.getRequestMethod())) {
-            List<Map<String, Object>> variables = GhidraUtil.getFunctionVariables(function);
+            List<Map<String, Object>> variables;
+            DecompilerCache cache = getDecompilerCache();
+            if (cache != null) {
+                DecompileResults results = cache.getDecompileResults(function, 30);
+                HighFunction hf = (results != null && results.decompileCompleted()) ? results.getHighFunction() : null;
+                variables = GhidraUtil.getFunctionVariables(function, hf);
+            } else {
+                variables = GhidraUtil.getFunctionVariables(function);
+            }
             
             Map<String, Object> functionInfo = new HashMap<>();
             functionInfo.put("address", function.getEntryPoint().toString());
@@ -1332,30 +1348,40 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 return;
             }
             
-            boolean success = TransactionHelper.executeInTransaction(program, "Update Variable", () -> {
+            // Get DecompileResults — prefer cache
+            DecompilerCache cache = getDecompilerCache();
+            DecompileResults decompResults;
+            if (cache != null) {
+                decompResults = cache.getDecompileResults(function, 30);
+            } else {
+                DecompInterface decomp = new DecompInterface();
                 try {
-                    // This requires a decompile operation to get the HighFunction
-                    DecompInterface decomp = new DecompInterface();
-                    try {
-                        decomp.openProgram(program);
-                        DecompileResults results = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
-                        
-                        if (results.decompileCompleted()) {
-                            HighFunction highFunc = results.getHighFunction();
-                            if (highFunc != null) {
-                                // Find the variable in the high function
-                                for (Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols(); symbolIter.hasNext();) {
-                                    HighSymbol symbol = symbolIter.next();
-                                    if (symbol.getName().equals(variableName)) {
-                                        // Rename the variable using HighFunctionDBUtil
-                                        HighFunctionDBUtil.updateDBVariable(symbol, newName, null, SourceType.USER_DEFINED);
-                                        return true;
-                                    }
-                                }
-                            }
+                    decomp.openProgram(program);
+                    decompResults = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                } finally {
+                    decomp.dispose();
+                }
+            }
+
+            if (decompResults == null || !decompResults.decompileCompleted()) {
+                sendErrorResponse(exchange, 500, "Decompilation failed for " + function.getName(), "DECOMPILE_FAILED");
+                return;
+            }
+
+            HighFunction highFunc = decompResults.getHighFunction();
+            if (highFunc == null) {
+                sendErrorResponse(exchange, 500, "No high function available", "DECOMPILE_FAILED");
+                return;
+            }
+
+            boolean success = TransactionHelper.executeInTransaction(program, "Update variable " + variableName + " in " + function.getName(), () -> {
+                try {
+                    for (Iterator<HighSymbol> symbolIter = highFunc.getLocalSymbolMap().getSymbols(); symbolIter.hasNext();) {
+                        HighSymbol symbol = symbolIter.next();
+                        if (symbol.getName().equals(variableName)) {
+                            HighFunctionDBUtil.updateDBVariable(symbol, newName, null, SourceType.USER_DEFINED);
+                            return true;
                         }
-                    } finally {
-                        decomp.dispose();
                     }
                     return false;
                 } catch (Exception e) {
@@ -1363,6 +1389,11 @@ public class FunctionEndpoints extends AbstractEndpoint {
                     return false;
                 }
             });
+
+            // Invalidate cache entry after write
+            if (cache != null) {
+                cache.invalidate(function.getEntryPoint());
+            }
             
             if (success) {
                 // Create a successful response

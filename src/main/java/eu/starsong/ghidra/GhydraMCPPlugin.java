@@ -4,6 +4,7 @@ package eu.starsong.ghidra;
 import eu.starsong.ghidra.api.*;
 import eu.starsong.ghidra.endpoints.*;
 import eu.starsong.ghidra.util.*;
+import eu.starsong.ghidra.util.DecompilerCache;
 import eu.starsong.ghidra.model.*;
 
 import java.io.IOException;
@@ -53,6 +54,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
     private HttpServer server;
     private int port;
     private boolean isBaseInstance = false;
+    private DecompilerCache decompilerCache;
 
     /**
      * Constructor for GhydraMCP Plugin.
@@ -70,6 +72,8 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
                 Msg.info(this, "Starting as base instance on port " + port);
             }
         }
+
+        this.decompilerCache = new DecompilerCache();
 
         Msg.info(this, "GhydraMCPPlugin loaded on port " + port);
         System.out.println("[GhydraMCP] Plugin loaded on port " + port);
@@ -136,8 +140,8 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         Program currentProgram = getCurrentProgram();
         Msg.info(this, "Current program at registration time: " + (currentProgram != null ? currentProgram.getName() : "none"));
         
-        new FunctionEndpoints(currentProgram, port, tool).registerEndpoints(server);
-        new VariableEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new FunctionEndpoints(currentProgram, port, tool, decompilerCache).registerEndpoints(server);
+        new VariableEndpoints(currentProgram, port, tool, decompilerCache).registerEndpoints(server);
         new ClassEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new SegmentEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new SymbolEndpoints(currentProgram, port, tool).registerEndpoints(server);
@@ -452,8 +456,11 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
      */
     @Override
     public void dispose() {
+        if (decompilerCache != null) {
+            decompilerCache.dispose();
+        }
         if (server != null) {
-            server.stop(0); // Stop immediately
+            server.stop(0);
             Msg.info(this, "GhydraMCP HTTP server stopped on port " + port);
             System.out.println("[GhydraMCP] HTTP server stopped on port " + port);
         }
