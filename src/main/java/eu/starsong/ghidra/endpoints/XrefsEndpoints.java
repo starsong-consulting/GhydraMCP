@@ -11,6 +11,9 @@ import ghidra.program.model.symbol.Reference;
 import ghidra.program.model.symbol.ReferenceIterator;
 import ghidra.program.model.symbol.ReferenceManager;
 import ghidra.program.model.symbol.RefType;
+import ghidra.program.model.address.AddressIterator;
+import ghidra.program.model.address.AddressSet;
+import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.listing.CodeUnit;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
@@ -119,30 +122,56 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 // Get reference manager
                 ReferenceManager refManager = program.getReferenceManager();
                 List<Map<String, Object>> referencesList = new ArrayList<>();
-                
-                // Get references to this address
+                Set<String> seenRefs = new HashSet<>();
+
+                // Get references TO the target address/function
                 if (toAddr != null) {
-                    // Get references to this address - must manually convert array
-                    for (Reference ref : collectReferences(refManager.getReferencesTo(toAddr))) {
-                        if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
-                            continue; // Skip if type filter doesn't match
+                    // If to_addr is a function entry point, collect refs to all
+                    // addresses in the function body (matches Ghidra UI behavior)
+                    Function toFunc = program.getFunctionManager().getFunctionAt(toAddr);
+                    Iterable<Address> targetAddresses;
+                    if (toFunc != null) {
+                        targetAddresses = toFunc.getBody().getAddresses(true);
+                    } else {
+                        targetAddresses = Collections.singletonList(toAddr);
+                    }
+
+                    for (Address target : targetAddresses) {
+                        for (Reference ref : collectReferences(refManager.getReferencesTo(target))) {
+                            if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
+                                continue;
+                            }
+                            // Deduplicate by from+to address pair
+                            String key = ref.getFromAddress() + "->" + ref.getToAddress();
+                            if (seenRefs.add(key)) {
+                                referencesList.add(createReferenceMap(program, ref, "to"));
+                            }
                         }
-                        
-                        Map<String, Object> refMap = createReferenceMap(program, ref, "to");
-                        referencesList.add(refMap);
                     }
                 }
-                
-                // Get references from this address
+
+                // Get references FROM the source address/function
                 if (fromAddr != null) {
-                    // Get references from this address - must manually convert array
-                    for (Reference ref : collectReferences(refManager.getReferencesFrom(fromAddr))) {
-                        if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
-                            continue; // Skip if type filter doesn't match
+                    // If from_addr is a function entry point, collect refs from all
+                    // addresses in the function body
+                    Function fromFunc = program.getFunctionManager().getFunctionAt(fromAddr);
+                    Iterable<Address> sourceAddresses;
+                    if (fromFunc != null) {
+                        sourceAddresses = fromFunc.getBody().getAddresses(true);
+                    } else {
+                        sourceAddresses = Collections.singletonList(fromAddr);
+                    }
+
+                    for (Address source : sourceAddresses) {
+                        for (Reference ref : collectReferences(refManager.getReferencesFrom(source))) {
+                            if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
+                                continue;
+                            }
+                            String key = ref.getFromAddress() + "->" + ref.getToAddress();
+                            if (seenRefs.add(key)) {
+                                referencesList.add(createReferenceMap(program, ref, "from"));
+                            }
                         }
-                        
-                        Map<String, Object> refMap = createReferenceMap(program, ref, "from");
-                        referencesList.add(refMap);
                     }
                 }
                 
