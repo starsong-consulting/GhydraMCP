@@ -35,6 +35,8 @@ FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 BRIDGE_VERSION = "v2.2.0"
 REQUIRED_API_VERSION = 2020
 
+DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "10"))
+
 current_instance_port = DEFAULT_GHIDRA_PORT
 
 instructions = """
@@ -53,6 +55,12 @@ The API is organized into namespaces for different types of operations:
 - memory_* : For memory access
 - xrefs_* : For cross-references
 - analysis_* : For program analysis
+- classes_* : For listing classes and namespaces
+- symbols_* : For symbols, imports, and exports
+- segments_* : For memory segments/blocks
+- namespaces_* : For namespace hierarchy
+- variables_* : For global and local variables
+- datatypes_* : For data type management
 """
 
 mcp = FastMCP("GhydraMCP", version=BRIDGE_VERSION, instructions=instructions)
@@ -98,7 +106,7 @@ def validate_origin(headers: dict) -> bool:
         origin_base = f"{parsed.scheme}://{parsed.hostname}"
         if parsed.port:
             origin_base += f":{parsed.port}"
-    except:
+    except (ValueError, AttributeError):
         return False
 
     return origin_base in ALLOWED_ORIGINS
@@ -145,7 +153,7 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
             json=json_data,
             data=data,
             headers=request_headers,
-            timeout=10
+            timeout=DEFAULT_TIMEOUT
         )
 
         try:
@@ -439,7 +447,7 @@ def format_data_list(response: dict, offset: int = 0, limit: int = 100, **kwargs
 
     for d in items:
         addr = d.get("address", "???")
-        label = d.get("label", "")  # Java returns 'label' not 'name'
+        label = d.get("name", "")
         dtype = d.get("dataType", "???")  # Java returns 'dataType' not 'type'
         value = d.get("value", "")
 
@@ -534,7 +542,7 @@ def format_memory(response: dict, **kwargs) -> str:
                 try:
                     b = int(bp, 16)
                     ascii_part += chr(b) if 32 <= b < 127 else "."
-                except:
+                except ValueError:
                     ascii_part += "?"
 
             lines.append(f"  {hex_part:<48}  {ascii_part}")
@@ -693,6 +701,138 @@ def format_simple_result(response: dict, success_msg: str = "Done", **kwargs) ->
     return success_msg
 
 
+def format_classes_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format classes list as text"""
+    items = response.get("result", [])
+    total = response.get("size", len(items))
+
+    lines = [f"Classes ({offset+1}-{offset+len(items)} of {total}):", ""]
+
+    for c in items:
+        name = c.get("name", "???")
+        namespace = c.get("namespace", "")
+        simple = c.get("simpleName", name)
+        if namespace and namespace != "default":
+            lines.append(f"  {simple}  ({namespace})")
+        else:
+            lines.append(f"  {simple}")
+
+    return "\n".join(lines)
+
+
+def format_symbols_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format symbols list as text"""
+    items = response.get("result", [])
+    total = response.get("size", len(items))
+
+    lines = [f"Symbols ({offset+1}-{offset+len(items)} of {total}):", ""]
+
+    for s in items:
+        addr = s.get("address", "???")
+        name = s.get("name", "???")
+        stype = s.get("type", "")
+        namespace = s.get("namespace", "")
+        primary = " *" if s.get("isPrimary") else ""
+        ns_str = f"  [{namespace}]" if namespace and namespace != "Global" else ""
+        lines.append(f"  {addr}  {stype:<12}  {name}{primary}{ns_str}")
+
+    return "\n".join(lines)
+
+
+def format_imports_exports(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format imports/exports list as text"""
+    items = response.get("result", [])
+    total = response.get("size", len(items))
+
+    lines = [f"Entries ({offset+1}-{offset+len(items)} of {total}):", ""]
+
+    for item in items:
+        addr = item.get("address", "???")
+        name = item.get("name", "???")
+        lines.append(f"  {addr}  {name}")
+
+    return "\n".join(lines)
+
+
+def format_segments_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format segments list as text"""
+    items = response.get("result", [])
+    total = response.get("size", len(items))
+
+    lines = [f"Segments ({offset+1}-{offset+len(items)} of {total}):", ""]
+
+    for seg in items:
+        name = seg.get("name", "???")
+        start = seg.get("start", "???")
+        end = seg.get("end", "???")
+        size = seg.get("size", 0)
+        perms = ""
+        perms += "R" if seg.get("readable") else "-"
+        perms += "W" if seg.get("writable") else "-"
+        perms += "X" if seg.get("executable") else "-"
+        init = "init" if seg.get("initialized") else "uninit"
+        lines.append(f"  {name:<16}  {start}-{end}  {size:>8} bytes  {perms}  {init}")
+
+    return "\n".join(lines)
+
+
+def format_namespaces_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format namespaces list as text"""
+    items = response.get("result", [])
+    total = response.get("size", len(items))
+
+    lines = [f"Namespaces ({offset+1}-{offset+len(items)} of {total}):", ""]
+
+    for ns in items:
+        if isinstance(ns, str):
+            lines.append(f"  {ns}")
+        else:
+            lines.append(f"  {ns.get('name', '???')}")
+
+    return "\n".join(lines)
+
+
+def format_variables_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format variables list as text"""
+    items = response.get("result", [])
+    total = response.get("size", response.get("total_estimate", len(items)))
+
+    lines = [f"Variables ({offset+1}-{offset+len(items)} of ~{total}):", ""]
+
+    for v in items:
+        addr = v.get("address", "???")
+        name = v.get("name", "???")
+        vtype = v.get("type", "")
+        dtype = v.get("dataType", "")
+        func = v.get("function", "")
+        loc = f"  [{func}]" if func else ""
+        lines.append(f"  {addr}  {vtype:<10}  {dtype:<16}  {name}{loc}")
+
+    return "\n".join(lines)
+
+
+def format_datatypes_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
+    """Format datatypes list as text"""
+    items = response.get("result", [])
+    total = response.get("size", len(items))
+
+    lines = [f"Data Types ({offset+1}-{offset+len(items)} of {total}):", ""]
+
+    for dt in items:
+        name = dt.get("name", "???")
+        kind = dt.get("kind", "")
+        category = dt.get("category", "/")
+        length = dt.get("length", 0)
+        extra = ""
+        if kind in ("struct", "union"):
+            extra = f"  ({dt.get('numComponents', 0)} fields)"
+        elif kind == "enum":
+            extra = f"  ({dt.get('numValues', 0)} values)"
+        lines.append(f"  {kind:<8}  {name:<24}  {length:>4}B  {category}{extra}")
+
+    return "\n".join(lines)
+
+
 # ================= Formatter Registry & Decorator =================
 
 FORMATTERS = {
@@ -713,6 +853,15 @@ FORMATTERS = {
     "analysis_get_callgraph": format_callgraph,
     "project_info": format_project_info,
     "project_list_files": format_project_files,
+    "classes_list": format_classes_list,
+    "symbols_list": format_symbols_list,
+    "symbols_imports": format_imports_exports,
+    "symbols_exports": format_imports_exports,
+    "segments_list": format_segments_list,
+    "namespaces_list": format_namespaces_list,
+    "variables_list": format_variables_list,
+    "datatypes_list": format_datatypes_list,
+    "datatypes_search": format_datatypes_list,
 }
 
 
@@ -2981,6 +3130,242 @@ def analysis_run(background: bool = True, port: int = None) -> dict:
     data = {"background": str(background).lower()}
     response = safe_post(port, "analysis/run", data)
     return simplify_response(response)
+
+
+# ================= Classes, Symbols, Segments, Namespaces, Variables, DataTypes =================
+
+@mcp.tool()
+@text_output
+def classes_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List classes and namespaces in the program
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of classes with pagination
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    response = safe_get(port, "classes", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def symbols_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List all symbols in the program
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of symbols with name, address, type, and namespace
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    response = safe_get(port, "symbols", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def symbols_imports(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List imported symbols (external function references)
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of imported symbols with name and address
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    response = safe_get(port, "symbols/imports", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def symbols_exports(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List exported symbols
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of exported symbols with name and address
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    response = safe_get(port, "symbols/exports", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def segments_list(offset: int = 0, limit: int = 100, name: str = None, port: int = None) -> dict:
+    """List memory segments/blocks with permissions
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        name: Filter segments by name substring (optional)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of segments with name, address range, size, and RWX permissions
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    if name:
+        params["name"] = name
+    response = safe_get(port, "segments", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def namespaces_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List namespaces in the program
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of namespace names
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    response = safe_get(port, "namespaces", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def variables_list(offset: int = 0, limit: int = 100, search: str = None,
+                   global_only: bool = False, port: int = None) -> dict:
+    """List variables in the program
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        search: Filter variables by name (optional)
+        global_only: Only show global variables (default: False)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of variables with name, address, type, and data type
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    if search:
+        params["search"] = search
+    if global_only:
+        params["global_only"] = "true"
+    response = safe_get(port, "variables", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", simplified.get("total_estimate", len(simplified.get("result", []))))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def datatypes_list(offset: int = 0, limit: int = 100, category: str = None,
+                   kind: str = None, port: int = None) -> dict:
+    """List data types defined in the program
+
+    Args:
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        category: Filter by category path (optional)
+        kind: Filter by kind: "struct", "enum", or "union" (optional)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of data types with name, kind, category, and size
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    if category:
+        params["category"] = category
+    if kind:
+        params["kind"] = kind
+    response = safe_get(port, "datatypes", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
+
+
+@mcp.tool()
+@text_output
+def datatypes_search(name: str, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """Search for data types by name
+
+    Args:
+        name: Data type name to search for
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Matching data types
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit, "name": name}
+    response = safe_get(port, "datatypes", params)
+    simplified = simplify_response(response)
+    if isinstance(simplified, dict) and "error" not in simplified:
+        simplified.setdefault("size", len(simplified.get("result", [])))
+        simplified.setdefault("offset", offset)
+        simplified.setdefault("limit", limit)
+    return simplified
 
 
 # ================= Startup =================

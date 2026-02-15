@@ -3,6 +3,7 @@
 import sys
 import click
 
+from .. import __version__
 from ..client import GhidraHTTPClient
 from ..config import ConfigManager, GhidraConfig
 from ..formatters import JSONFormatter, TableFormatter
@@ -14,7 +15,7 @@ from ..formatters import JSONFormatter, TableFormatter
 @click.option('--json', 'output_json', is_flag=True, help='Output raw JSON instead of formatted text')
 @click.option('--no-color', is_flag=True, help='Disable colored output')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose output')
-@click.version_option(version='2.2.0', prog_name='ghydra')
+@click.version_option(version=__version__, prog_name='ghydra')
 @click.pass_context
 def cli(ctx, host, port, output_json, no_color, verbose):
     """Ghydra CLI - Interact with Ghidra reverse engineering tool.
@@ -92,7 +93,13 @@ from . import (
     analysis,
     ui,
     comments,
-    project
+    project,
+    classes,
+    symbols,
+    segments,
+    namespaces,
+    variables,
+    datatypes,
 )
 
 cli.add_command(instances.instances)
@@ -105,12 +112,18 @@ cli.add_command(analysis.analysis)
 cli.add_command(ui.ui)
 cli.add_command(comments.comments)
 cli.add_command(project.project)
+cli.add_command(classes.classes)
+cli.add_command(symbols.symbols)
+cli.add_command(segments.segments)
+cli.add_command(namespaces.namespaces)
+cli.add_command(variables.variables)
+cli.add_command(datatypes.datatypes)
 
 
 @cli.command('version')
 def version_cmd():
     """Show version information."""
-    click.echo("ghydra version 2.2.0")
+    click.echo(f"ghydra version {__version__}")
     click.echo("Ghydra CLI for Ghidra reverse engineering tool")
 
 

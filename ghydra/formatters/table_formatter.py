@@ -238,7 +238,7 @@ class TableFormatter(BaseFormatter):
 
             table.add_row(
                 item.get("address", "?"),
-                item.get("label", ""),
+                item.get("name", ""),
                 item.get("dataType", "?"),
                 str(value)
             )
@@ -369,6 +369,145 @@ class TableFormatter(BaseFormatter):
             return self._capture("\n".join(lines))
 
         return self._capture("[green]Success[/green]")
+
+    def format_classes_list(self, data: Dict[str, Any]) -> str:
+        """Format classes list as table."""
+        result = data.get("result", [])
+
+        if not result:
+            return self._capture("[yellow]No classes found[/yellow]")
+
+        table = Table(title=f"Classes ({len(result)} items)", show_lines=False)
+        table.add_column("Name", style="cyan")
+        table.add_column("Namespace", style="dim")
+
+        for item in result:
+            table.add_row(
+                item.get("simpleName", item.get("name", "?")),
+                item.get("namespace", "")
+            )
+
+        return self._capture(table)
+
+    def format_symbols_list(self, data: Dict[str, Any]) -> str:
+        """Format symbols list as table."""
+        result = data.get("result", [])
+
+        if not result:
+            return self._capture("[yellow]No symbols found[/yellow]")
+
+        table = Table(title=f"Symbols ({len(result)} items)", show_lines=False)
+        table.add_column("Address", style="cyan", no_wrap=True)
+        table.add_column("Type", style="yellow")
+        table.add_column("Name", style="green")
+        table.add_column("Namespace", style="dim")
+
+        for item in result:
+            primary = " *" if item.get("isPrimary") else ""
+            table.add_row(
+                item.get("address", "?"),
+                item.get("type", "?"),
+                item.get("name", "?") + primary,
+                item.get("namespace", "")
+            )
+
+        return self._capture(table)
+
+    def format_segments_list(self, data: Dict[str, Any]) -> str:
+        """Format segments list as table."""
+        result = data.get("result", [])
+
+        if not result:
+            return self._capture("[yellow]No segments found[/yellow]")
+
+        table = Table(title=f"Segments ({len(result)} items)", show_lines=False)
+        table.add_column("Name", style="cyan")
+        table.add_column("Start", style="green", no_wrap=True)
+        table.add_column("End", style="green", no_wrap=True)
+        table.add_column("Size", style="yellow", justify="right")
+        table.add_column("Perms", style="white")
+        table.add_column("Init", style="dim")
+
+        for seg in result:
+            perms = ""
+            perms += "R" if seg.get("readable") else "-"
+            perms += "W" if seg.get("writable") else "-"
+            perms += "X" if seg.get("executable") else "-"
+            init = "init" if seg.get("initialized") else "uninit"
+            table.add_row(
+                seg.get("name", "?"),
+                seg.get("start", "?"),
+                seg.get("end", "?"),
+                str(seg.get("size", 0)),
+                perms,
+                init
+            )
+
+        return self._capture(table)
+
+    def format_namespaces_list(self, data: Dict[str, Any]) -> str:
+        """Format namespaces list as table."""
+        result = data.get("result", [])
+
+        if not result:
+            return self._capture("[yellow]No namespaces found[/yellow]")
+
+        table = Table(title=f"Namespaces ({len(result)} items)", show_lines=False)
+        table.add_column("Name", style="cyan")
+
+        for item in result:
+            name = item if isinstance(item, str) else item.get("name", "?")
+            table.add_row(name)
+
+        return self._capture(table)
+
+    def format_variables_list(self, data: Dict[str, Any]) -> str:
+        """Format variables list as table."""
+        result = data.get("result", [])
+
+        if not result:
+            return self._capture("[yellow]No variables found[/yellow]")
+
+        table = Table(title=f"Variables ({len(result)} items)", show_lines=False)
+        table.add_column("Address", style="cyan", no_wrap=True)
+        table.add_column("Scope", style="yellow")
+        table.add_column("Type", style="green")
+        table.add_column("Name", style="white")
+        table.add_column("Function", style="dim")
+
+        for v in result:
+            table.add_row(
+                v.get("address", "?"),
+                v.get("type", "?"),
+                v.get("dataType", "?"),
+                v.get("name", "?"),
+                v.get("function", "")
+            )
+
+        return self._capture(table)
+
+    def format_datatypes_list(self, data: Dict[str, Any]) -> str:
+        """Format datatypes list as table."""
+        result = data.get("result", [])
+
+        if not result:
+            return self._capture("[yellow]No data types found[/yellow]")
+
+        table = Table(title=f"Data Types ({len(result)} items)", show_lines=False)
+        table.add_column("Kind", style="yellow")
+        table.add_column("Name", style="cyan")
+        table.add_column("Size", style="green", justify="right")
+        table.add_column("Category", style="dim")
+
+        for dt in result:
+            table.add_row(
+                dt.get("kind", "?"),
+                dt.get("name", "?"),
+                str(dt.get("length", 0)),
+                dt.get("category", "/")
+            )
+
+        return self._capture(table)
 
     def format_error(self, error: Exception) -> str:
         """Format error message."""

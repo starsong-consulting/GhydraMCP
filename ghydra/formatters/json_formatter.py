@@ -86,6 +86,30 @@ class JSONFormatter(BaseFormatter):
         """Format simple result as JSON."""
         return self._format_json(data)
 
+    def format_classes_list(self, data: Dict[str, Any]) -> str:
+        """Format classes list as JSON."""
+        return self._format_json(data)
+
+    def format_symbols_list(self, data: Dict[str, Any]) -> str:
+        """Format symbols list as JSON."""
+        return self._format_json(data)
+
+    def format_segments_list(self, data: Dict[str, Any]) -> str:
+        """Format segments list as JSON."""
+        return self._format_json(data)
+
+    def format_namespaces_list(self, data: Dict[str, Any]) -> str:
+        """Format namespaces list as JSON."""
+        return self._format_json(data)
+
+    def format_variables_list(self, data: Dict[str, Any]) -> str:
+        """Format variables list as JSON."""
+        return self._format_json(data)
+
+    def format_datatypes_list(self, data: Dict[str, Any]) -> str:
+        """Format datatypes list as JSON."""
+        return self._format_json(data)
+
     def format_error(self, error: Exception) -> str:
         """Format error as JSON."""
         error_dict = {
