@@ -357,6 +357,10 @@ def format_disassembly(response: dict, **kwargs) -> str:
     result = response.get("result", {})
     instructions = result.get("instructions", [])
 
+    # simplify_response converts instructions list to disassembly_text
+    if not instructions and "disassembly_text" in result:
+        return result["disassembly_text"].rstrip()
+
     if not instructions:
         return "Error: No disassembly returned"
 
