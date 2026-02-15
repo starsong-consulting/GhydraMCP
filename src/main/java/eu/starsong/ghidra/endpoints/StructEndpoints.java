@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import eu.starsong.ghidra.util.TransactionHelper.TransactionException;
 import ghidra.framework.plugintool.PluginTool;
@@ -361,7 +362,7 @@ public class StructEndpoints extends AbstractEndpoint {
             resultMap.put("name", structName);
 
             try {
-                TransactionHelper.executeInTransaction(program, "Create Struct", () -> {
+                TransactionHelper.executeInTransaction(program, "Create struct " + structName, () -> {
                     DataTypeManager dtm = program.getDataTypeManager();
 
                     // Check if struct already exists
@@ -471,7 +472,7 @@ public class StructEndpoints extends AbstractEndpoint {
             final Integer finalOffset = offset;
 
             try {
-                TransactionHelper.executeInTransaction(program, "Add Struct Field", () -> {
+                TransactionHelper.executeInTransaction(program, "Add field " + fieldName + " to struct " + structName, () -> {
                     DataTypeManager dtm = program.getDataTypeManager();
 
                     // Find the struct - handle both full paths and simple names
@@ -492,7 +493,7 @@ public class StructEndpoints extends AbstractEndpoint {
                     Structure struct = (Structure) dataType;
 
                     // Find the field type
-                    DataType fieldDataType = findDataType(dtm, fieldType);
+                    DataType fieldDataType = GhidraUtil.resolveDataType(program, fieldType);
                     if (fieldDataType == null) {
                         throw new Exception("Field type not found: " + fieldType);
                     }
@@ -597,7 +598,7 @@ public class StructEndpoints extends AbstractEndpoint {
             final String finalFieldName = fieldName;
 
             try {
-                TransactionHelper.executeInTransaction(program, "Update Struct Field", () -> {
+                TransactionHelper.executeInTransaction(program, "Update field in struct " + structName, () -> {
                     DataTypeManager dtm = program.getDataTypeManager();
 
                     // Find the struct
@@ -653,7 +654,7 @@ public class StructEndpoints extends AbstractEndpoint {
                     DataType updatedType = originalType;
 
                     if (newType != null && !newType.isEmpty()) {
-                        updatedType = findDataType(dtm, newType);
+                        updatedType = GhidraUtil.resolveDataType(program, newType);
                         if (updatedType == null) {
                             throw new Exception("Field type not found: " + newType);
                         }
@@ -722,7 +723,7 @@ public class StructEndpoints extends AbstractEndpoint {
             resultMap.put("name", structName);
 
             try {
-                TransactionHelper.executeInTransaction(program, "Delete Struct", () -> {
+                TransactionHelper.executeInTransaction(program, "Delete struct " + structName, () -> {
                     DataTypeManager dtm = program.getDataTypeManager();
 
                     // Find the struct - handle both full paths and simple names
@@ -823,57 +824,4 @@ public class StructEndpoints extends AbstractEndpoint {
         return result[0];
     }
 
-    /**
-     * Find a data type by name, trying multiple lookup methods
-     */
-    private DataType findDataType(DataTypeManager dtm, String typeName) {
-        // Try direct lookup with path
-        DataType dataType = dtm.getDataType("/" + typeName);
-
-        // Try without path
-        if (dataType == null) {
-            dataType = dtm.findDataType("/" + typeName);
-        }
-
-        // Try built-in primitive types
-        if (dataType == null) {
-            switch(typeName.toLowerCase()) {
-                case "byte":
-                    dataType = new ByteDataType();
-                    break;
-                case "char":
-                    dataType = new CharDataType();
-                    break;
-                case "word":
-                    dataType = new WordDataType();
-                    break;
-                case "dword":
-                    dataType = new DWordDataType();
-                    break;
-                case "qword":
-                    dataType = new QWordDataType();
-                    break;
-                case "float":
-                    dataType = new FloatDataType();
-                    break;
-                case "double":
-                    dataType = new DoubleDataType();
-                    break;
-                case "int":
-                    dataType = new IntegerDataType();
-                    break;
-                case "long":
-                    dataType = new LongDataType();
-                    break;
-                case "pointer":
-                    dataType = new PointerDataType();
-                    break;
-                case "string":
-                    dataType = new StringDataType();
-                    break;
-            }
-        }
-
-        return dataType;
-    }
 }

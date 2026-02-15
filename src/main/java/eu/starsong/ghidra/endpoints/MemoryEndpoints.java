@@ -350,7 +350,7 @@ private boolean setCommentByType(Program program, Address address, String commen
     CommentType type = getCommentType(commentType);
 
     try {
-        return TransactionHelper.executeInTransaction(program, "Set Comment", () -> {
+        return TransactionHelper.executeInTransaction(program, "Set " + commentType + " comment at " + address, () -> {
             program.getListing().setComment(address, type, comment);
             return true;
         });

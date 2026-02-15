@@ -248,9 +248,9 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 refMap.put("from_instruction", codeUnit.toString());
             }
         } catch (Exception e) {
-            // Ignore exceptions when getting code units
+            Msg.debug(this, "Failed to get code unit at from address " + ref.getFromAddress() + ": " + e.getMessage());
         }
-        
+
         // Get the instruction/data at the to address (if applicable)
         try {
             CodeUnit codeUnit = program.getListing().getCodeUnitAt(ref.getToAddress());
@@ -258,7 +258,7 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 refMap.put("to_instruction", codeUnit.toString());
             }
         } catch (Exception e) {
-            // Ignore exceptions when getting code units
+            Msg.debug(this, "Failed to get code unit at to address " + ref.getToAddress() + ": " + e.getMessage());
         }
         
         return refMap;
@@ -321,7 +321,7 @@ public class XrefsEndpoints extends AbstractEndpoint {
                             }
                         }
                     } catch (Exception e) {
-                        // Method doesn't exist, ignore and continue with other approaches
+                        Msg.debug(this, "getCurrentLocation reflection failed: " + e.getMessage());
                     }
                     
                     // If program is selected, use its memory address as a fallback

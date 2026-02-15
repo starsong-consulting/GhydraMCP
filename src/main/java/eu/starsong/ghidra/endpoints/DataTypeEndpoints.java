@@ -159,7 +159,7 @@ public class DataTypeEndpoints extends AbstractEndpoint {
 
             try {
                 Map<String, Object> result = TransactionHelper.executeInTransaction(
-                        program, "Create Struct", () -> {
+                        program, "Create struct " + name, () -> {
                             DataTypeManager dtm = program.getDataTypeManager();
 
                             // Create the structure
@@ -235,7 +235,7 @@ public class DataTypeEndpoints extends AbstractEndpoint {
 
             try {
                 Map<String, Object> result = TransactionHelper.executeInTransaction(
-                        program, "Create Enum", () -> {
+                        program, "Create enum " + name, () -> {
                             DataTypeManager dtm = program.getDataTypeManager();
 
                             // Create the enum
@@ -310,7 +310,7 @@ public class DataTypeEndpoints extends AbstractEndpoint {
 
             try {
                 Map<String, Object> result = TransactionHelper.executeInTransaction(
-                        program, "Create Union", () -> {
+                        program, "Create union " + name, () -> {
                             DataTypeManager dtm = program.getDataTypeManager();
 
                             // Create the union

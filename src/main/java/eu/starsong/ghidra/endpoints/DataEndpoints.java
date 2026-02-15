@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
     import eu.starsong.ghidra.api.ResponseBuilder;
+    import eu.starsong.ghidra.util.GhidraUtil;
     import eu.starsong.ghidra.util.HttpUtil;
     import eu.starsong.ghidra.util.TransactionHelper;
     import eu.starsong.ghidra.util.TransactionHelper.TransactionException;
@@ -220,7 +221,7 @@ package eu.starsong.ghidra.endpoints;
 
                             Map<String, Object> item = new HashMap<>();
                             item.put("address", data.getAddress().toString());
-                            item.put("label", data.getLabel() != null ? data.getLabel() : "(unnamed)");
+                            item.put("name", data.getLabel() != null ? data.getLabel() : "(unnamed)");
                             item.put("value", data.getDefaultValueRepresentation());
                             item.put("dataType", data.getDataType().getName());
                             
@@ -287,16 +288,16 @@ package eu.starsong.ghidra.endpoints;
                     Map<String, Object> resultMap = new HashMap<>();
                     resultMap.put("address", addressStr);
                     
-                    TransactionHelper.executeInTransaction(program, "Update Data", () -> {
+                    TransactionHelper.executeInTransaction(program, "Update data at " + addressStr, () -> {
                         // Get the data at the address first
                         Address addr = program.getAddressFactory().getAddress(addressStr);
                         Listing listing = program.getListing();
                         Data data = listing.getDefinedDataAt(addr);
-                        
+
                         if (data == null) {
                             throw new Exception("No defined data found at address: " + addressStr);
                         }
-                        
+
                         // Get current data info for operations that need it
                         String currentName = null;
                         if (data.getLabel() != null) {
@@ -310,28 +311,7 @@ package eu.starsong.ghidra.endpoints;
                         
                         // If we need to set a data type
                         if (dataTypeStr != null && !dataTypeStr.isEmpty()) {
-                            // Find the data type
-                            ghidra.program.model.data.DataType dataType = null;
-                            
-                            // First try built-in types
-                            dataType = program.getDataTypeManager().getDataType("/" + dataTypeStr);
-                            
-                            // If not found, try to find it without path
-                            if (dataType == null) {
-                                dataType = program.getDataTypeManager().findDataType("/" + dataTypeStr);
-                            }
-                            
-                            // If still null, try using the parser
-                            if (dataType == null) {
-                                try {
-                                    ghidra.app.util.parser.FunctionSignatureParser parser = 
-                                        new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
-                                    dataType = parser.parse(null, dataTypeStr);
-                                } catch (Exception e) {
-                                    Msg.debug(this, "Function signature parser failed: " + e.getMessage());
-                                }
-                            }
-                            
+                            ghidra.program.model.data.DataType dataType = GhidraUtil.resolveDataType(program, dataTypeStr);
                             if (dataType == null) {
                                 throw new Exception("Could not find or parse data type: " + dataTypeStr);
                             }
@@ -504,7 +484,7 @@ package eu.starsong.ghidra.endpoints;
                     resultMap.put("address", addressStr);
                     resultMap.put("dataType", dataTypeStr);
                     
-                    TransactionHelper.executeInTransaction(program, "Change Data Type", () -> {
+                    TransactionHelper.executeInTransaction(program, "Change data type at " + addressStr, () -> {
                         // Get the data at the address first
                         Address addr = program.getAddressFactory().getAddress(addressStr);
                         Listing listing = program.getListing();
@@ -526,28 +506,7 @@ package eu.starsong.ghidra.endpoints;
                         String originalType = data.getDataType().getName();
                         resultMap.put("originalType", originalType);
                         
-                        // Find the requested data type
-                        ghidra.program.model.data.DataType dataType = null;
-                        
-                        // First try built-in types
-                        dataType = program.getDataTypeManager().getDataType("/" + dataTypeStr);
-                        
-                        // If not found, try to find it without path
-                        if (dataType == null) {
-                            dataType = program.getDataTypeManager().findDataType("/" + dataTypeStr);
-                        }
-                        
-                        // If still null, try using the parser
-                        if (dataType == null) {
-                            try {
-                                ghidra.app.util.parser.FunctionSignatureParser parser = 
-                                    new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
-                                dataType = parser.parse(null, dataTypeStr);
-                            } catch (Exception e) {
-                                Msg.debug(this, "Function signature parser failed: " + e.getMessage());
-                            }
-                        }
-                        
+                        ghidra.program.model.data.DataType dataType = GhidraUtil.resolveDataType(program, dataTypeStr);
                         if (dataType == null) {
                             throw new Exception("Could not find or parse data type: " + dataTypeStr);
                         }
@@ -647,16 +606,16 @@ package eu.starsong.ghidra.endpoints;
                     Map<String, Object> resultMap = new HashMap<>();
                     resultMap.put("address", addressStr);
                     
-                    TransactionHelper.executeInTransaction(program, "Update Data", () -> {
+                    TransactionHelper.executeInTransaction(program, "Update data at " + addressStr, () -> {
                         // Get the data at the address first
                         Address addr = program.getAddressFactory().getAddress(addressStr);
                         Listing listing = program.getListing();
                         Data data = listing.getDefinedDataAt(addr);
-                        
+
                         if (data == null) {
                             throw new Exception("No defined data found at address: " + addressStr);
                         }
-                        
+
                         // Get current name
                         String currentName = null;
                         Symbol symbol = program.getSymbolTable().getPrimarySymbol(addr);
@@ -670,29 +629,8 @@ package eu.starsong.ghidra.endpoints;
                             // Remember original type
                             String originalType = data.getDataType().getName();
                             resultMap.put("originalType", originalType);
-                            
-                            // Find the data type
-                            ghidra.program.model.data.DataType dataType = null;
-                            
-                            // First try built-in types
-                            dataType = program.getDataTypeManager().getDataType("/" + dataTypeStr);
-                            
-                            // If not found, try to find it without path
-                            if (dataType == null) {
-                                dataType = program.getDataTypeManager().findDataType("/" + dataTypeStr);
-                            }
-                            
-                            // If still null, try using the parser
-                            if (dataType == null) {
-                                try {
-                                    ghidra.app.util.parser.FunctionSignatureParser parser = 
-                                        new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
-                                    dataType = parser.parse(null, dataTypeStr);
-                                } catch (Exception e) {
-                                    Msg.debug(this, "Function signature parser failed: " + e.getMessage());
-                                }
-                            }
-                            
+
+                            ghidra.program.model.data.DataType dataType = GhidraUtil.resolveDataType(program, dataTypeStr);
                             if (dataType == null) {
                                 throw new Exception("Could not find or parse data type: " + dataTypeStr);
                             }
@@ -842,7 +780,7 @@ package eu.starsong.ghidra.endpoints;
                     
                     final Integer finalSize = size; // Make a final copy for the lambda
                     
-                    TransactionHelper.executeInTransaction(program, "Create Data", () -> {
+                    TransactionHelper.executeInTransaction(program, "Create data at " + addressStr, () -> {
                         // Get the address
                         Address addr = program.getAddressFactory().getAddress(addressStr);
                         Listing listing = program.getListing();
@@ -854,124 +792,11 @@ package eu.starsong.ghidra.endpoints;
                         }
                         
                         // Find the requested data type
-                        ghidra.program.model.data.DataType dataType = null;
-                        
-                        // Map common shorthand data types to their Ghidra equivalents
-                        String mappedType = dataTypeStr;
-                        switch(dataTypeStr.toLowerCase()) {
-                            case "byte":
-                                mappedType = "byte";
-                                break;
-                            case "char":
-                                mappedType = "char";
-                                break;
-                            case "word":
-                                mappedType = "word";
-                                break;
-                            case "dword":
-                                mappedType = "dword";
-                                break;
-                            case "qword":
-                                mappedType = "qword";
-                                break;
-                            case "string":
-                                // For string, we'll use StringDataType directly
-                                dataType = new ghidra.program.model.data.StringDataType();
-                                break;
-                            case "float":
-                                mappedType = "float";
-                                break;
-                            case "double":
-                                mappedType = "double";
-                                break;
-                            case "int":
-                                mappedType = "int";
-                                break;
-                            case "long":
-                                mappedType = "long";
-                                break;
-                            case "pointer":
-                                mappedType = "pointer";
-                                break;
-                            default:
-                                // Keep the original type string
-                                break;
-                        }
-                        
-                        // Continue with data type lookup if not directly mapped
-                        if (dataType == null) {
-                            // First try built-in types with path
-                            dataType = program.getDataTypeManager().getDataType("/" + mappedType);
-                            
-                            // If not found, try to find it without path
-                            if (dataType == null) {
-                                dataType = program.getDataTypeManager().findDataType("/" + mappedType);
-                            }
-                            
-                            // Try data type manager from program
-                            if (dataType == null) {
-                                try {
-                                    dataType = program.getDataTypeManager().findDataType("/" + mappedType);
-                                } catch (Exception e) {
-                                    Msg.debug(this, "Error getting built-in type: " + e.getMessage());
-                                }
-                            }
-                            
-                            // If still null, try parsing it
-                            if (dataType == null) {
-                                try {
-                                    ghidra.app.util.parser.FunctionSignatureParser parser = 
-                                        new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
-                                    dataType = parser.parse(null, mappedType);
-                                } catch (Exception e) {
-                                    Msg.debug(this, "Function signature parser failed: " + e.getMessage());
-                                }
-                            }
-                        }
-                        
-                        // Try some specific data type classes if still not found
-                        if (dataType == null) {
-                            switch(dataTypeStr.toLowerCase()) {
-                                case "byte":
-                                    dataType = new ghidra.program.model.data.ByteDataType();
-                                    break;
-                                case "char":
-                                    dataType = new ghidra.program.model.data.CharDataType();
-                                    break;
-                                case "word":
-                                    dataType = new ghidra.program.model.data.WordDataType();
-                                    break;
-                                case "dword":
-                                    dataType = new ghidra.program.model.data.DWordDataType();
-                                    break;
-                                case "qword":
-                                    dataType = new ghidra.program.model.data.QWordDataType();
-                                    break;
-                                case "float":
-                                    dataType = new ghidra.program.model.data.FloatDataType();
-                                    break;
-                                case "double":
-                                    dataType = new ghidra.program.model.data.DoubleDataType();
-                                    break;
-                                case "int":
-                                    dataType = new ghidra.program.model.data.IntegerDataType();
-                                    break;
-                                case "uint32_t":
-                                    dataType = new ghidra.program.model.data.UnsignedIntegerDataType();
-                                    break;
-                                case "long":
-                                    dataType = new ghidra.program.model.data.LongDataType();
-                                    break;
-                                case "pointer":
-                                    dataType = new ghidra.program.model.data.PointerDataType();
-                                    break;
-                            }
-                        }
-                        
+                        ghidra.program.model.data.DataType dataType = GhidraUtil.resolveDataType(program, dataTypeStr);
                         if (dataType == null) {
                             throw new Exception("Could not find or parse data type: " + dataTypeStr);
                         }
-                        
+
                         Msg.info(this, "Successfully mapped data type '" + dataTypeStr + "' to Ghidra type: " + dataType.getName());
                         
                         // Create the data at the specified address
@@ -1137,7 +962,7 @@ package eu.starsong.ghidra.endpoints;
                         result.put("address", addressStr);
                         result.put("type", dataTypeStr);
                         
-                        TransactionHelper.executeInTransaction(program, "Set Data Type", () -> {
+                        TransactionHelper.executeInTransaction(program, "Set data type at " + addressStr, () -> {
                             // Get the data at the address
                             Address addr = program.getAddressFactory().getAddress(addressStr);
                             Listing listing = program.getListing();
@@ -1147,40 +972,7 @@ package eu.starsong.ghidra.endpoints;
                                 throw new Exception("No defined data found at address: " + addressStr);
                             }
                             
-                            // Try to find the data type in the data type manager
-                            ghidra.program.model.data.DataType dataType = null;
-                            
-                            // First try built-in types with path
-                            dataType = program.getDataTypeManager().getDataType("/" + dataTypeStr);
-                            
-                            // Try built-in types without path
-                            if (dataType == null) {
-                                dataType = program.getDataTypeManager().findDataType("/" + dataTypeStr);
-                            }
-                            
-                            // If still not found, try to parse it as a C-style declaration
-                            if (dataType == null) {
-                                try {
-                                    ghidra.app.util.parser.FunctionSignatureParser parser = 
-                                        new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
-                                    dataType = parser.parse(null, dataTypeStr);
-                                } catch (Exception e) {
-                                    Msg.debug(this, "Function signature parser failed: " + e.getMessage());
-                                }
-                            }
-                            
-                            // Try C parser as a last resort
-                            if (dataType == null) {
-                                try {
-                                    // Use the DataTypeParser to create the type
-                                    ghidra.app.util.parser.FunctionSignatureParser parser = 
-                                        new ghidra.app.util.parser.FunctionSignatureParser(program.getDataTypeManager(), null);
-                                    dataType = parser.parse(null, dataTypeStr);
-                                } catch (Exception e) {
-                                    Msg.error(this, "Error parsing data type: " + dataTypeStr, e);
-                                }
-                            }
-                            
+                            ghidra.program.model.data.DataType dataType = GhidraUtil.resolveDataType(program, dataTypeStr);
                             if (dataType == null) {
                                 throw new Exception("Could not find or parse data type: " + dataTypeStr);
                             }
@@ -1273,7 +1065,7 @@ package eu.starsong.ghidra.endpoints;
                     Map<String, Object> resultMap = new HashMap<>();
                     resultMap.put("address", addressStr);
                     
-                    TransactionHelper.executeInTransaction(program, "Delete Data", () -> {
+                    TransactionHelper.executeInTransaction(program, "Delete data at " + addressStr, () -> {
                         // Get the address
                         Address addr = program.getAddressFactory().getAddress(addressStr);
                         Listing listing = program.getListing();

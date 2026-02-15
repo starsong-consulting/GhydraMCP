@@ -275,9 +275,9 @@ public class ProgramEndpoints extends AbstractEndpoint {
             if ("GET".equals(method)) {
                 // Get current program details
                 Program program = getCurrentProgram();
-                
+
                 if (program == null) {
-                    sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+                    sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
                     return;
                 }
                 
@@ -319,7 +319,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
     private void handleCurrentSegments(HttpExchange exchange) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+            sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
             return;
         }
         
@@ -329,7 +329,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
     private void handleCurrentFunctions(HttpExchange exchange) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+            sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
             return;
         }
         
@@ -339,7 +339,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
     private void handleFunctionByAddress(HttpExchange exchange) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+            sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
             return;
         }
         
@@ -405,7 +405,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
     private void handleFunctionByName(HttpExchange exchange) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+            sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
             return;
         }
         
@@ -473,7 +473,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
             // Use getCurrentProgram() which now dynamically checks for program availability
             program = getCurrentProgram();
             if (program == null) {
-                sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+                sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
                 return;
             }
             
@@ -977,7 +977,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
                 
                 // Write bytes to memory
                 try {
-                    TransactionHelper.executeInTransaction(program, "Write Memory", () -> {
+                    TransactionHelper.executeInTransaction(program, "Write memory at " + addressStr, () -> {
                         program.getMemory().setBytes(address, bytes);
                         return null;
                     });
@@ -1376,7 +1376,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
             
             Program program = getCurrentProgram();
             if (program == null) {
-                sendErrorResponse(exchange, 503, "No program loaded", "NO_PROGRAM");
+                sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM");
                 return;
             }
             
@@ -1427,7 +1427,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
             Map<String, String> params = parseJsonPostParams(exchange);
             
             // Configure and run analysis based on request parameters
-            boolean success = TransactionHelper.executeInTransaction(program, "Run Analysis", () -> {
+            boolean success = TransactionHelper.executeInTransaction(program, "Run analysis on " + program.getName(), () -> {
                 try {
                     // In a real implementation, you would configure analyzers based on the request
                     program.flushEvents();
@@ -1465,7 +1465,7 @@ public class ProgramEndpoints extends AbstractEndpoint {
     private void handleCallGraph(HttpExchange exchange) throws IOException {
         Program program = getCurrentProgram();
         if (program == null) {
-            sendErrorResponse(exchange, 404, "No program is currently open", "NO_PROGRAM_OPEN");
+            sendErrorResponse(exchange, 400, "No program is currently open", "NO_PROGRAM_OPEN");
             return;
         }
         
