@@ -1439,10 +1439,14 @@ public class FunctionEndpoints extends AbstractEndpoint {
         if (program == null) {
             return null;
         }
-        
+
         try {
             ghidra.program.model.address.Address address = program.getAddressFactory().getAddress(addressString);
-            return program.getFunctionManager().getFunctionAt(address);
+            Function func = program.getFunctionManager().getFunctionAt(address);
+            if (func == null) {
+                func = program.getFunctionManager().getFunctionContaining(address);
+            }
+            return func;
         } catch (Exception e) {
             return null;
         }
