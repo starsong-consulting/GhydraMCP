@@ -18,7 +18,7 @@ def data():
 @data.command('list')
 @click.option('--offset', type=int, default=0, help='Pagination offset')
 @click.option('--limit', type=int, default=100, help='Maximum results to return')
-@click.option('--addr', help='Filter by exact address (hex)')
+@click.option('--addr', '--address', '-a', help='Filter by exact address (hex)')
 @click.option('--name', help='Filter by exact name (case-sensitive)')
 @click.option('--name-contains', help='Filter by name substring (case-insensitive)')
 @click.option('--type', help='Filter by data type')

@@ -16,8 +16,8 @@ def xrefs():
 
 
 @xrefs.command('list')
-@click.option('--to-addr', help='Filter references TO this address (hex)')
-@click.option('--from-addr', help='Filter references FROM this address (hex)')
+@click.option('--to-addr', '--to-address', help='Filter references TO this address (hex)')
+@click.option('--from-addr', '--from-address', help='Filter references FROM this address (hex)')
 @click.option('--type', help='Filter by type (e.g., CALL, READ, WRITE)')
 @click.option('--offset', type=int, default=0, help='Pagination offset')
 @click.option('--limit', type=int, default=100, help='Maximum results to return')
