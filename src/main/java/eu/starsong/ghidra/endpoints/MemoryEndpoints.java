@@ -218,8 +218,15 @@ private void handleMemoryAddressRequest(HttpExchange exchange) throws IOExceptio
             String[] parts = remainingPath.split("/comments/", 2);
             String addressStr = parts[0];
             String commentType = parts.length > 1 ? parts[1] : "plate"; // Default to plate comments
-            
+
             handleMemoryComments(exchange, addressStr, commentType);
+            return;
+        }
+
+        // Check if this is a disassembly request
+        if (remainingPath.contains("/disassembly")) {
+            String addressStr = remainingPath.split("/disassembly")[0];
+            handleDisassemblyAtAddress(exchange, addressStr);
             return;
         }
         
@@ -380,7 +387,97 @@ private CommentType getCommentType(String commentType) {
     }
 }
 
-private void handleMemoryBlocksRequest(HttpExchange exchange) throws IOException {
+private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr) throws IOException {
+        try {
+            if (!"GET".equals(exchange.getRequestMethod())) {
+                sendErrorResponse(exchange, 405, "Method Not Allowed");
+                return;
+            }
+
+            Program program = getCurrentProgram();
+            if (program == null) {
+                sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+                return;
+            }
+
+            Map<String, String> params = parseQueryParams(exchange);
+            int count = parseIntOrDefault(params.get("count"), 50);
+            int offset = parseIntOrDefault(params.get("offset"), 0);
+
+            AddressFactory addressFactory = program.getAddressFactory();
+            Address startAddr;
+            try {
+                startAddr = addressFactory.getAddress(addressStr);
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
+                return;
+            }
+
+            if (startAddr == null) {
+                sendErrorResponse(exchange, 400, "Invalid address: " + addressStr, "INVALID_ADDRESS");
+                return;
+            }
+
+            ghidra.program.model.listing.Listing listing = program.getListing();
+            Memory mem = program.getMemory();
+            ghidra.program.model.listing.InstructionIterator instrIter =
+                listing.getInstructions(startAddr, true);
+
+            List<Map<String, Object>> allInstructions = new ArrayList<>();
+            int totalScanned = 0;
+
+            while (instrIter.hasNext() && totalScanned < offset + count) {
+                ghidra.program.model.listing.Instruction instr = instrIter.next();
+                totalScanned++;
+
+                if (totalScanned <= offset) {
+                    continue;
+                }
+
+                Map<String, Object> instrMap = new HashMap<>();
+                instrMap.put("address", instr.getAddress().toString());
+
+                try {
+                    byte[] bytes = new byte[instr.getLength()];
+                    mem.getBytes(instr.getAddress(), bytes);
+                    StringBuilder hexBytes = new StringBuilder();
+                    for (byte b : bytes) {
+                        hexBytes.append(String.format("%02X", b & 0xFF));
+                    }
+                    instrMap.put("bytes", hexBytes.toString());
+                } catch (MemoryAccessException e) {
+                    instrMap.put("bytes", "??");
+                }
+
+                instrMap.put("mnemonic", instr.getMnemonicString());
+                instrMap.put("operands", instr.toString().substring(instr.getMnemonicString().length()).trim());
+                allInstructions.add(instrMap);
+            }
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("startAddress", addressStr);
+            result.put("instructions", allInstructions);
+            result.put("totalInstructions", allInstructions.size());
+
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                .success(true)
+                .result(result)
+                .addLink("self", "/memory/" + addressStr + "/disassembly?count=" + count);
+
+            if (!allInstructions.isEmpty()) {
+                String lastAddr = (String) allInstructions.get(allInstructions.size() - 1).get("address");
+                builder.addLink("next", "/memory/" + lastAddr + "/disassembly?count=" + count);
+            }
+
+            sendJsonResponse(exchange, builder.build(), 200);
+
+        } catch (Exception e) {
+            Msg.error(this, "Error in disassembly at address endpoint", e);
+            sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage(), "INTERNAL_ERROR");
+        }
+    }
+
+    private void handleMemoryBlocksRequest(HttpExchange exchange) throws IOException {
         try {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> qparams = parseQueryParams(exchange);

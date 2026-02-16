@@ -2371,6 +2371,39 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int =
     response = safe_patch(port, f"programs/current/memory/{address}", payload)
     return simplify_response(response)
 
+@mcp.tool()
+@text_output
+def memory_disassemble(address: str, count: int = 50, offset: int = 0, port: int = None) -> dict:
+    """Disassemble instructions at an arbitrary address (not tied to a function)
+
+    Args:
+        address: Start address in hex format
+        count: Number of instructions to return (default: 50)
+        offset: Number of instructions to skip (default: 0)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Contains instructions list with address, bytes, mnemonic, operands
+    """
+    if not address:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    params = {"count": count}
+    if offset > 0:
+        params["offset"] = offset
+
+    response = safe_get(port, f"memory/{address}/disassembly", params)
+    return simplify_response(response)
+
 # Xrefs tools
 @mcp.tool()
 @text_output

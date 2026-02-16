@@ -65,6 +65,47 @@ def list_data(ctx, offset, limit, addr, name, name_contains, type):
         ctx.exit(1)
 
 
+@data.command('search')
+@click.argument('name')
+@click.option('--type', help='Filter by data type')
+@click.option('--offset', type=int, default=0, help='Pagination offset')
+@click.option('--limit', type=int, default=100, help='Maximum results to return')
+@click.pass_context
+def search_data(ctx, name, type, offset, limit):
+    """Search for data items by name.
+
+    \b
+    Examples:
+        ghydra data search user
+        ghydra data search "error_msg" --type string
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {
+            'offset': offset,
+            'limit': limit,
+            'name_contains': name,
+        }
+        if type:
+            params['type'] = type
+
+        response = client.get('data', params=params)
+        output = formatter.format_data_list(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
 @data.command('list-strings')
 @click.option('--offset', type=int, default=0, help='Pagination offset')
 @click.option('--limit', type=int, default=2000, help='Maximum results to return')
