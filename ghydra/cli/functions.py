@@ -70,6 +70,46 @@ def list_functions(ctx, offset, limit, name_contains, name_matches, containing_a
         ctx.exit(1)
 
 
+@functions.command('search')
+@click.argument('name')
+@click.option('--regex', '-r', is_flag=True, help='Treat NAME as a regex pattern')
+@click.option('--offset', type=int, default=0, help='Pagination offset')
+@click.option('--limit', type=int, default=100, help='Maximum results to return')
+@click.pass_context
+def search_functions(ctx, name, regex, offset, limit):
+    """Search for functions by name.
+
+    \b
+    Examples:
+        ghydra functions search ClassifyStar
+        ghydra functions search main
+        ghydra functions search --regex "^sub_.*"
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {'offset': offset, 'limit': limit}
+        if regex:
+            params['name_matches_regex'] = name
+        else:
+            params['name_contains'] = name
+
+        response = client.get('functions', params=params)
+        output = formatter.format_functions_list(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
 @functions.command('get')
 @click.option('--name', '-n', help='Function name')
 @click.option('--address', '-a', help='Function address (hex)')
