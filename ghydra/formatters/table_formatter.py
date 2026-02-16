@@ -144,16 +144,8 @@ class TableFormatter(BaseFormatter):
 
         disasm_text = "\n".join(lines)
 
-        syntax = Syntax(
-            disasm_text,
-            "asm",
-            theme="monokai",
-            line_numbers=False,
-            word_wrap=False
-        )
-
         header = f"[cyan]{title}[/cyan] ({total} instructions)\n"
-        return self._capture(header) + "\n" + self._capture(syntax)
+        return self._capture(header) + "\n" + disasm_text
 
     def format_memory(self, data: Dict[str, Any]) -> str:
         """Format memory as hex dump."""
