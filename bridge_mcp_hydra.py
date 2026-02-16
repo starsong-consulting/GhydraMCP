@@ -2373,12 +2373,12 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int =
 
 @mcp.tool()
 @text_output
-def memory_disassemble(address: str, count: int = 50, offset: int = 0, port: int = None) -> dict:
+def memory_disassemble(address: str, limit: int = 50, offset: int = 0, port: int = None) -> dict:
     """Disassemble instructions at an arbitrary address (not tied to a function)
 
     Args:
         address: Start address in hex format
-        count: Number of instructions to return (default: 50)
+        limit: Number of instructions to return (default: 50)
         offset: Number of instructions to skip (default: 0)
         port: Specific Ghidra instance port (optional)
 
@@ -2397,7 +2397,7 @@ def memory_disassemble(address: str, count: int = 50, offset: int = 0, port: int
 
     port = _get_instance_port(port)
 
-    params = {"count": count}
+    params = {"limit": limit}
     if offset > 0:
         params["offset"] = offset
 

@@ -56,10 +56,10 @@ def read_memory(ctx, address, length, format):
 
 @memory.command('disassemble')
 @click.option('--address', '-a', required=True, help='Start address (hex)')
-@click.option('--count', '-c', type=int, default=50, help='Number of instructions (default: 50)')
+@click.option('--limit', '-l', type=int, default=50, help='Max instructions to return (default: 50)')
 @click.option('--offset', '-o', type=int, default=0, help='Instructions to skip')
 @click.pass_context
-def disassemble_at(ctx, address, count, offset):
+def disassemble_at(ctx, address, limit, offset):
     """Disassemble instructions at an arbitrary address.
 
     Unlike 'functions disassemble', this is not tied to a function boundary.
@@ -67,15 +67,15 @@ def disassemble_at(ctx, address, count, offset):
     \b
     Examples:
         ghydra memory disassemble --address 0x401000
-        ghydra memory disassemble -a 0x401000 --count 20
-        ghydra memory disassemble -a 0x401000 --offset 10 --count 30
+        ghydra memory disassemble -a 0x401000 --limit 20
+        ghydra memory disassemble -a 0x401000 --offset 10 --limit 30
     """
     client = ctx.obj['client']
     formatter = ctx.obj['formatter']
     config = ctx.obj['config']
 
     try:
-        params = {'count': count}
+        params = {'limit': limit}
         if offset > 0:
             params['offset'] = offset
 

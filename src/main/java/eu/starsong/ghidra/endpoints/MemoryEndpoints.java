@@ -401,7 +401,8 @@ private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr
             }
 
             Map<String, String> params = parseQueryParams(exchange);
-            int count = parseIntOrDefault(params.get("count"), 50);
+            String limitStr = params.get("limit") != null ? params.get("limit") : params.get("count");
+            int count = parseIntOrDefault(limitStr, 50);
             int offset = parseIntOrDefault(params.get("offset"), 0);
 
             AddressFactory addressFactory = program.getAddressFactory();
