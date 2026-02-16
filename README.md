@@ -14,11 +14,13 @@ GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI 
 
 ## Overview
 
+> **Note:** The MCP bridge (`bridge_mcp_hydra.py`) is being deprecated in favor of the CLI tool (`ghydra`). The CLI provides the same capabilities with better output formatting, `--json` mode for scripting and AI tool use, and doesn't require an MCP-capable client. The bridge will continue to work but is no longer the recommended integration path.
+
 GhydraMCP v2.2.0 integrates four key components:
 
 1. **Modular Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a HATEOAS-driven REST API
-2. **MCP Bridge**: A Python script that translates MCP requests into API calls with comprehensive type checking
-3. **CLI Tool (`ghydra`)**: A standalone command-line interface for direct interaction with Ghidra — human-readable tables, syntax highlighting, and `--json` mode for scripting
+2. **CLI Tool (`ghydra`)**: A standalone command-line interface for direct interaction with Ghidra — human-readable tables, `--json` mode for AI tool use and scripting
+3. **MCP Bridge** *(deprecated)*: A Python script that translates MCP requests into API calls
 4. **Multi-instance Architecture**: Connect multiple Ghidra instances to analyze different binaries simultaneously
 
 This architecture enables AI assistants like Claude to seamlessly:
