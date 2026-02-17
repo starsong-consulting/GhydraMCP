@@ -365,7 +365,7 @@ Represents named locations (functions, data, labels).
 
 Represents defined data items in memory.
 
-- **`GET /data`**: List defined data items. Supports searching (by name/address/regex) and pagination. Can filter by type (`?type=string`, `?type=dword`, etc.).
+- **`GET /data`**: List data items. Supports searching (by name/address/regex) and pagination. Can filter by type (`?type=string`, `?type=dword`, etc.). For `?addr=...` lookups, the endpoint returns defined data first and falls back to label symbols when no defined data exists at that address.
 - **`POST /data`**: Define a new data item. Requires `address`, `type`, and optionally `size` or `length` in the payload.
 - **`GET /data/{address}`**: Get details of the data item at the specified address (type, size, value representation).
 - **`PATCH /data/{address}`**: Modify a data item (e.g., change `name`, `type`, `comment`). Payload specifies changes.

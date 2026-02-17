@@ -2463,7 +2463,7 @@ def xrefs_list(to_addr: str = None, from_addr: str = None, type: str = None,
 def data_list(offset: int = 0, limit: int = 100, addr: str = None,
             name: str = None, name_contains: str = None, type: str = None,
             port: int = None) -> dict:
-    """List defined data items with filtering and pagination
+    """List data items with filtering and pagination
     
     Args:
         offset: Pagination offset (default: 0)
@@ -2475,7 +2475,9 @@ def data_list(offset: int = 0, limit: int = 100, addr: str = None,
         port: Specific Ghidra instance port (optional)
     
     Returns:
-        dict: Data items matching the filters
+        dict: Data items matching the filters. For address lookups, returns
+              defined data first and falls back to symbol labels if no defined
+              data exists at that address.
     """
     port = _get_instance_port(port)
     

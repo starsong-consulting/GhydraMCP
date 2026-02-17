@@ -210,7 +210,7 @@ GhydraMCP v2.2.0 organizes tools into logical namespaces for better discoverabil
 - `functions_set_comment`: Set function comment (params: address, comment, port [optional])
 
 **Data Manipulation** (`data_*`):
-- `data_list`: List data items (params: offset, limit, addr, name, name_contains, port [optional])
+- `data_list`: List data items (params: offset, limit, addr, name, name_contains, port [optional]); address lookups return defined data first, then label symbols if no defined data exists
 - `data_list_strings`: List all defined strings (params: offset, limit, filter, port [optional])
 - `data_create`: Create data at address (params: address, data_type, size [optional], port [optional])
 - `data_rename`: Rename data item (params: address, name, port [optional])

@@ -21,6 +21,7 @@ package eu.starsong.ghidra.endpoints;
     import ghidra.util.Msg;
 
     import java.io.IOException;
+    import java.nio.charset.StandardCharsets;
     import java.util.*;
     import java.util.concurrent.atomic.AtomicBoolean;
     import javax.swing.SwingUtilities;
@@ -154,8 +155,8 @@ package eu.starsong.ghidra.endpoints;
                         // GET /data/{address} - list filtered by address
                         Map<String, String> qparams = parseQueryParams(exchange);
                         qparams.put("addr", addressStr);
-                        // Reuse the list handler by setting the filter
-                        handleListData(exchange);
+                        // Reuse the list handler with the explicit address filter
+                        handleListData(exchange, qparams);
                     } else if ("POST".equals(method)) {
                         // POST /data/{address} - create data at address
                         Map<String, String> params = parseJsonPostParams(exchange);
@@ -196,65 +197,217 @@ package eu.starsong.ghidra.endpoints;
         }
 
         private void handleListData(HttpExchange exchange) throws IOException {
+            handleListData(exchange, parseQueryParams(exchange));
+        }
+
+        private void handleListData(HttpExchange exchange, Map<String, String> qparams) throws IOException {
             try {
-                Map<String, String> qparams = parseQueryParams(exchange);
                 int offset = parseIntOrDefault(qparams.get("offset"), 0);
                 int limit = parseIntOrDefault(qparams.get("limit"), 100);
-                
+
                 Program program = getCurrentProgram();
                 if (program == null) {
                     sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
                     return;
                 }
-                
+
+                String addrFilter = qparams.get("addr");
+                Address addrFilterAddress = null;
+                if (addrFilter != null && !addrFilter.isEmpty()) {
+                    try {
+                        addrFilterAddress = program.getAddressFactory().getAddress(addrFilter);
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid address format: " + addrFilter, "INVALID_PARAMETER");
+                        return;
+                    }
+                }
+
+                String nameFilter = qparams.get("name");
+                String nameContainsFilter = qparams.get("name_contains");
+                String typeFilter = qparams.get("type");
+
                 List<Map<String, Object>> dataItems = new ArrayList<>();
                 for (MemoryBlock block : program.getMemory().getBlocks()) {
                     DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
                     while (it.hasNext()) {
                         Data data = it.next();
-                        if (block.contains(data.getAddress())) {
-                            // Apply addr filter if present
-                            String addrFilter = qparams.get("addr");
-                            if (addrFilter != null && !data.getAddress().toString().equals(addrFilter)) {
-                                continue; // Skip this data item if address doesn't match filter
-                            }
-
-                            Map<String, Object> item = new HashMap<>();
-                            item.put("address", data.getAddress().toString());
-                            item.put("name", data.getLabel() != null ? data.getLabel() : "(unnamed)");
-                            item.put("value", data.getDefaultValueRepresentation());
-                            item.put("dataType", data.getDataType().getName());
-                            
-                            // Add HATEOAS links
-                            Map<String, Object> links = new HashMap<>();
-                            Map<String, String> selfLink = new HashMap<>();
-                            selfLink.put("href", "/data/" + data.getAddress().toString());
-                            links.put("self", selfLink);
-                            item.put("_links", links);
-                            
-                            dataItems.add(item);
+                        if (!block.contains(data.getAddress())) {
+                            continue;
                         }
+                        if (addrFilterAddress != null && !data.getAddress().equals(addrFilterAddress)) {
+                            continue;
+                        }
+
+                        Map<String, Object> item = buildDefinedDataItem(program, data);
+                        if (!matchesDataListFilters(item, nameFilter, nameContainsFilter, typeFilter)) {
+                            continue;
+                        }
+
+                        dataItems.add(item);
                     }
                 }
-                
+
+                // If no defined data exists at the requested address, fall back to label symbols.
+                if (dataItems.isEmpty() && addrFilterAddress != null) {
+                    Symbol symbol = program.getSymbolTable().getPrimarySymbol(addrFilterAddress);
+                    Map<String, Object> fallbackItem = buildSymbolFallbackItem(program, addrFilterAddress, symbol);
+                    if (fallbackItem != null && matchesDataListFilters(fallbackItem, nameFilter, nameContainsFilter, typeFilter)) {
+                        dataItems.add(fallbackItem);
+                    }
+                }
+
                 // Build response with HATEOAS links
                 eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
                     .success(true);
-                
+
                 // Apply pagination and get paginated items
                 List<Map<String, Object>> paginated = applyPagination(dataItems, offset, limit, builder, "/data");
-                
+
                 // Set the paginated result
                 builder.result(paginated);
-                
+
                 // Add program link
                 builder.addLink("program", "/program");
-                
+
                 sendJsonResponse(exchange, builder.build(), 200);
             } catch (Exception e) {
                 Msg.error(this, "Error listing data", e);
                 sendErrorResponse(exchange, 500, "Error listing data: " + e.getMessage(), "INTERNAL_ERROR");
             }
+        }
+
+        private Map<String, Object> buildDefinedDataItem(Program program, Data data) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("address", data.getAddress().toString());
+            item.put("name", getDataItemName(program, data));
+            item.put("value", data.getDefaultValueRepresentation());
+            item.put("dataType", data.getDataType().getName());
+
+            Map<String, Object> links = new HashMap<>();
+            Map<String, String> selfLink = new HashMap<>();
+            selfLink.put("href", "/data/" + data.getAddress().toString());
+            links.put("self", selfLink);
+            item.put("_links", links);
+
+            return item;
+        }
+
+        private String getDataItemName(Program program, Data data) {
+            String label = data.getLabel();
+            if (label != null && !label.isEmpty()) {
+                return label;
+            }
+
+            Symbol symbol = program.getSymbolTable().getPrimarySymbol(data.getAddress());
+            if (symbol != null) {
+                return safeGetSymbolName(symbol, program);
+            }
+
+            return "(unnamed)";
+        }
+
+        private Map<String, Object> buildSymbolFallbackItem(Program program, Address address, Symbol symbol) {
+            if (symbol == null) {
+                return null;
+            }
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("address", address.toString());
+            item.put("name", safeGetSymbolName(symbol, program));
+            item.put("value", buildSymbolValuePreview(program, address));
+            item.put("dataType", "label");
+            item.put("source", "symbol");
+
+            Map<String, Object> links = new HashMap<>();
+            Map<String, String> selfLink = new HashMap<>();
+            selfLink.put("href", "/data/" + address.toString());
+            links.put("self", selfLink);
+            item.put("_links", links);
+
+            return item;
+        }
+
+        private boolean matchesDataListFilters(Map<String, Object> item, String nameFilter, String nameContainsFilter, String typeFilter) {
+            String name = String.valueOf(item.getOrDefault("name", ""));
+            String dataType = String.valueOf(item.getOrDefault("dataType", ""));
+
+            if (nameFilter != null && !nameFilter.isEmpty() && !name.equals(nameFilter)) {
+                return false;
+            }
+            if (nameContainsFilter != null && !nameContainsFilter.isEmpty()) {
+                String lcName = name.toLowerCase(Locale.ROOT);
+                if (!lcName.contains(nameContainsFilter.toLowerCase(Locale.ROOT))) {
+                    return false;
+                }
+            }
+            if (typeFilter != null && !typeFilter.isEmpty() && !dataType.equalsIgnoreCase(typeFilter)) {
+                return false;
+            }
+
+            return true;
+        }
+
+        private String buildSymbolValuePreview(Program program, Address address) {
+            try {
+                if (!program.getMemory().contains(address)) {
+                    return "";
+                }
+
+                MemoryBlock block = program.getMemory().getBlock(address);
+                if (block == null) {
+                    return "";
+                }
+
+                long available = block.getEnd().subtract(address) + 1;
+                if (available <= 0) {
+                    return "";
+                }
+
+                int bytesToRead = (int) Math.min(available, 32L);
+                byte[] bytes = new byte[bytesToRead];
+                int bytesRead = program.getMemory().getBytes(address, bytes, 0, bytesToRead);
+                if (bytesRead <= 0) {
+                    return "";
+                }
+
+                int nullTerminatorIndex = -1;
+                for (int i = 0; i < bytesRead; i++) {
+                    if (bytes[i] == 0) {
+                        nullTerminatorIndex = i;
+                        break;
+                    }
+                }
+
+                if (nullTerminatorIndex > 0 && isPrintableAscii(bytes, nullTerminatorIndex)) {
+                    return new String(bytes, 0, nullTerminatorIndex, StandardCharsets.UTF_8);
+                }
+
+                return "0x" + bytesToHex(bytes, Math.min(bytesRead, 16));
+            } catch (Exception e) {
+                return "";
+            }
+        }
+
+        private boolean isPrintableAscii(byte[] bytes, int length) {
+            for (int i = 0; i < length; i++) {
+                int value = bytes[i] & 0xff;
+                if (value < 0x20 || value > 0x7e) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private String bytesToHex(byte[] bytes, int length) {
+            StringBuilder sb = new StringBuilder(length * 2);
+            for (int i = 0; i < length; i++) {
+                int value = bytes[i] & 0xff;
+                if (value < 0x10) {
+                    sb.append('0');
+                }
+                sb.append(Integer.toHexString(value).toUpperCase(Locale.ROOT));
+            }
+            return sb.toString();
         }
 
         private void handleRenameData(HttpExchange exchange, Map<String, String> params) throws IOException {
