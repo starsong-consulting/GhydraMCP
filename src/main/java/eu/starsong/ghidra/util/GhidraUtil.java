@@ -31,8 +31,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class GhidraUtil {
+
+    private static final int DEFAULT_DECOMPILATION_TIMEOUT_SECONDS =
+        Integer.getInteger("ghidra.mcp.decompile.timeout", 1200);
+    private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
 
     /**
      * Parse an integer from a string, or return defaultValue if null/invalid.
@@ -81,10 +88,60 @@ public class GhidraUtil {
      * @return The resolved DataType, or null if not found by any strategy
      */
     public static DataType resolveDataType(Program program, String dataTypeName) {
-        if (program == null || dataTypeName == null || dataTypeName.isEmpty()) {
+        if (program == null || dataTypeName == null) {
             return null;
         }
 
+        String normalizedName = dataTypeName.trim();
+        if (normalizedName.isEmpty()) {
+            return null;
+        }
+
+        // Parse C-style array suffixes, e.g. uint64_t[8], char[16], int[4][2].
+        List<Integer> dimensions = new ArrayList<>();
+        String baseTypeName = normalizedName;
+        while (true) {
+            Matcher matcher = ARRAY_TYPE_PATTERN.matcher(baseTypeName);
+            if (!matcher.matches()) {
+                break;
+            }
+
+            String countText = matcher.group(2);
+            int elementCount;
+            try {
+                elementCount = Integer.parseInt(countText);
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (elementCount <= 0) {
+                return null;
+            }
+
+            dimensions.add(0, elementCount);
+            baseTypeName = matcher.group(1).trim();
+            if (baseTypeName.isEmpty()) {
+                return null;
+            }
+        }
+
+        DataType dataType = resolveBaseDataType(program, baseTypeName);
+        if (dataType == null) {
+            return null;
+        }
+
+        // Wrap base type in array dimensions from inner to outer.
+        for (Integer dimension : dimensions) {
+            int elementLength = dataType.getLength();
+            if (elementLength <= 0) {
+                return null;
+            }
+            dataType = new ghidra.program.model.data.ArrayDataType(dataType, dimension, elementLength);
+        }
+
+        return dataType;
+    }
+
+    private static DataType resolveBaseDataType(Program program, String dataTypeName) {
         DataTypeManager dtm = program.getDataTypeManager();
 
         // Try direct path lookup
@@ -93,6 +150,13 @@ public class GhidraUtil {
         // Try search by name
         if (dataType == null) {
             dataType = dtm.findDataType("/" + dataTypeName);
+        }
+
+        // Prefer exact datatype-name matches defined in this program before parser/built-ins.
+        if (dataType == null) {
+            List<DataType> namedMatches = new ArrayList<>();
+            dtm.findDataTypes(dataTypeName, namedMatches);
+            dataType = choosePreferredDataType(namedMatches, dataTypeName);
         }
 
         // Try function signature parser
@@ -108,17 +172,34 @@ public class GhidraUtil {
 
         // Try built-in primitive types as a last resort
         if (dataType == null) {
-            switch (dataTypeName.toLowerCase()) {
+            switch (dataTypeName.toLowerCase(Locale.ROOT)) {
                 case "byte":
+                case "int8_t":
                     dataType = new ghidra.program.model.data.ByteDataType();
+                    break;
+                case "uint8_t":
+                    dataType = new ghidra.program.model.data.UnsignedCharDataType();
                     break;
                 case "char":
                     dataType = new ghidra.program.model.data.CharDataType();
                     break;
+                case "signed char":
+                    dataType = new ghidra.program.model.data.SignedCharDataType();
+                    break;
+                case "unsigned char":
+                    dataType = new ghidra.program.model.data.UnsignedCharDataType();
+                    break;
                 case "word":
+                case "int16_t":
                     dataType = new ghidra.program.model.data.WordDataType();
                     break;
+                case "uint16_t":
+                case "ushort":
+                case "unsigned short":
+                    dataType = new ghidra.program.model.data.UnsignedShortDataType();
+                    break;
                 case "dword":
+                case "int32_t":
                     dataType = new ghidra.program.model.data.DWordDataType();
                     break;
                 case "qword":
@@ -134,7 +215,19 @@ public class GhidraUtil {
                     dataType = new ghidra.program.model.data.IntegerDataType();
                     break;
                 case "uint32_t":
+                case "unsigned int":
                     dataType = new ghidra.program.model.data.UnsignedIntegerDataType();
+                    break;
+                case "uint64_t":
+                case "ulonglong":
+                case "unsigned long long":
+                case "unsigned __int64":
+                    dataType = new ghidra.program.model.data.UnsignedLongLongDataType();
+                    break;
+                case "int64_t":
+                case "__int64":
+                case "long long":
+                    dataType = new ghidra.program.model.data.LongLongDataType();
                     break;
                 case "long":
                     dataType = new ghidra.program.model.data.LongDataType();
@@ -149,6 +242,57 @@ public class GhidraUtil {
         }
 
         return dataType;
+    }
+
+    private static DataType choosePreferredDataType(List<DataType> candidates, String requestedName) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+
+        for (DataType candidate : candidates) {
+            if (candidate != null && requestedName.equals(candidate.getName()) && !isLikelyBuiltIn(candidate)) {
+                return candidate;
+            }
+        }
+        for (DataType candidate : candidates) {
+            if (candidate != null && requestedName.equalsIgnoreCase(candidate.getName()) && !isLikelyBuiltIn(candidate)) {
+                return candidate;
+            }
+        }
+        for (DataType candidate : candidates) {
+            if (candidate != null && requestedName.equals(candidate.getName())) {
+                return candidate;
+            }
+        }
+        for (DataType candidate : candidates) {
+            if (candidate != null && requestedName.equalsIgnoreCase(candidate.getName())) {
+                return candidate;
+            }
+        }
+
+        return candidates.get(0);
+    }
+
+    private static boolean isLikelyBuiltIn(DataType dataType) {
+        if (dataType == null) {
+            return false;
+        }
+
+        String categoryPath = "";
+        try {
+            if (dataType.getCategoryPath() != null) {
+                categoryPath = dataType.getCategoryPath().getPath().toLowerCase(Locale.ROOT);
+            }
+        } catch (Exception ignored) {
+            // Best-effort only.
+        }
+
+        if (categoryPath.contains("/builtin") || categoryPath.contains("/builtins")) {
+            return true;
+        }
+
+        String className = dataType.getClass().getName().toLowerCase(Locale.ROOT);
+        return className.contains("builtin");
     }
 
     /**
@@ -416,7 +560,7 @@ public class GhidraUtil {
      * @return The decompiled code as a string, or null if decompilation failed.
      */
     public static String decompileFunction(Function function) {
-        return decompileFunction(function, true, 30);
+        return decompileFunction(function, true, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
     }
 
     /**
@@ -448,8 +592,17 @@ public class GhidraUtil {
             DecompileResults results = decompiler.decompileFunction(function, timeout, TaskMonitor.DUMMY);
             if (results.decompileCompleted()) {
                 return results.getDecompiledFunction().getC();
+            } else if (results.isTimedOut()) {
+                int suggestedTimeout = Math.max(timeout * 2, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
+                return "// Decompilation timed out after " + timeout + " seconds.\n" +
+                       "// This function likely needs more time.\n" +
+                       "// Retry with a higher timeout (for example timeout=" + suggestedTimeout + ").";
             } else {
                 Msg.warn(GhidraUtil.class, "Decompilation failed for function: " + function.getName());
+                String error = results.getErrorMessage();
+                if (error != null && !error.isEmpty()) {
+                    return "// Decompilation failed for " + function.getName() + ": " + error;
+                }
                 return "// Decompilation failed for " + function.getName();
             }
         } catch (Exception e) {
@@ -581,7 +734,7 @@ public class GhidraUtil {
         DecompInterface decompiler = new DecompInterface();
         try {
             decompiler.openProgram(function.getProgram());
-            DecompileResults results = decompiler.decompileFunction(function, 30, TaskMonitor.DUMMY);
+            DecompileResults results = decompiler.decompileFunction(function, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS, TaskMonitor.DUMMY);
             
             if (results.decompileCompleted()) {
                 HighFunction highFunc = results.getHighFunction();

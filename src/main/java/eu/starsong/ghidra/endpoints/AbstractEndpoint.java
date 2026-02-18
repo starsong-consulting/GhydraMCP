@@ -10,9 +10,14 @@ import eu.starsong.ghidra.util.GhidraUtil; // Import GhidraUtil
 import eu.starsong.ghidra.util.HttpUtil; // Import HttpUtil
 import ghidra.app.services.ProgramManager;
 import ghidra.framework.plugintool.PluginTool;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.address.AddressFactory;
+import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.Pointer;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.util.Msg;
 import java.io.IOException;
@@ -190,6 +195,155 @@ public abstract class AbstractEndpoint implements GhidraJsonEndpoint {
     
     protected int parseIntOrDefault(String val, int defaultValue) {
         return GhidraUtil.parseIntOrDefault(val, defaultValue);
+    }
+
+    /**
+     * Resolve an address string with optional overlay preference.
+     *
+     * Supports:
+     * - plain addresses (e.g. 0x401000, 401000)
+     * - explicit overlay addresses (e.g. runtime::145e29b10, runtime::0x145e29b10)
+     * - implicit overlay preference for plain offsets when an overlay block maps that offset
+     */
+    protected Address resolveAddress(Program program, String rawAddress, boolean preferOverlay) {
+        if (program == null || rawAddress == null) {
+            return null;
+        }
+
+        String addr = rawAddress.trim();
+        if (addr.isEmpty()) {
+            return null;
+        }
+
+        AddressFactory addressFactory = program.getAddressFactory();
+
+        // 1) Direct parse first.
+        Address parsed = tryParseAddress(addressFactory, addr);
+
+        String preferredSpaceName = null;
+
+        // 2) If unresolved and not space-qualified, try implicit hex prefix.
+        if (parsed == null && !addr.contains("::") && !addr.startsWith("0x") && !addr.startsWith("0X")) {
+            parsed = tryParseAddress(addressFactory, "0x" + addr);
+        }
+
+        // 3) If explicit space-qualified format still unresolved, parse manually.
+        if (addr.contains("::")) {
+            int idx = addr.indexOf("::");
+            preferredSpaceName = addr.substring(0, idx).trim();
+            String offsetPart = addr.substring(idx + 2).trim();
+            if (parsed == null) {
+                Long offset = parseAddressOffset(offsetPart);
+                if (offset != null) {
+                    AddressSpace space = addressFactory.getAddressSpace(preferredSpaceName);
+                    if (space != null) {
+                        try {
+                            parsed = space.getAddress(offset);
+                        } catch (Exception ignored) {
+                            // handled by null result below.
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4) Overlay preference for ambiguous plain offsets.
+        if (preferOverlay && !addr.contains("::")) {
+            Long offset = parseAddressOffset(addr.startsWith("0x") || addr.startsWith("0X") ? addr : "0x" + addr);
+            if (offset == null) {
+                offset = parseAddressOffset(addr);
+            }
+            if (offset != null) {
+                Address overlayAddress = findOverlayAddressByOffset(program, offset, null);
+                if (overlayAddress != null) {
+                    return overlayAddress;
+                }
+            }
+        }
+
+        // 5) If parsed into a non-overlay space and caller prefers overlay, try equivalent overlay offset.
+        if (preferOverlay && parsed != null && !parsed.getAddressSpace().isOverlaySpace()) {
+            Address overlayAddress = findOverlayAddressByOffset(program, parsed.getOffset(), preferredSpaceName);
+            if (overlayAddress != null) {
+                return overlayAddress;
+            }
+        }
+
+        return parsed;
+    }
+
+    protected Address resolveAddress(Program program, String rawAddress) {
+        return resolveAddress(program, rawAddress, true);
+    }
+
+    private Address tryParseAddress(AddressFactory addressFactory, String addressStr) {
+        try {
+            return addressFactory.getAddress(addressStr);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Long parseAddressOffset(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+
+        try {
+            if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
+                return Long.parseUnsignedLong(trimmed.substring(2), 16);
+            }
+            // Heuristic: bare hex-looking values are parsed as hex.
+            if (trimmed.matches("^[0-9a-fA-F]+$")) {
+                return Long.parseUnsignedLong(trimmed, 16);
+            }
+            return Long.parseLong(trimmed);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Address findOverlayAddressByOffset(Program program, long offset, String preferredSpaceName) {
+        Memory memory = program.getMemory();
+        Address fallback = null;
+
+        for (MemoryBlock block : memory.getBlocks()) {
+            Address start = block.getStart();
+            AddressSpace space = start.getAddressSpace();
+            if (!space.isOverlaySpace()) {
+                continue;
+            }
+
+            if (preferredSpaceName != null && !preferredSpaceName.isEmpty() &&
+                !preferredSpaceName.equals(space.getName())) {
+                continue;
+            }
+
+            try {
+                Address candidate = space.getAddress(offset);
+                if (!block.contains(candidate)) {
+                    continue;
+                }
+
+                // Prefer "runtime" overlays when ambiguous.
+                if (space.getName().toLowerCase().contains("runtime")) {
+                    return candidate;
+                }
+
+                if (fallback == null) {
+                    fallback = candidate;
+                }
+            } catch (Exception ignored) {
+                // Ignore spaces where this offset is invalid.
+            }
+        }
+
+        return fallback;
     }
     
     // Add other common Ghidra related utilities here or call GhidraUtil directly

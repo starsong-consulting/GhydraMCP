@@ -5,9 +5,11 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.DataFlowUtil;
 import ghidra.app.services.Analyzer;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.util.Msg;
@@ -38,6 +40,7 @@ public class AnalysisEndpoints extends AbstractEndpoint {
     public void registerEndpoints(HttpServer server) {
         server.createContext("/analysis/status", this::handleAnalysisStatus);
         server.createContext("/analysis/run", this::handleAnalysisRun);
+        server.createContext("/analysis/dataflow", this::handleDataFlow);
 
         // NOTE: The callgraph endpoint is now registered in ProgramEndpoints
         // This comment is to avoid confusion during future maintenance
@@ -129,6 +132,64 @@ public class AnalysisEndpoints extends AbstractEndpoint {
         } catch (Exception e) {
             Msg.error(this, "Error in /analysis/run endpoint", e);
             sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Handle GET /analysis/dataflow using a reference-flow approximation.
+     */
+    private void handleDataFlow(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+            return;
+        }
+
+        Program program = getCurrentProgram();
+        if (program == null) {
+            sendErrorResponse(exchange, 400, "No program loaded", "NO_PROGRAM_LOADED");
+            return;
+        }
+
+        try {
+            Map<String, String> params = parseQueryParams(exchange);
+            String addressStr = params.get("address");
+            String direction = params.getOrDefault("direction", "forward");
+            int maxSteps = parseIntOrDefault(params.get("max_steps"), 50);
+
+            if (addressStr == null || addressStr.isEmpty()) {
+                sendErrorResponse(exchange, 400, "Address parameter is required", "MISSING_PARAMETER");
+                return;
+            }
+
+            if (!direction.equals("forward") && !direction.equals("backward")) {
+                sendErrorResponse(exchange, 400, "Invalid direction parameter (must be 'forward' or 'backward')", "INVALID_PARAMETER");
+                return;
+            }
+
+            Address address;
+            try {
+                address = program.getAddressFactory().getAddress(addressStr);
+            } catch (Exception e) {
+                sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
+                return;
+            }
+
+            Map<String, Object> dataFlowResult =
+                DataFlowUtil.analyzeReferenceFlow(program, address, direction, maxSteps);
+
+            ResponseBuilder builder = new ResponseBuilder(exchange, port)
+                .success(true)
+                .result(dataFlowResult);
+
+            builder.addLink("self", "/analysis/dataflow?address=" + addressStr +
+                                   "&direction=" + direction +
+                                   "&max_steps=" + maxSteps);
+            builder.addLink("program", "/program");
+
+            sendJsonResponse(exchange, builder.build(), 200);
+        } catch (Exception e) {
+            Msg.error(this, "Error performing data flow analysis", e);
+            sendErrorResponse(exchange, 500, "Error performing data flow analysis: " + e.getMessage(), "DATAFLOW_ERROR");
         }
     }
 }

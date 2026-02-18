@@ -147,6 +147,7 @@ public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
         new SymbolEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new NamespaceEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new DataEndpoints(currentProgram, port, tool).registerEndpoints(server);
+        new DataTypeEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new StructEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new MemoryEndpoints(currentProgram, port, tool).registerEndpoints(server);
         new XrefsEndpoints(currentProgram, port, tool).registerEndpoints(server);

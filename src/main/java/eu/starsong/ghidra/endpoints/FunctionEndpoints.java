@@ -10,6 +10,7 @@ import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.HttpUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
@@ -23,6 +24,7 @@ import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.Msg;
 import ghidra.util.task.ConsoleTaskMonitor;
+import ghidra.util.task.TaskMonitor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -38,6 +40,9 @@ import java.nio.charset.StandardCharsets;
  * Implements the /functions endpoints with HATEOAS pattern.
  */
 public class FunctionEndpoints extends AbstractEndpoint {
+
+    private static final int DEFAULT_DECOMPILATION_TIMEOUT_SECONDS =
+        Integer.getInteger("ghidra.mcp.decompile.timeout", 1200);
 
     private PluginTool tool;
 
@@ -208,6 +213,9 @@ public class FunctionEndpoints extends AbstractEndpoint {
             } else if ("PATCH".equals(method)) {
                 // Update function
                 handleUpdateFunctionRESTful(exchange, function);
+            } else if ("DELETE".equals(method)) {
+                // Delete function
+                handleDeleteFunctionRESTful(exchange, function);
             } else {
                 sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
             }
@@ -1063,20 +1071,33 @@ public class FunctionEndpoints extends AbstractEndpoint {
             String style = params.getOrDefault("style", "normalize");
             String format = params.getOrDefault("format", "structured");
             boolean showConstants = Boolean.parseBoolean(params.getOrDefault("show_constants", "true"));
-            int timeout = parseIntOrDefault(params.get("timeout"), 30);
+            int timeout = Math.max(1, parseIntOrDefault(params.get("timeout"), DEFAULT_DECOMPILATION_TIMEOUT_SECONDS));
 
             // Line filtering parameters for context management
             int startLine = parseIntOrDefault(params.get("start_line"), -1);
             int endLine = parseIntOrDefault(params.get("end_line"), -1);
             int maxLines = parseIntOrDefault(params.get("max_lines"), -1);
 
-            // Decompile function — use cache if available, fall back to static method
-            String decompilation;
-            DecompilerCache cache = getDecompilerCache();
-            if (cache != null) {
-                decompilation = cache.getDecompiledCode(function, timeout);
+            DecompileResults decompResults = decompileWithStatus(function, timeout, showConstants);
+            boolean decompileCompleted = decompResults != null &&
+                                        decompResults.decompileCompleted() &&
+                                        decompResults.getDecompiledFunction() != null;
+            boolean timedOut = decompResults != null && decompResults.isTimedOut();
+            String decompileError = decompResults != null ? decompResults.getErrorMessage() : null;
+            int suggestedTimeout = Math.max(timeout * 2, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
+
+            String decompilation = null;
+            if (decompileCompleted) {
+                decompilation = decompResults.getDecompiledFunction().getC();
+            } else if (timedOut) {
+                decompilation = "// Decompilation timed out after " + timeout + " seconds.\n" +
+                               "// This function likely needs more time.\n" +
+                               "// Retry with a higher timeout (for example timeout=" + suggestedTimeout + ").";
+            } else if (decompileError != null && !decompileError.isEmpty()) {
+                decompilation = "// Decompilation did not complete.\n// " + decompileError;
             } else {
-                decompilation = GhidraUtil.decompileFunction(function, showConstants, timeout);
+                decompilation = "// Decompilation did not complete.\n" +
+                               "// Retry with a higher timeout (for example timeout=" + suggestedTimeout + ").";
             }
 
             // Apply line filtering if requested
@@ -1120,6 +1141,20 @@ public class FunctionEndpoints extends AbstractEndpoint {
             Map<String, Object> result = new HashMap<>();
             result.put("function", functionInfo);
             result.put("decompiled", filteredDecompilation != null ? filteredDecompilation : "// Decompilation failed");
+            result.put("timeout_seconds", timeout);
+            result.put("decompile_completed", decompileCompleted);
+            result.put("timed_out", timedOut);
+
+            if (!decompileCompleted) {
+                result.put("retry_recommended", true);
+                result.put("suggested_timeout_seconds", suggestedTimeout);
+                result.put("message", timedOut
+                    ? "Decompilation timed out; retry with a higher timeout."
+                    : "Decompilation did not complete; retry with a higher timeout.");
+                if (decompileError != null && !decompileError.isEmpty()) {
+                    result.put("decompile_error", decompileError);
+                }
+            }
 
             // Add metadata about line filtering if applied
             if (startLine > 0 || endLine > 0 || maxLines > 0) {
@@ -1153,6 +1188,34 @@ public class FunctionEndpoints extends AbstractEndpoint {
             sendJsonResponse(exchange, builder.build(), 200);
         } else {
             sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+        }
+    }
+
+    private DecompileResults decompileWithStatus(Function function, int timeout, boolean showConstants) {
+        DecompilerCache cache = getDecompilerCache();
+        if (cache != null) {
+            return cache.getDecompileResults(function, timeout);
+        }
+
+        Program program = function.getProgram();
+        DecompInterface decompiler = new DecompInterface();
+        DecompileOptions options = new DecompileOptions();
+
+        if (showConstants) {
+            options.setEliminateUnreachable(true);
+            options.grabFromProgram(program);
+        }
+
+        decompiler.setOptions(options);
+        decompiler.openProgram(program);
+
+        try {
+            return decompiler.decompileFunction(function, timeout, TaskMonitor.DUMMY);
+        } catch (Exception e) {
+            Msg.error(this, "Error during decompilation of function: " + function.getName(), e);
+            return null;
+        } finally {
+            decompiler.dispose();
         }
     }
 
@@ -1276,7 +1339,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
             List<Map<String, Object>> variables;
             DecompilerCache cache = getDecompilerCache();
             if (cache != null) {
-                DecompileResults results = cache.getDecompileResults(function, 30);
+                DecompileResults results = cache.getDecompileResults(function, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
                 HighFunction hf = (results != null && results.decompileCompleted()) ? results.getHighFunction() : null;
                 variables = GhidraUtil.getFunctionVariables(function, hf);
             } else {
@@ -1352,12 +1415,12 @@ public class FunctionEndpoints extends AbstractEndpoint {
             DecompilerCache cache = getDecompilerCache();
             DecompileResults decompResults;
             if (cache != null) {
-                decompResults = cache.getDecompileResults(function, 30);
+                decompResults = cache.getDecompileResults(function, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
             } else {
                 DecompInterface decomp = new DecompInterface();
                 try {
                     decomp.openProgram(program);
-                    decompResults = decomp.decompileFunction(function, 30, new ConsoleTaskMonitor());
+                    decompResults = decomp.decompileFunction(function, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS, new ConsoleTaskMonitor());
                 } finally {
                     decomp.dispose();
                 }

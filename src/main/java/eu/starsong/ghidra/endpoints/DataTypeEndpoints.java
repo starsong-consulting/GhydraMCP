@@ -1,8 +1,13 @@
 package eu.starsong.ghidra.endpoints;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.data.*;
@@ -63,6 +68,7 @@ public class DataTypeEndpoints extends AbstractEndpoint {
             int limit = parseIntOrDefault(params.get("limit"), 100);
             String category = params.get("category");
             String kind = params.get("kind"); // struct, enum, union
+            String name = params.get("name");
 
             DataTypeManager dtm = program.getDataTypeManager();
             List<Map<String, Object>> dataTypes = new ArrayList<>();
@@ -75,6 +81,15 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                 // Apply filters
                 if (category != null && !dt.getCategoryPath().getPath().contains(category)) {
                     continue;
+                }
+
+                if (name != null && !name.isEmpty()) {
+                    String normalizedFilter = name.toLowerCase();
+                    String dtName = dt.getName() != null ? dt.getName().toLowerCase() : "";
+                    String dtDisplayName = dt.getDisplayName() != null ? dt.getDisplayName().toLowerCase() : "";
+                    if (!dtName.contains(normalizedFilter) && !dtDisplayName.contains(normalizedFilter)) {
+                        continue;
+                    }
                 }
 
                 if (kind != null) {
@@ -167,21 +182,23 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                             Structure struct = new StructureDataType(categoryPath, name, 0, dtm);
 
                             // Parse and add fields if provided
-                            if (fieldsJson != null && !fieldsJson.isEmpty()) {
-                                // TODO: Parse JSON fields array and add components
-                                // For now, create an empty struct
-                                Msg.info(this, "Fields parsing not yet implemented, creating empty struct");
-                            }
+                            List<Map<String, Object>> fieldsAdded = parseAndApplyFieldsToStructure(
+                                program, struct, fieldsJson);
 
                             // Add to data type manager
-                            DataType added = dtm.addDataType(struct, null);
+                            Structure addedStruct = (Structure) dtm.addDataType(
+                                struct, DataTypeConflictHandler.DEFAULT_HANDLER);
 
                             // Build result
                             Map<String, Object> resultMap = new HashMap<>();
-                            resultMap.put("name", added.getName());
-                            resultMap.put("category", added.getCategoryPath().getPath());
-                            resultMap.put("length", added.getLength());
+                            resultMap.put("name", addedStruct.getName());
+                            resultMap.put("category", addedStruct.getCategoryPath().getPath());
+                            resultMap.put("length", addedStruct.getLength());
                             resultMap.put("kind", "struct");
+                            resultMap.put("numComponents", addedStruct.getNumComponents());
+                            if (!fieldsAdded.isEmpty()) {
+                                resultMap.put("fieldsAdded", fieldsAdded);
+                            }
 
                             return resultMap;
                         });
@@ -243,14 +260,11 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                             EnumDataType enumDt = new EnumDataType(categoryPath, name, size, dtm);
 
                             // Parse and add values if provided
-                            if (valuesJson != null && !valuesJson.isEmpty()) {
-                                // TODO: Parse JSON values and add enum members
-                                // For now, create an empty enum
-                                Msg.info(this, "Values parsing not yet implemented, creating empty enum");
-                            }
+                            List<Map<String, Object>> valuesAdded = parseAndApplyEnumValues(enumDt, valuesJson);
 
                             // Add to data type manager
-                            DataType added = dtm.addDataType(enumDt, null);
+                            DataType added = dtm.addDataType(enumDt, DataTypeConflictHandler.DEFAULT_HANDLER);
+                            ghidra.program.model.data.Enum addedEnum = (ghidra.program.model.data.Enum) added;
 
                             // Build result
                             Map<String, Object> resultMap = new HashMap<>();
@@ -258,6 +272,10 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                             resultMap.put("category", added.getCategoryPath().getPath());
                             resultMap.put("length", added.getLength());
                             resultMap.put("kind", "enum");
+                            resultMap.put("numValues", addedEnum.getCount());
+                            if (!valuesAdded.isEmpty()) {
+                                resultMap.put("valuesAdded", valuesAdded);
+                            }
 
                             return resultMap;
                         });
@@ -318,14 +336,12 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                             UnionDataType union = new UnionDataType(categoryPath, name, dtm);
 
                             // Parse and add fields if provided
-                            if (fieldsJson != null && !fieldsJson.isEmpty()) {
-                                // TODO: Parse JSON fields array and add components
-                                // For now, create an empty union
-                                Msg.info(this, "Fields parsing not yet implemented, creating empty union");
-                            }
+                            List<Map<String, Object>> fieldsAdded = parseAndApplyFieldsToUnion(
+                                program, union, fieldsJson);
 
                             // Add to data type manager
-                            DataType added = dtm.addDataType(union, null);
+                            DataType added = dtm.addDataType(union, DataTypeConflictHandler.DEFAULT_HANDLER);
+                            Union addedUnion = (Union) added;
 
                             // Build result
                             Map<String, Object> resultMap = new HashMap<>();
@@ -333,6 +349,10 @@ public class DataTypeEndpoints extends AbstractEndpoint {
                             resultMap.put("category", added.getCategoryPath().getPath());
                             resultMap.put("length", added.getLength());
                             resultMap.put("kind", "union");
+                            resultMap.put("numComponents", addedUnion.getNumComponents());
+                            if (!fieldsAdded.isEmpty()) {
+                                resultMap.put("fieldsAdded", fieldsAdded);
+                            }
 
                             return resultMap;
                         });
@@ -355,6 +375,264 @@ public class DataTypeEndpoints extends AbstractEndpoint {
             Msg.error(this, "Error in /datatypes/union endpoint", e);
             sendErrorResponse(exchange, 500, "Internal server error: " + e.getMessage());
         }
+    }
+
+    private List<Map<String, Object>> parseAndApplyFieldsToStructure(
+            Program program,
+            Structure structure,
+            String fieldsJson) throws Exception {
+        List<Map<String, Object>> fieldsAdded = new ArrayList<>();
+        JsonArray fields = parseJsonArrayPayload(fieldsJson, "fields");
+        if (fields == null) {
+            return fieldsAdded;
+        }
+
+        for (int i = 0; i < fields.size(); i++) {
+            JsonElement fieldElement = fields.get(i);
+            if (!fieldElement.isJsonObject()) {
+                throw new Exception("fields[" + i + "] must be a JSON object");
+            }
+
+            JsonObject field = fieldElement.getAsJsonObject();
+            String fieldName = getStringOrDefault(field, "name", "field_" + i);
+            String fieldTypeName = getRequiredString(field, "type", "fields[" + i + "].type");
+            Integer requestedSize = getOptionalInteger(field, "size", "fields[" + i + "].size");
+            Integer offset = getOptionalInteger(field, "offset", "fields[" + i + "].offset");
+            String comment = getOptionalString(field, "comment");
+
+            DataType fieldType = GhidraUtil.resolveDataType(program, fieldTypeName);
+            if (fieldType == null) {
+                throw new Exception("Unknown field type in fields[" + i + "]: " + fieldTypeName);
+            }
+
+            int length = resolveComponentLength(fieldType, requestedSize, "fields[" + i + "]");
+            DataTypeComponent component;
+            if (offset != null) {
+                component = structure.insertAtOffset(offset, fieldType, length, fieldName, comment);
+            } else {
+                component = structure.add(fieldType, length, fieldName, comment);
+            }
+
+            if (component == null) {
+                throw new Exception("Failed to add struct field '" + fieldName + "'");
+            }
+
+            Map<String, Object> added = new HashMap<>();
+            added.put("name", component.getFieldName());
+            added.put("type", component.getDataType().getName());
+            added.put("offset", component.getOffset());
+            added.put("length", component.getLength());
+            fieldsAdded.add(added);
+        }
+
+        return fieldsAdded;
+    }
+
+    private List<Map<String, Object>> parseAndApplyFieldsToUnion(
+            Program program,
+            Union union,
+            String fieldsJson) throws Exception {
+        List<Map<String, Object>> fieldsAdded = new ArrayList<>();
+        JsonArray fields = parseJsonArrayPayload(fieldsJson, "fields");
+        if (fields == null) {
+            return fieldsAdded;
+        }
+
+        for (int i = 0; i < fields.size(); i++) {
+            JsonElement fieldElement = fields.get(i);
+            if (!fieldElement.isJsonObject()) {
+                throw new Exception("fields[" + i + "] must be a JSON object");
+            }
+
+            JsonObject field = fieldElement.getAsJsonObject();
+            String fieldName = getStringOrDefault(field, "name", "field_" + i);
+            String fieldTypeName = getRequiredString(field, "type", "fields[" + i + "].type");
+            Integer requestedSize = getOptionalInteger(field, "size", "fields[" + i + "].size");
+            String comment = getOptionalString(field, "comment");
+
+            DataType fieldType = GhidraUtil.resolveDataType(program, fieldTypeName);
+            if (fieldType == null) {
+                throw new Exception("Unknown field type in fields[" + i + "]: " + fieldTypeName);
+            }
+
+            int length = resolveComponentLength(fieldType, requestedSize, "fields[" + i + "]");
+            DataTypeComponent component = union.add(fieldType, length, fieldName, comment);
+            if (component == null) {
+                throw new Exception("Failed to add union field '" + fieldName + "'");
+            }
+
+            Map<String, Object> added = new HashMap<>();
+            added.put("name", component.getFieldName());
+            added.put("type", component.getDataType().getName());
+            added.put("offset", component.getOffset());
+            added.put("length", component.getLength());
+            fieldsAdded.add(added);
+        }
+
+        return fieldsAdded;
+    }
+
+    private List<Map<String, Object>> parseAndApplyEnumValues(
+            EnumDataType enumType,
+            String valuesJson) throws Exception {
+        List<Map<String, Object>> valuesAdded = new ArrayList<>();
+        JsonElement valuesElement = parseJsonPayload(valuesJson, "values");
+        if (valuesElement == null) {
+            return valuesAdded;
+        }
+
+        if (valuesElement.isJsonObject()) {
+            JsonObject valuesObject = valuesElement.getAsJsonObject();
+            for (Map.Entry<String, JsonElement> entry : valuesObject.entrySet()) {
+                long value = parseLongValue(entry.getValue(), "values." + entry.getKey());
+                enumType.add(entry.getKey(), value);
+
+                Map<String, Object> added = new HashMap<>();
+                added.put("name", entry.getKey());
+                added.put("value", value);
+                valuesAdded.add(added);
+            }
+            return valuesAdded;
+        }
+
+        if (valuesElement.isJsonArray()) {
+            JsonArray valuesArray = valuesElement.getAsJsonArray();
+            for (int i = 0; i < valuesArray.size(); i++) {
+                JsonElement element = valuesArray.get(i);
+                if (!element.isJsonObject()) {
+                    throw new Exception("values[" + i + "] must be a JSON object");
+                }
+                JsonObject valueObj = element.getAsJsonObject();
+                String name = getRequiredString(valueObj, "name", "values[" + i + "].name");
+                JsonElement rawValue = valueObj.get("value");
+                if (rawValue == null || rawValue.isJsonNull()) {
+                    throw new Exception("Missing required field: values[" + i + "].value");
+                }
+                long value = parseLongValue(rawValue, "values[" + i + "].value");
+                enumType.add(name, value);
+
+                Map<String, Object> added = new HashMap<>();
+                added.put("name", name);
+                added.put("value", value);
+                valuesAdded.add(added);
+            }
+            return valuesAdded;
+        }
+
+        throw new Exception("values must be a JSON object or JSON array");
+    }
+
+    private JsonArray parseJsonArrayPayload(String raw, String fieldName) throws Exception {
+        JsonElement parsed = parseJsonPayload(raw, fieldName);
+        if (parsed == null) {
+            return null;
+        }
+        if (!parsed.isJsonArray()) {
+            throw new Exception(fieldName + " must be a JSON array");
+        }
+        return parsed.getAsJsonArray();
+    }
+
+    private JsonElement parseJsonPayload(String raw, String fieldName) throws Exception {
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+
+        JsonElement parsed;
+        try {
+            parsed = JsonParser.parseString(raw);
+        } catch (Exception e) {
+            throw new Exception("Invalid JSON in '" + fieldName + "': " + e.getMessage(), e);
+        }
+
+        // Handle doubly-encoded JSON payloads:
+        // "{\"a\":1}" or "[{\"name\":\"x\"}]"
+        if (parsed.isJsonPrimitive() && parsed.getAsJsonPrimitive().isString()) {
+            String nested = parsed.getAsString();
+            String trimmed = nested.trim();
+            if ((trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+                (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+                try {
+                    parsed = JsonParser.parseString(nested);
+                } catch (Exception e) {
+                    throw new Exception("Invalid nested JSON in '" + fieldName + "': " + e.getMessage(), e);
+                }
+            }
+        }
+
+        return parsed;
+    }
+
+    private int resolveComponentLength(DataType dataType, Integer requestedSize, String fieldPath) throws Exception {
+        if (requestedSize != null) {
+            if (requestedSize <= 0) {
+                throw new Exception(fieldPath + ".size must be > 0");
+            }
+            return requestedSize;
+        }
+
+        int dataTypeLength = dataType.getLength();
+        if (dataTypeLength <= 0) {
+            throw new Exception(
+                fieldPath + " has type '" + dataType.getName() + "' with non-positive length; specify size explicitly");
+        }
+        return dataTypeLength;
+    }
+
+    private String getRequiredString(JsonObject object, String key, String fieldPath) throws Exception {
+        String value = getOptionalString(object, key);
+        if (value == null || value.isEmpty()) {
+            throw new Exception("Missing required field: " + fieldPath);
+        }
+        return value;
+    }
+
+    private String getStringOrDefault(JsonObject object, String key, String defaultValue) {
+        String value = getOptionalString(object, key);
+        return (value == null || value.isEmpty()) ? defaultValue : value;
+    }
+
+    private String getOptionalString(JsonObject object, String key) {
+        JsonElement value = object.get(key);
+        if (value == null || value.isJsonNull()) {
+            return null;
+        }
+        if (value.isJsonPrimitive()) {
+            return value.getAsString();
+        }
+        return value.toString();
+    }
+
+    private Integer getOptionalInteger(JsonObject object, String key, String fieldPath) throws Exception {
+        JsonElement value = object.get(key);
+        if (value == null || value.isJsonNull()) {
+            return null;
+        }
+        try {
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                return value.getAsInt();
+            }
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                return Integer.decode(value.getAsString().trim());
+            }
+            throw new NumberFormatException("value is not a number");
+        } catch (Exception e) {
+            throw new Exception("Invalid integer value for " + fieldPath, e);
+        }
+    }
+
+    private long parseLongValue(JsonElement value, String fieldPath) throws Exception {
+        try {
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) {
+                return value.getAsLong();
+            }
+            if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+                return Long.decode(value.getAsString().trim());
+            }
+        } catch (Exception e) {
+            throw new Exception("Invalid numeric value for " + fieldPath, e);
+        }
+        throw new Exception("Invalid numeric value for " + fieldPath);
     }
 
     /**

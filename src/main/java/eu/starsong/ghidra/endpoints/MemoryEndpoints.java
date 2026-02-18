@@ -7,7 +7,6 @@ import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
@@ -68,6 +67,9 @@ public class MemoryEndpoints extends AbstractEndpoint {
             if ("GET".equals(exchange.getRequestMethod())) {
                 Map<String, String> qparams = parseQueryParams(exchange);
                 String addressStr = qparams.get("address");
+                if ((addressStr == null || addressStr.isEmpty()) && exchange.getAttribute("address") instanceof String) {
+                    addressStr = (String) exchange.getAttribute("address");
+                }
                 String lengthStr = qparams.get("length");
                 
                 // Create ResponseBuilder for HATEOAS-compliant response
@@ -115,37 +117,20 @@ public class MemoryEndpoints extends AbstractEndpoint {
                     }
                 }
                 
-                // Parse address with safety fallbacks
-                AddressFactory addressFactory = program.getAddressFactory();
-                Address address;
-                try {
-                    // Try to use provided address
-                    address = addressFactory.getAddress(addressStr);
-                } catch (Exception e) {
-                    try {
-                        // If there's an exception, try to get the image base address instead
-                        address = program.getImageBase();
-                        Msg.warn(this, "Invalid address format. Using image base address: " + address);
-                    } catch (Exception e2) {
-                        // If image base fails, use min address from default space
-                        address = addressFactory.getDefaultAddressSpace().getMinAddress();
-                        Msg.warn(this, "Could not get image base. Using default address: " + address);
-                    }
+                // Parse address with overlay-aware resolution.
+                Address address = resolveAddress(program, addressStr, true);
+                if (address == null) {
+                    sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
+                    return;
                 }
                 
                 // Read memory
                 Memory memory = program.getMemory();
                 if (!memory.contains(address)) {
-                    // Try to find a valid memory block
-                    MemoryBlock[] blocks = memory.getBlocks();
-                    if (blocks.length > 0) {
-                        // Use the first memory block
-                        address = blocks[0].getStart();
-                        Msg.info(this, "Using first memory block address: " + address);
-                    } else {
-                        sendErrorResponse(exchange, 404, "No valid memory blocks found", "NO_MEMORY_BLOCKS");
-                        return;
-                    }
+                    sendErrorResponse(exchange, 404,
+                        "Address not mapped in memory: " + address.toString(),
+                        "ADDRESS_NOT_MAPPED");
+                    return;
                 }
                 
                 try {
@@ -260,11 +245,9 @@ private void handleMemoryComments(HttpExchange exchange, String addressStr, Stri
         }
         
         // Parse address
-        AddressFactory addressFactory = program.getAddressFactory();
         Address address;
-        try {
-            address = addressFactory.getAddress(addressStr);
-        } catch (Exception e) {
+        address = resolveAddress(program, addressStr, true);
+        if (address == null) {
             sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
             return;
         }
@@ -405,11 +388,9 @@ private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr
             int count = parseIntOrDefault(limitStr, 50);
             int offset = parseIntOrDefault(params.get("offset"), 0);
 
-            AddressFactory addressFactory = program.getAddressFactory();
             Address startAddr;
-            try {
-                startAddr = addressFactory.getAddress(addressStr);
-            } catch (Exception e) {
+            startAddr = resolveAddress(program, addressStr, true);
+            if (startAddr == null) {
                 sendErrorResponse(exchange, 400, "Invalid address format: " + addressStr, "INVALID_ADDRESS");
                 return;
             }
