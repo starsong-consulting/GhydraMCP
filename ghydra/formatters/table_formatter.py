@@ -106,6 +106,27 @@ class TableFormatter(BaseFormatter):
         """Format decompiled code with syntax highlighting."""
         result = data.get("result", {})
         code = result.get("decompiled") or result.get("ccode") or result.get("decompiled_text", "")
+        retry_recommended = bool(result.get("retry_recommended"))
+        suggested_timeout = result.get("suggested_timeout_seconds")
+        message = result.get("message")
+        decompile_error = result.get("decompile_error")
+
+        advisory_lines = []
+        if retry_recommended:
+            if message:
+                advisory_lines.append(f"// {message}")
+            if suggested_timeout:
+                advisory_lines.append(f"// Suggested timeout: {suggested_timeout}s")
+            if decompile_error:
+                advisory_lines.append(f"// Decompiler error: {decompile_error}")
+
+        if advisory_lines:
+            advisory_text = "\n".join(advisory_lines)
+            if code:
+                if advisory_text.lower() not in code.lower():
+                    code = f"{code.rstrip()}\n\n{advisory_text}"
+            else:
+                code = advisory_text
 
         if not code:
             return self._capture("[red]No decompiled code available[/red]")
@@ -500,6 +521,148 @@ class TableFormatter(BaseFormatter):
             )
 
         return self._capture(table)
+
+    def format_callgraph(self, data: Dict[str, Any]) -> str:
+        """Format analysis callgraph as a readable tree with summary."""
+        result = data.get("result", {})
+        if not isinstance(result, dict):
+            return self._capture("[yellow]No call graph data available[/yellow]")
+
+        nodes = result.get("nodes", [])
+        edges = result.get("edges", [])
+        if not isinstance(nodes, list):
+            nodes = []
+        if not isinstance(edges, list):
+            edges = []
+
+        root_name = result.get("rootFunction") or result.get("root") or "?"
+        root_addr = result.get("rootAddress") or result.get("root_address")
+        max_depth = result.get("max_depth")
+
+        id_to_name = {}
+        id_to_addr = {}
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            node_id = str(node.get("id") or node.get("address") or "")
+            if node_id:
+                id_to_name[node_id] = node.get("name") or node_id
+                id_to_addr[node_id] = str(node.get("address") or node_id)
+
+        children = {}
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            src = str(edge.get("from", ""))
+            dst = str(edge.get("to", ""))
+            if not src or not dst:
+                continue
+            children.setdefault(src, []).append(dst)
+
+        root_id = str(result.get("rootId") or root_addr or "")
+        if not root_id and root_name:
+            for node_id, node_name in id_to_name.items():
+                if node_name == root_name:
+                    root_id = node_id
+                    break
+
+        root_label = root_name
+        if root_addr:
+            root_label = f"{root_name} ({root_addr})"
+
+        tree = Tree(f"[cyan]{root_label}[/cyan]")
+
+        def add_children(parent_node, node_id, depth=0, seen=None):
+            if seen is None:
+                seen = set()
+            if node_id in seen:
+                parent_node.add(f"[dim]{id_to_name.get(node_id, node_id)} (recursive)[/dim]")
+                return
+
+            seen = set(seen)
+            seen.add(node_id)
+
+            for child_id in children.get(node_id, [])[:20]:
+                child_name = id_to_name.get(child_id, child_id)
+                child_addr = id_to_addr.get(child_id, child_id)
+                child_label = f"{child_name} ({child_addr})"
+                child_node = parent_node.add(f"[green]{child_label}[/green]")
+                if depth < 4:
+                    add_children(child_node, child_id, depth + 1, seen)
+            if len(children.get(node_id, [])) > 20:
+                parent_node.add(f"[dim]... and {len(children[node_id]) - 20} more[/dim]")
+
+        if root_id:
+            add_children(tree, root_id)
+
+        summary = self._capture(
+            f"[cyan]Call Graph[/cyan] "
+            f"nodes={len(nodes)} edges={len(edges)}"
+            + (f" max_depth={max_depth}" if max_depth is not None else "")
+        )
+
+        edge_table = Table(title="Calls", show_lines=False)
+        edge_table.add_column("From", style="cyan")
+        edge_table.add_column("To", style="green")
+        edge_table.add_column("Site", style="yellow")
+        edge_table.add_column("Type", style="dim")
+
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            src_id = str(edge.get("from", ""))
+            dst_id = str(edge.get("to", ""))
+            src_name = id_to_name.get(src_id, src_id)
+            dst_name = id_to_name.get(dst_id, dst_id)
+            src_addr = id_to_addr.get(src_id, src_id)
+            dst_addr = id_to_addr.get(dst_id, dst_id)
+            edge_table.add_row(
+                f"{src_name} ({src_addr})",
+                f"{dst_name} ({dst_addr})",
+                str(edge.get("call_site", edge.get("site", ""))),
+                str(edge.get("type", "")),
+            )
+
+        edge_text = self._capture(edge_table) if edge_table.rows else self._capture("[yellow]No calls[/yellow]")
+        return f"{summary}\n{self._capture(tree)}\n{edge_text}"
+
+    def format_dataflow(self, data: Dict[str, Any]) -> str:
+        """Format analysis dataflow output."""
+        result = data.get("result", {})
+        if not isinstance(result, dict):
+            return self._capture("[yellow]No data flow data available[/yellow]")
+
+        steps = result.get("steps", [])
+        if not isinstance(steps, list):
+            steps = []
+
+        table = Table(title="Data Flow", show_lines=False)
+        table.add_column("Step", style="cyan", justify="right")
+        table.add_column("Address", style="green", no_wrap=True)
+        table.add_column("Type", style="yellow")
+        table.add_column("Description", style="white", overflow="fold")
+
+        for i, step in enumerate(steps, start=1):
+            if not isinstance(step, dict):
+                continue
+            table.add_row(
+                str(i),
+                str(step.get("address", step.get("to", step.get("from", "?")))),
+                str(step.get("type", step.get("refType", "?"))),
+                str(step.get("description", step.get("label", "")))
+            )
+
+        header = []
+        for key in ("start_address", "address", "direction", "max_steps", "truncated"):
+            if key in result:
+                header.append(f"[cyan]{key}:[/cyan] {result.get(key)}")
+
+        if not table.rows:
+            return self._capture("\n".join(header) if header else "[yellow]No data flow steps found[/yellow]")
+
+        header_text = self._capture("\n".join(header)) if header else ""
+        body = self._capture(table)
+        return f"{header_text}\n{body}".strip()
 
     def format_error(self, error: Exception) -> str:
         """Format error message."""

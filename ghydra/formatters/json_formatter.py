@@ -110,6 +110,14 @@ class JSONFormatter(BaseFormatter):
         """Format datatypes list as JSON."""
         return self._format_json(data)
 
+    def format_callgraph(self, data: Dict[str, Any]) -> str:
+        """Format callgraph as JSON."""
+        return self._format_json(data)
+
+    def format_dataflow(self, data: Dict[str, Any]) -> str:
+        """Format dataflow as JSON."""
+        return self._format_json(data)
+
     def format_error(self, error: Exception) -> str:
         """Format error as JSON."""
         error_dict = {

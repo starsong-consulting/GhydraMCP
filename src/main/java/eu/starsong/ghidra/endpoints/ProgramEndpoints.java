@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.model.ProgramInfo;
+import eu.starsong.ghidra.util.DataFlowUtil;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.HttpUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
@@ -44,6 +45,10 @@ public class ProgramEndpoints extends AbstractEndpoint {
 
     @Override
     public void registerEndpoints(HttpServer server) {
+        // Program collection/resource endpoints
+        server.createContext("/programs", this::handleProgramsRoot);
+        server.createContext("/programs/", this::handleProgramsById);
+
         server.createContext("/program", this::handleProgramInfo);
         
         // Register address and function endpoints
@@ -52,6 +57,34 @@ public class ProgramEndpoints extends AbstractEndpoint {
         
         // Register direct analysis endpoints according to HATEOAS API
         server.createContext("/analysis/callgraph", this::handleCallGraph);
+    }
+
+    private void handleProgramsRoot(HttpExchange exchange) throws IOException {
+        String method = exchange.getRequestMethod();
+        String path = exchange.getRequestURI().getPath();
+
+        if (!"/programs".equals(path) && !"/programs/".equals(path)) {
+            sendErrorResponse(exchange, 404, "Endpoint not found", "ENDPOINT_NOT_FOUND");
+            return;
+        }
+
+        if ("GET".equals(method)) {
+            handleListPrograms(exchange);
+        } else if ("POST".equals(method)) {
+            handleImportProgram(exchange);
+        } else {
+            sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+        }
+    }
+
+    private void handleProgramsById(HttpExchange exchange) throws IOException {
+        String path = exchange.getRequestURI().getPath();
+        if ("/programs/".equals(path)) {
+            exchange.getResponseHeaders().set("Location", "/programs");
+            exchange.sendResponseHeaders(302, -1);
+            return;
+        }
+        handleProgramById(exchange);
     }
 
     @Override
@@ -158,7 +191,14 @@ public class ProgramEndpoints extends AbstractEndpoint {
             
             // Check if this is a request for the current program
             if (path.equals("/programs/current")) {
-                handleProgramInfo(exchange);
+                String method = exchange.getRequestMethod();
+                if ("GET".equals(method)) {
+                    handleProgramInfo(exchange);
+                } else if ("DELETE".equals(method)) {
+                    handleDeleteProgram(exchange, "current");
+                } else {
+                    sendErrorResponse(exchange, 405, "Method Not Allowed", "METHOD_NOT_ALLOWED");
+                }
                 return;
             }
             
@@ -1575,7 +1615,9 @@ public class ProgramEndpoints extends AbstractEndpoint {
     private Map<String, Object> buildCallGraph(Program program, ghidra.program.model.listing.Function startFunction, int maxDepth) {
         Map<String, Object> graph = new HashMap<>();
         graph.put("root", startFunction.getName());
+        graph.put("rootFunction", startFunction.getName()); // Backward-compatible alias
         graph.put("root_address", startFunction.getEntryPoint().toString());
+        graph.put("rootAddress", startFunction.getEntryPoint().toString()); // Backward-compatible alias
         graph.put("max_depth", maxDepth);
         
         // Build nodes list
@@ -1700,23 +1742,8 @@ public class ProgramEndpoints extends AbstractEndpoint {
                 return;
             }
             
-            // This would typically use Ghidra's data flow analysis APIs
-            // For now, we'll return a simplified placeholder response
-            Map<String, Object> dataFlowResult = new HashMap<>();
-            dataFlowResult.put("start_address", addressStr);
-            dataFlowResult.put("direction", direction);
-            dataFlowResult.put("max_steps", maxSteps);
-            dataFlowResult.put("message", "Data flow analysis not fully implemented - this is a placeholder response");
-            
-            // Add some dummy flow steps
-            List<Map<String, Object>> steps = new ArrayList<>();
-            Map<String, Object> step1 = new HashMap<>();
-            step1.put("address", addressStr);
-            step1.put("instruction", "Sample instruction at " + addressStr);
-            step1.put("description", "Starting point of data flow analysis");
-            steps.add(step1);
-            
-            dataFlowResult.put("steps", steps);
+            Map<String, Object> dataFlowResult =
+                DataFlowUtil.analyzeReferenceFlow(program, address, direction, maxSteps);
             
             // Build response
             ResponseBuilder builder = new ResponseBuilder(exchange, port)

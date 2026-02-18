@@ -35,7 +35,10 @@ FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 BRIDGE_VERSION = "v2.2.0"
 REQUIRED_API_VERSION = 2020
 
-DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "10"))
+DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
+DEFAULT_DECOMPILATION_TIMEOUT = int(
+    os.environ.get("GHIDRA_DECOMP_TIMEOUT", str(max(DEFAULT_TIMEOUT, 1200)))
+)
 
 current_instance_port = DEFAULT_GHIDRA_PORT
 
@@ -65,7 +68,14 @@ The API is organized into namespaces for different types of operations:
 
 mcp = FastMCP("GhydraMCP", version=BRIDGE_VERSION, instructions=instructions)
 
-ghidra_host = os.environ.get("GHIDRA_HYDRA_HOST", DEFAULT_GHIDRA_HOST)
+# Backward-compatible host env resolution:
+# - GHIDRA_HYDRA_HOST: current preferred variable
+# - GHIDRA_HOST: legacy/common variable used in older setups
+ghidra_host = (
+    os.environ.get("GHIDRA_HYDRA_HOST")
+    or os.environ.get("GHIDRA_HOST")
+    or DEFAULT_GHIDRA_HOST
+)
 
 # Helper function to get the current instance or validate a specific port
 def _get_instance_port(port=None):
@@ -111,6 +121,17 @@ def validate_origin(headers: dict) -> bool:
 
     return origin_base in ALLOWED_ORIGINS
 
+
+def _extract_requested_decompile_timeout(params: dict = None) -> int:
+    """Get requested decompile timeout from params with safe defaults."""
+    requested_timeout = None
+    if isinstance(params, dict):
+        requested_timeout = params.get("timeout")
+    try:
+        return int(requested_timeout) if requested_timeout is not None else DEFAULT_DECOMPILATION_TIMEOUT
+    except (TypeError, ValueError):
+        return DEFAULT_DECOMPILATION_TIMEOUT
+
 def _make_request(method: str, port: int, endpoint: str, params: dict = None, 
                  json_data: dict = None, data: str = None, 
                  headers: dict = None) -> dict:
@@ -125,6 +146,12 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
     
     if headers:
         request_headers.update(headers)
+
+    request_timeout = DEFAULT_TIMEOUT
+    if "decompile" in endpoint:
+        requested_timeout = _extract_requested_decompile_timeout(params)
+        # Keep transport timeout above decompiler timeout to avoid premature client-side cutoffs.
+        request_timeout = max(DEFAULT_TIMEOUT, requested_timeout + 30)
 
     is_state_changing = method.upper() in ["POST", "PUT", "PATCH", "DELETE"]
     if is_state_changing:
@@ -153,7 +180,7 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
             json=json_data,
             data=data,
             headers=request_headers,
-            timeout=DEFAULT_TIMEOUT
+            timeout=request_timeout
         )
 
         try:
@@ -201,11 +228,19 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
                 }
 
     except requests.exceptions.Timeout:
+        timeout_message = f"Request to {endpoint} timed out after {request_timeout}s."
+        if "decompile" in endpoint:
+            requested_timeout = _extract_requested_decompile_timeout(params)
+            suggested_timeout = max(requested_timeout * 2, DEFAULT_DECOMPILATION_TIMEOUT)
+            timeout_message += (
+                f" Decompilation can take longer for large functions; retry with a higher timeout "
+                f"(for example timeout={suggested_timeout}) and/or increase GHIDRA_TIMEOUT."
+            )
         return {
             "success": False,
             "error": {
                 "code": "REQUEST_TIMEOUT",
-                "message": "Request timed out"
+                "message": timeout_message
             },
             "status_code": 408,
             "timestamp": int(time.time() * 1000)
@@ -342,6 +377,26 @@ def format_decompile(response: dict, **kwargs) -> str:
 
     result = response.get("result", {})
     code = result.get("ccode") or result.get("decompiled") or ""
+    message = result.get("message")
+    suggested_timeout = result.get("suggested_timeout_seconds")
+    retry_recommended = bool(result.get("retry_recommended"))
+    decompile_error = result.get("decompile_error")
+
+    advisory_lines = []
+    if retry_recommended:
+        if message:
+            advisory_lines.append(f"// {message}")
+        if suggested_timeout:
+            advisory_lines.append(f"// Suggested timeout: {suggested_timeout}s")
+        if decompile_error:
+            advisory_lines.append(f"// Decompiler error: {decompile_error}")
+
+    if advisory_lines:
+        advisory_text = "\n".join(advisory_lines)
+        if not code:
+            return advisory_text
+        if advisory_text.lower() not in code.lower():
+            return f"{code.rstrip()}\n\n{advisory_text}"
 
     if not code:
         return "Error: No decompiled code returned"
@@ -589,35 +644,64 @@ def format_callgraph(response: dict, **kwargs) -> str:
         return format_error(response)
 
     result = response.get("result", {})
-    root = result.get("rootFunction", "???")
+    root_name = result.get("rootFunction") or result.get("root")
+    root_addr = result.get("rootAddress") or result.get("root_address")
     nodes = result.get("nodes", [])
     edges = result.get("edges", [])
+    if not isinstance(nodes, list):
+        nodes = []
+    if not isinstance(edges, list):
+        edges = []
 
-    lines = [f"Call graph from {root}:", f"  {len(nodes)} functions, {len(edges)} calls", ""]
+    id_to_name = {}
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id") or node.get("address")
+        node_name = node.get("name") or node_id
+        if node_id:
+            id_to_name[str(node_id)] = str(node_name)
+
+    # Resolve root display and traversal ID across legacy/new schemas.
+    root_id = result.get("rootId") or root_addr or root_name
+    root_display = root_name or (id_to_name.get(str(root_id)) if root_id is not None else None) or str(root_id or "???")
+    if root_addr:
+        root_header = f"Call graph from {root_display} ({root_addr}):"
+    else:
+        root_header = f"Call graph from {root_display}:"
+
+    lines = [root_header, f"  {len(nodes)} functions, {len(edges)} calls", ""]
 
     calls = {}
     for edge in edges:
-        caller = edge.get("from", "")
-        callee = edge.get("to", "")
+        if not isinstance(edge, dict):
+            continue
+        caller = str(edge.get("from", ""))
+        callee = str(edge.get("to", ""))
         if caller not in calls:
             calls[caller] = []
         calls[caller].append(callee)
 
-    def show_calls(fn, indent=0, seen=None):
+    def node_label(node_id: str) -> str:
+        return id_to_name.get(str(node_id), str(node_id))
+
+    def show_calls(fn_id, indent=0, seen=None):
         if seen is None:
             seen = set()
-        if fn in seen:
-            return [f"{'  ' * indent}{fn} (recursive)"]
-        seen.add(fn)
-        result_lines = [f"{'  ' * indent}{fn}"]
-        if fn in calls and indent < 3:
-            for callee in calls[fn][:10]:
+        fn_id = str(fn_id)
+        label = node_label(fn_id)
+        if fn_id in seen:
+            return [f"{'  ' * indent}{label} (recursive)"]
+        seen.add(fn_id)
+        result_lines = [f"{'  ' * indent}{label}"]
+        if fn_id in calls and indent < 3:
+            for callee in calls[fn_id][:10]:
                 result_lines.extend(show_calls(callee, indent + 1, seen.copy()))
-            if len(calls[fn]) > 10:
-                result_lines.append(f"{'  ' * (indent + 1)}... and {len(calls[fn]) - 10} more")
+            if len(calls[fn_id]) > 10:
+                result_lines.append(f"{'  ' * (indent + 1)}... and {len(calls[fn_id]) - 10} more")
         return result_lines
 
-    lines.extend(show_calls(root))
+    lines.extend(show_calls(root_id if root_id is not None else "???"))
     return "\n".join(lines)
 
 
@@ -2010,7 +2094,7 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
 @text_output
 def functions_decompile(name: str = None, address: str = None,
                         syntax_tree: bool = False, style: str = "normalize",
-                        show_constants: bool = True, timeout: int = 30,
+                        show_constants: bool = True, timeout: int = DEFAULT_DECOMPILATION_TIMEOUT,
                         start_line: int = None, end_line: int = None, max_lines: int = None,
                         port: int = None) -> dict:
     """Get decompiled code for a function with optional line filtering and configurable options
@@ -2021,7 +2105,7 @@ def functions_decompile(name: str = None, address: str = None,
         syntax_tree: Include syntax tree (default: False)
         style: Decompiler style (default: "normalize")
         show_constants: Show actual constant values (strings, numbers) instead of placeholder addresses (default: True)
-        timeout: Decompilation timeout in seconds (default: 30)
+        timeout: Decompilation timeout in seconds (default: GHIDRA_DECOMP_TIMEOUT or auto default)
         start_line: Start at this line number (1-indexed, optional)
         end_line: End at this line number (inclusive, optional)
         max_lines: Maximum number of lines to return (optional, takes precedence over end_line)
@@ -2223,6 +2307,88 @@ def functions_set_signature(name: str = None, address: str = None, signature: st
     else:
         endpoint = f"functions/by-name/{quote(name)}"
     
+    response = safe_patch(port, endpoint, payload)
+    return simplify_response(response)
+
+@mcp.tool()
+@text_output
+def functions_delete(name: str = None, address: str = None, port: int = None) -> dict:
+    """Delete a function
+
+    Args:
+        name: Function name (mutually exclusive with address)
+        address: Function address in hex format (mutually exclusive with name)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result with deletion status
+    """
+    if not name and not address:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Either name or address parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    if address:
+        endpoint = f"functions/{address}"
+    else:
+        endpoint = f"functions/by-name/{quote(name)}"
+
+    response = safe_delete(port, endpoint)
+    return simplify_response(response)
+
+@mcp.tool()
+@text_output
+def functions_update_variable(address: str, variable_name: str,
+                              new_name: str = None, new_data_type: str = None,
+                              port: int = None) -> dict:
+    """Update a local variable in a function
+
+    Args:
+        address: Function address in hex format
+        variable_name: Existing variable name
+        new_name: New variable name (optional)
+        new_data_type: New variable data type (optional)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result
+    """
+    if not address or not variable_name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "address and variable_name parameters are required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    if not new_name and not new_data_type:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "At least one of new_name or new_data_type must be provided"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+
+    payload = {}
+    if new_name:
+        payload["name"] = new_name
+    if new_data_type:
+        payload["data_type"] = new_data_type
+
+    endpoint = f"functions/{address}/variables/{quote(variable_name)}"
     response = safe_patch(port, endpoint, payload)
     return simplify_response(response)
 
@@ -2712,12 +2878,14 @@ def structs_get(name: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def structs_create(name: str, category: str = None, description: str = None, port: int = None) -> dict:
+def structs_create(name: str, category: str = None, size: int = None,
+                   description: str = None, port: int = None) -> dict:
     """Create a new struct data type
 
     Args:
         name: Name for the new struct
         category: Category path for the struct (e.g. "/custom")
+        size: Optional initial struct size in bytes
         description: Optional description for the struct
         port: Specific Ghidra instance port (optional)
 
@@ -2739,6 +2907,8 @@ def structs_create(name: str, category: str = None, description: str = None, por
     payload = {"name": name}
     if category:
         payload["category"] = category
+    if size is not None:
+        payload["size"] = size
     if description:
         payload["description"] = description
 
@@ -2881,19 +3051,26 @@ def structs_delete(name: str, port: int = None) -> dict:
 # Analysis tools
 @mcp.tool()
 @text_output
-def analysis_run(port: int = None, analysis_options: dict = None) -> dict:
+def analysis_run(port: int = None, analysis_options: dict = None, background: bool = None) -> dict:
     """Run analysis on the current program
     
     Args:
         analysis_options: Dictionary of analysis options to enable/disable
-                         (e.g. {"functionRecovery": True, "dataRefs": False})
+                         (e.g. {"background": True, "functionRecovery": True})
+        background: Convenience override for background analysis execution
         port: Specific Ghidra instance port (optional)
     
     Returns:
         dict: Analysis operation result with status
     """
     port = _get_instance_port(port)
-    response = safe_post(port, "analysis", analysis_options or {})
+    payload = dict(analysis_options or {})
+    if background is not None:
+        payload["background"] = str(background).lower()
+    if "background" not in payload:
+        payload["background"] = "true"
+
+    response = safe_post(port, "analysis/run", payload)
     return simplify_response(response)
 
 @mcp.tool()
@@ -3023,6 +3200,33 @@ def comments_set(address: str, comment: str = "", comment_type: str = "plate", p
 
 @mcp.tool()
 @text_output
+def comments_get(address: str, comment_type: str = "plate", port: int = None) -> dict:
+    """Get a comment at the specified address
+
+    Args:
+        address: Memory address in hex format
+        comment_type: Type of comment - "plate", "pre", "post", "eol", "repeatable"
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result containing comment text
+    """
+    if not address:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Address parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    response = safe_get(port, f"memory/{address}/comments/{comment_type}")
+    return simplify_response(response)
+
+@mcp.tool()
+@text_output
 def functions_set_comment(address: str, comment: str = "", port: int = None) -> dict:
     """Set a decompiler-friendly comment (tries function comment, falls back to pre-comment)
 
@@ -3134,6 +3338,107 @@ def project_open_file(path: str, port: int = None) -> dict:
     return simplify_response(response)
 
 
+@mcp.tool()
+@text_output
+def projects_list(port: int = None) -> dict:
+    """List projects visible to the plugin context
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of projects
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "projects")
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def projects_get(name: str, port: int = None) -> dict:
+    """Get a project by name
+
+    Args:
+        name: Project name
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Project details
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    response = safe_get(port, f"projects/{quote(name)}")
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def programs_list(project: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """List programs in the current project context
+
+    Args:
+        project: Optional project name filter
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of programs
+    """
+    port = _get_instance_port(port)
+    params = {"offset": offset, "limit": limit}
+    if project:
+        params["project"] = project
+    response = safe_get(port, "programs", params)
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def programs_get(program_id: str = "current", port: int = None) -> dict:
+    """Get program details by program ID or 'current'
+
+    Args:
+        program_id: Program ID (e.g. 'MyProj:/sample.bin') or 'current'
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Program details
+    """
+    port = _get_instance_port(port)
+    endpoint = "programs/current" if program_id == "current" else f"programs/{quote(program_id, safe='')}"
+    response = safe_get(port, endpoint)
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def programs_delete(program_id: str = "current", port: int = None) -> dict:
+    """Delete/close a program by program ID or 'current'
+
+    Args:
+        program_id: Program ID or 'current'
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Operation result
+    """
+    port = _get_instance_port(port)
+    endpoint = "programs/current" if program_id == "current" else f"programs/{quote(program_id, safe='')}"
+    response = safe_delete(port, endpoint)
+    return simplify_response(response)
+
+
 # ================= Analysis =================
 
 @mcp.tool()
@@ -3152,23 +3457,9 @@ def analysis_status(port: int = None) -> dict:
     return simplify_response(response)
 
 
-@mcp.tool()
-@text_output
-def analysis_run(background: bool = True, port: int = None) -> dict:
-    """Trigger auto-analysis on the current program
-
-    Args:
-        background: Run analysis in background (default: True)
-        port: Specific Ghidra instance port (optional)
-
-    Returns:
-        dict: Result of starting analysis
-    """
-    port = _get_instance_port(port)
-
-    data = {"background": str(background).lower()}
-    response = safe_post(port, "analysis/run", data)
-    return simplify_response(response)
+def _analysis_run_legacy(background: bool = True, port: int = None) -> dict:
+    """Legacy helper retained for backward compatibility inside this module."""
+    return analysis_run(port=port, background=background)
 
 
 # ================= Classes, Symbols, Segments, Namespaces, Variables, DataTypes =================
@@ -3405,6 +3696,106 @@ def datatypes_search(name: str, offset: int = 0, limit: int = 100, port: int = N
         simplified.setdefault("offset", offset)
         simplified.setdefault("limit", limit)
     return simplified
+
+
+@mcp.tool()
+@text_output
+def datatypes_create_struct(name: str, category: str = "/", fields_json: str = None,
+                            port: int = None) -> dict:
+    """Create a struct datatype
+
+    Args:
+        name: Struct name
+        category: Category path (default: '/')
+        fields_json: Optional JSON array string for fields
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Created datatype info
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    payload = {"name": name, "category": category}
+    if fields_json:
+        payload["fields"] = fields_json
+    response = safe_post(port, "datatypes/struct", payload)
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values_json: str = None,
+                          port: int = None) -> dict:
+    """Create an enum datatype
+
+    Args:
+        name: Enum name
+        size: Enum storage size in bytes (default: 4)
+        category: Category path (default: '/')
+        values_json: Optional JSON object string for enum values
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Created datatype info
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    payload = {"name": name, "size": size, "category": category}
+    if values_json:
+        payload["values"] = values_json
+    response = safe_post(port, "datatypes/enum", payload)
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def datatypes_create_union(name: str, category: str = "/", fields_json: str = None,
+                           port: int = None) -> dict:
+    """Create a union datatype
+
+    Args:
+        name: Union name
+        category: Category path (default: '/')
+        fields_json: Optional JSON array string for fields
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Created datatype info
+    """
+    if not name:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "name parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    payload = {"name": name, "category": category}
+    if fields_json:
+        payload["fields"] = fields_json
+    response = safe_post(port, "datatypes/union", payload)
+    return simplify_response(response)
 
 
 # ================= Startup =================

@@ -84,7 +84,10 @@ def get_callgraph(ctx, name, address, max_depth):
             endpoint = 'analysis/callgraph'
 
         response = client.get(endpoint, params=params)
-        output = formatter.format_simple_result(response)
+        if hasattr(formatter, "format_callgraph"):
+            output = formatter.format_callgraph(response)
+        else:
+            output = formatter.format_simple_result(response)
 
         if should_page(config, ctx.obj['output_json']):
             page_output(output, use_pager=config.page_output)
@@ -121,7 +124,10 @@ def get_dataflow(ctx, address, direction, max_steps):
         }
 
         response = client.get(f'analysis/dataflow/{validate_address(address)}', params=params)
-        output = formatter.format_simple_result(response)
+        if hasattr(formatter, "format_dataflow"):
+            output = formatter.format_dataflow(response)
+        else:
+            output = formatter.format_simple_result(response)
 
         if should_page(config, ctx.obj['output_json']):
             page_output(output, use_pager=config.page_output)
