@@ -6,6 +6,8 @@ from urllib.parse import quote
 from ..client.exceptions import GhidraError
 from ..utils import should_page, page_output, rich_echo, validate_address
 
+DEFAULT_DECOMPILATION_TIMEOUT = 1200
+
 
 @click.group('functions')
 def functions():
@@ -165,7 +167,8 @@ def get_function(ctx, name, address):
 @click.option('--syntax-tree', is_flag=True, help='Include syntax tree in output')
 @click.option('--style', default='normalize', help='Decompiler style (default: normalize)')
 @click.option('--no-constants', is_flag=True, help='Hide constant values')
-@click.option('--timeout', type=int, default=30, help='Decompilation timeout in seconds')
+@click.option('--timeout', type=int, default=DEFAULT_DECOMPILATION_TIMEOUT,
+              help=f'Decompilation timeout in seconds (default: {DEFAULT_DECOMPILATION_TIMEOUT})')
 @click.option('--start-line', type=int, help='Start line (1-indexed)')
 @click.option('--end-line', type=int, help='End line (inclusive)')
 @click.option('--max-lines', type=int, help='Maximum lines to return')
@@ -215,8 +218,14 @@ def decompile(ctx, name, address, syntax_tree, style, no_constants, timeout, sta
         if max_lines:
             params['max_lines'] = max_lines
 
-        # Make API request
-        response = client.get(endpoint, params=params)
+        # Keep HTTP timeout slightly above requested decompilation timeout
+        # so client transport timeout does not fire first.
+        original_timeout = client.timeout
+        client.timeout = max(original_timeout, timeout + 30)
+        try:
+            response = client.get(endpoint, params=params)
+        finally:
+            client.timeout = original_timeout
 
         output = formatter.format_decompiled_code(response)
 
@@ -301,9 +310,7 @@ def create_function(ctx, address):
     formatter = ctx.obj['formatter']
 
     try:
-        # Make API request
-        endpoint = f'functions/{validate_address(address)}'
-        response = client.post(endpoint)
+        response = client.post('functions', json_data={'address': validate_address(address)})
 
         output = formatter.format_simple_result(response)
         click.echo(output)
@@ -389,14 +396,47 @@ def set_signature(ctx, name, address, signature):
     try:
         # Build endpoint
         if address:
-            endpoint = f'functions/{validate_address(address)}/signature'
+            endpoint = f'functions/{validate_address(address)}'
         else:
-            endpoint = f'functions/by-name/{quote(name)}/signature'
+            endpoint = f'functions/by-name/{quote(name)}'
 
         # Make API request
         data = {'signature': signature}
         response = client.patch(endpoint, data=data)
 
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@functions.command('delete')
+@click.option('--name', '-n', help='Function name')
+@click.option('--address', '-a', help='Function address (hex)')
+@click.pass_context
+def delete_function(ctx, name, address):
+    """Delete a function."""
+    if not name and not address:
+        rich_echo("[red]Error:[/red] Either --name or --address is required", err=True)
+        ctx.exit(1)
+
+    if name and address:
+        rich_echo("[red]Error:[/red] Cannot specify both --name and --address", err=True)
+        ctx.exit(1)
+
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        if address:
+            endpoint = f'functions/{validate_address(address)}'
+        else:
+            endpoint = f'functions/by-name/{quote(name)}'
+
+        response = client.delete(endpoint)
         output = formatter.format_simple_result(response)
         click.echo(output)
 
@@ -455,6 +495,39 @@ def get_variables(ctx, name, address):
         ctx.exit(1)
 
 
+@functions.command('update-variable')
+@click.option('--address', '-a', required=True, help='Function address (hex)')
+@click.option('--variable-name', required=True, help='Existing variable name')
+@click.option('--new-name', help='New variable name')
+@click.option('--new-data-type', help='New variable data type')
+@click.pass_context
+def update_variable(ctx, address, variable_name, new_name, new_data_type):
+    """Update a local variable in a function."""
+    if not new_name and not new_data_type:
+        rich_echo("[red]Error:[/red] At least one of --new-name or --new-data-type is required", err=True)
+        ctx.exit(1)
+
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        endpoint = f'functions/{validate_address(address)}/variables/{quote(variable_name)}'
+        data = {}
+        if new_name:
+            data['name'] = new_name
+        if new_data_type:
+            data['data_type'] = new_data_type
+
+        response = client.patch(endpoint, data=data)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
 @functions.command('set-comment')
 @click.option('--address', '-a', required=True, help='Function address (hex)')
 @click.option('--comment', required=True, help='Comment text')
@@ -470,12 +543,9 @@ def set_comment(ctx, address, comment):
     formatter = ctx.obj['formatter']
 
     try:
-        # Build endpoint - using comments API
-        endpoint = f'comments/{validate_address(address)}'
-
-        # Make API request
-        data = {'comment': comment, 'type': 'plate'}
-        response = client.post(endpoint, json_data=data)
+        endpoint = f'functions/{validate_address(address)}'
+        data = {'comment': comment}
+        response = client.patch(endpoint, data=data)
 
         output = formatter.format_simple_result(response)
         click.echo(output)

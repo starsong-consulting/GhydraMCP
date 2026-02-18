@@ -42,11 +42,31 @@ def set_comment(ctx, address, comment, comment_type):
 
     try:
         data = {
-            'comment': comment,
-            'type': comment_type
+            'comment': comment
         }
 
-        response = client.post(f'comments/{validate_address(address)}', json_data=data)
+        response = client.post(f'memory/{validate_address(address)}/comments/{comment_type}', json_data=data)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@comments.command('get')
+@click.option('--address', '-a', required=True, help='Memory address (hex)')
+@click.option('--comment-type', type=click.Choice(['plate', 'pre', 'post', 'eol', 'repeatable']),
+              default='plate', help='Comment type')
+@click.pass_context
+def get_comment(ctx, address, comment_type):
+    """Get a comment at specified address."""
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        response = client.get(f'memory/{validate_address(address)}/comments/{comment_type}')
         output = formatter.format_simple_result(response)
         click.echo(output)
 

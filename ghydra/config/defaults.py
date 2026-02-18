@@ -19,7 +19,7 @@ class GhidraConfig:
 
     default_host: str = "localhost"
     default_port: int = 8192
-    timeout: int = 10
+    timeout: int = 900
     use_colors: bool = True
     page_output: bool = True
     max_pagination: int = 100

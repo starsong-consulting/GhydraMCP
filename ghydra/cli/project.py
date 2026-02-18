@@ -108,3 +108,119 @@ def open_file(ctx, path):
         error_output = formatter.format_error(e)
         rich_echo(error_output, err=True)
         ctx.exit(1)
+
+
+@project.command('list-projects')
+@click.pass_context
+def list_projects(ctx):
+    """List projects visible to the plugin."""
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        response = client.get('projects')
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@project.command('get-project')
+@click.option('--name', required=True, help='Project name')
+@click.pass_context
+def get_project(ctx, name):
+    """Get project details by name."""
+    from urllib.parse import quote
+
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        response = client.get(f'projects/{quote(name)}')
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@project.command('list-programs')
+@click.option('--project-name', help='Optional project name filter')
+@click.option('--offset', type=int, default=0, help='Pagination offset')
+@click.option('--limit', type=int, default=100, help='Maximum results to return')
+@click.pass_context
+def list_programs(ctx, project_name, offset, limit):
+    """List programs."""
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        params = {'offset': offset, 'limit': limit}
+        if project_name:
+            params['project'] = project_name
+
+        response = client.get('programs', params=params)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@project.command('get-program')
+@click.option('--program-id', default='current', help='Program ID or "current"')
+@click.pass_context
+def get_program(ctx, program_id):
+    """Get program details by ID or current."""
+    from urllib.parse import quote
+
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        if program_id == 'current':
+            endpoint = 'programs/current'
+        else:
+            endpoint = f'programs/{quote(program_id, safe="")}'
+
+        response = client.get(endpoint)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@project.command('delete-program')
+@click.option('--program-id', default='current', help='Program ID or "current"')
+@click.pass_context
+def delete_program(ctx, program_id):
+    """Delete/close program by ID or current."""
+    from urllib.parse import quote
+
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        if program_id == 'current':
+            endpoint = 'programs/current'
+        else:
+            endpoint = f'programs/{quote(program_id, safe="")}'
+
+        response = client.delete(endpoint)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)

@@ -29,14 +29,14 @@ class GhidraHTTPClient:
         self,
         host: str = "localhost",
         port: int = 8192,
-        timeout: int = 10
+        timeout: int = 900
     ):
         """Initialize HTTP client.
 
         Args:
             host: Hostname or IP address (default: localhost)
             port: Port number (default: 8192)
-            timeout: Request timeout in seconds (default: 10)
+            timeout: Request timeout in seconds (default: 900)
         """
         self.host = host
         self.port = port

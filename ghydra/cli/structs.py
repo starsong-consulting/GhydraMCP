@@ -88,9 +88,10 @@ def get_struct(ctx, name):
 @structs.command('create')
 @click.option('--name', required=True, help='Struct name')
 @click.option('--category', help='Category path (e.g., "/custom")')
+@click.option('--size', type=int, help='Optional initial struct size in bytes')
 @click.option('--description', help='Struct description')
 @click.pass_context
-def create_struct(ctx, name, category, description):
+def create_struct(ctx, name, category, size, description):
     """Create a new struct data type.
 
     \b
@@ -106,6 +107,8 @@ def create_struct(ctx, name, category, description):
 
         if category:
             data['category'] = category
+        if size is not None:
+            data['size'] = size
         if description:
             data['description'] = description
 

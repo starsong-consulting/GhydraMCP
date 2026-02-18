@@ -28,7 +28,7 @@ def get_current_address(ctx):
     formatter = ctx.obj['formatter']
 
     try:
-        response = client.get('ui/current-address')
+        response = client.get('address')
         output = formatter.format_simple_result(response)
         click.echo(output)
 
@@ -51,7 +51,7 @@ def get_current_function(ctx):
     formatter = ctx.obj['formatter']
 
     try:
-        response = client.get('ui/current-function')
+        response = client.get('function')
         output = formatter.format_function_info(response)
         click.echo(output)
 
