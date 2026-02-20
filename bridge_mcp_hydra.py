@@ -414,10 +414,21 @@ def format_disassembly(response: dict, **kwargs) -> str:
 
     # simplify_response converts instructions list to disassembly_text
     if not instructions and "disassembly_text" in result:
-        return result["disassembly_text"].rstrip()
+        disasm_text = result["disassembly_text"].rstrip()
+        if not disasm_text:
+            if "message" in result:
+                return result["message"]
+            if "warning" in result:
+                return f"Warning: {result['warning']}"
+            return "No disassembly available"
+        return disasm_text
 
     if not instructions:
-        return "Error: No disassembly returned"
+        if "message" in result:
+            return result["message"]
+        if "warning" in result:
+            return f"Warning: {result['warning']}"
+        return "No disassembly available"
 
     lines = []
     for instr in instructions:
@@ -705,6 +716,28 @@ def format_callgraph(response: dict, **kwargs) -> str:
     return "\n".join(lines)
 
 
+def format_dataflow(response: dict, **kwargs) -> str:
+    """Format data flow analysis as plain text"""
+    if not response.get("success", False):
+        return format_error(response)
+
+    result = response.get("result", {})
+    steps = result.get("steps", [])
+
+    if not steps:
+        return "No data flow steps found."
+
+    lines = [f"Data Flow ({len(steps)} steps):", ""]
+
+    for i, step in enumerate(steps, 1):
+        addr = step.get("address", step.get("to", step.get("from", "???")))
+        type_str = step.get("type", step.get("refType", "???"))
+        desc = step.get("description", step.get("label", ""))
+        lines.append(f"  {i:>2}. {addr}  {type_str:<10}  {desc}")
+
+    return "\n".join(lines)
+
+
 def format_structs_list(response: dict, offset: int = 0, **kwargs) -> str:
     """Format struct list as plain text"""
     if not response.get("success", False):
@@ -787,6 +820,46 @@ def format_simple_result(response: dict, success_msg: str = "Done", **kwargs) ->
     if not response.get("success", False):
         return format_error(response)
     return success_msg
+
+
+def format_generic_dict(response: dict, **kwargs) -> str:
+    """Format a dictionary result as key-value pairs"""
+    if not response.get("success", False):
+        return format_error(response)
+
+    result = response.get("result", response)
+    if not isinstance(result, dict):
+        return str(result)
+
+    lines = []
+    for k, v in result.items():
+        if k == "_links" or k == "success" or k == "timestamp":
+            continue
+        lines.append(f"{k}: {v}")
+    return "\n".join(lines)
+
+
+def format_generic_list(response: dict, **kwargs) -> str:
+    """Format a list result as plain text lines"""
+    if not response.get("success", False):
+        return format_error(response)
+
+    items = response.get("result", [])
+    if not isinstance(items, list):
+        return str(items)
+
+    if not items:
+        return "No items found."
+
+    lines = []
+    for item in items:
+        if isinstance(item, dict):
+            # Try to find a name or description field
+            label = item.get("name") or item.get("path") or item.get("id") or str(item)
+            lines.append(f"  {label}")
+        else:
+            lines.append(f"  {item}")
+    return "\n".join(lines)
 
 
 def format_classes_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
@@ -926,6 +999,7 @@ def format_datatypes_list(response: dict, offset: int = 0, limit: int = 100, **k
 FORMATTERS = {
     "functions_list": format_functions_list,
     "functions_get": format_function_info,
+    "functions_get_containing": format_functions_list,
     "functions_decompile": format_decompile,
     "functions_disassemble": format_disassembly,
     "functions_get_variables": format_variables,
@@ -933,12 +1007,22 @@ FORMATTERS = {
     "data_list": format_data_list,
     "data_list_strings": format_strings,
     "memory_read": format_memory,
+    "memory_disassemble": format_disassembly,
     "instances_list": format_instances,
     "instances_discover": format_instances,
     "instances_current": format_instance_info,
     "structs_list": format_structs_list,
     "structs_get": format_struct_info,
     "analysis_get_callgraph": format_callgraph,
+    "analysis_get_dataflow": format_dataflow,
+    "analysis_status": format_generic_dict,
+    "ui_get_current_address": format_generic_dict,
+    "ui_get_current_function": format_function_info,
+    "comments_get": format_generic_dict,
+    "projects_list": format_generic_list,
+    "projects_get": format_generic_dict,
+    "programs_list": format_generic_list,
+    "programs_get": format_generic_dict,
     "project_info": format_project_info,
     "project_list_files": format_project_files,
     "classes_list": format_classes_list,
@@ -2088,6 +2172,27 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
         endpoint = f"functions/by-name/{quote(name)}"
     
     response = safe_get(port, endpoint)
+    return simplify_response(response)
+
+@mcp.tool()
+@text_output
+def functions_get_containing(address: str, port: int = None) -> dict:
+    """Find the function containing the specified address
+
+    Args:
+        address: Memory address in hex format
+        port: Specific Ghidra instance port (optional)
+        
+    Returns:
+        dict: List containing the function information if found
+    """
+    port = _get_instance_port(port)
+    
+    params = {
+        "containing_addr": address
+    }
+    
+    response = safe_get(port, "functions", params)
     return simplify_response(response)
 
 @mcp.tool()

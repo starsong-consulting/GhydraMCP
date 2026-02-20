@@ -441,6 +441,17 @@ private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr
             result.put("instructions", allInstructions);
             result.put("totalInstructions", allInstructions.size());
 
+            if (allInstructions.isEmpty()) {
+                result.put("message", "No defined instructions found at or after " + addressStr + 
+                    ". You may need to run analysis or manually disassemble this area.");
+                
+                // Check if there is an instruction anywhere else in the program to see if analysis was run
+                if (!program.getListing().getInstructions(true).hasNext()) {
+                    result.put("warning", "It appears no instructions are defined in the entire program. " +
+                        "Is analysis complete?");
+                }
+            }
+
             ResponseBuilder builder = new ResponseBuilder(exchange, port)
                 .success(true)
                 .result(result)

@@ -112,6 +112,36 @@ def search_functions(ctx, name, regex, offset, limit):
         ctx.exit(1)
 
 
+@functions.command('get-containing')
+@click.argument('address')
+@click.pass_context
+def get_containing(ctx, address):
+    """Find the function containing the specified address.
+
+    \b
+    Example:
+        ghydra functions get-containing 0x401234
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {'containing_addr': validate_address(address)}
+        response = client.get('functions', params=params)
+        output = formatter.format_functions_list(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
 @functions.command('get')
 @click.option('--name', '-n', help='Function name')
 @click.option('--address', '-a', help='Function address (hex)')
