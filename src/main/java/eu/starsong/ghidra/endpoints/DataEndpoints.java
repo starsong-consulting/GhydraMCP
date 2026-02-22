@@ -632,7 +632,7 @@ package eu.starsong.ghidra.endpoints;
                 Integer size = null;
                 if (sizeStr != null && !sizeStr.isEmpty()) {
                     try {
-                        size = Integer.parseInt(sizeStr);
+                        size = Integer.decode(sizeStr);
                     } catch (NumberFormatException e) {
                         sendErrorResponse(exchange, 400, "Invalid size parameter: must be an integer", "INVALID_PARAMETER");
                         return;

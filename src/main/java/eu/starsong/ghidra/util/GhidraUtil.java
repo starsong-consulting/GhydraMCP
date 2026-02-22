@@ -47,7 +47,7 @@ public class GhidraUtil {
     public static int parseIntOrDefault(String val, int defaultValue) {
         if (val == null) return defaultValue;
         try {
-            return Integer.parseInt(val);
+            return Integer.decode(val);
         }
         catch (NumberFormatException e) {
             return defaultValue;

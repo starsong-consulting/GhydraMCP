@@ -186,7 +186,7 @@ public class StructEndpoints extends AbstractEndpoint {
 
                             // fieldId can be an offset (numeric) or field name
                             try {
-                                Integer.parseInt(subId);
+                                Integer.decode(subId);
                                 params.put("fieldOffset", subId);
                             } catch (NumberFormatException e) {
                                 params.put("fieldName", subId);
@@ -356,7 +356,7 @@ public class StructEndpoints extends AbstractEndpoint {
             Integer initialSize = null;
             if (sizeStr != null && !sizeStr.isEmpty()) {
                 try {
-                    initialSize = Integer.parseInt(sizeStr);
+                    initialSize = Integer.decode(sizeStr);
                     if (initialSize < 0) {
                         sendErrorResponse(exchange, 400, "Invalid size parameter: must be >= 0", "INVALID_PARAMETER");
                         return;
@@ -478,7 +478,7 @@ public class StructEndpoints extends AbstractEndpoint {
             Integer offset = null;
             if (offsetStr != null && !offsetStr.isEmpty()) {
                 try {
-                    offset = Integer.parseInt(offsetStr);
+                    offset = Integer.decode(offsetStr);
                 } catch (NumberFormatException e) {
                     sendErrorResponse(exchange, 400, "Invalid offset parameter: must be an integer", "INVALID_PARAMETER");
                     return;
@@ -605,7 +605,7 @@ public class StructEndpoints extends AbstractEndpoint {
             Integer fieldOffset = null;
             if (fieldOffsetStr != null && !fieldOffsetStr.isEmpty()) {
                 try {
-                    fieldOffset = Integer.parseInt(fieldOffsetStr);
+                    fieldOffset = Integer.decode(fieldOffsetStr);
                 } catch (NumberFormatException e) {
                     sendErrorResponse(exchange, 400, "Invalid fieldOffset parameter: must be an integer", "INVALID_PARAMETER");
                     return;

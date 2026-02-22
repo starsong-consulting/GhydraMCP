@@ -99,7 +99,7 @@ public class MemoryEndpoints extends AbstractEndpoint {
                 boolean lengthCapped = false;
                 if (lengthStr != null && !lengthStr.isEmpty()) {
                     try {
-                        length = Integer.parseInt(lengthStr);
+                        length = Integer.decode(lengthStr);
                         requestedLength = length;
                         if (length <= 0) {
                             sendErrorResponse(exchange, 400, "Length must be positive", "INVALID_PARAMETER");
