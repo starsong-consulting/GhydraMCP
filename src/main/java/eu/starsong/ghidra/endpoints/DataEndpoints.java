@@ -495,8 +495,15 @@ package eu.starsong.ghidra.endpoints;
                             }
                         }
 
-                        Data data = ensureDataDefinedAtAddress(
-                            program, listing, addr, requestedDataType, addressStr, resultMap);
+                        // Only auto-define data when a type change is requested;
+                        // pure rename just edits the label (like Ghidra's Edit Label action)
+                        Data data = null;
+                        if (requestedDataType != null) {
+                            data = ensureDataDefinedAtAddress(
+                                program, listing, addr, requestedDataType, addressStr, resultMap);
+                        } else {
+                            data = listing.getDefinedDataAt(addr);
+                        }
 
                         String currentName = null;
                         Symbol currentSymbol = program.getSymbolTable().getPrimarySymbol(addr);
@@ -504,11 +511,11 @@ package eu.starsong.ghidra.endpoints;
                             currentName = currentSymbol.getName();
                         }
 
-                        if (requestedDataType != null && !data.getDataType().isEquivalent(requestedDataType)) {
+                        if (data != null && requestedDataType != null && !data.getDataType().isEquivalent(requestedDataType)) {
                             resultMap.put("originalType", data.getDataType().getName());
                             data = applyDataTypeAtAddress(listing, addr, data, requestedDataType, addressStr);
                             resultMap.put("dataType", data.getDataType().getName());
-                        } else if (requestedDataType != null) {
+                        } else if (requestedDataType != null && data != null) {
                             resultMap.put("dataType", requestedDataType.getName());
                         }
 

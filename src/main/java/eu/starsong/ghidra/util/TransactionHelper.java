@@ -52,7 +52,10 @@ public class TransactionHelper {
                 Msg.error(TransactionHelper.class, "Transaction failed: " + transactionName, e);
             } finally {
                 if (txId >= 0) {
-                    if (!program.endTransaction(txId, success)) {
+                    boolean ended = program.endTransaction(txId, success);
+                    // endTransaction returns false for nested sub-transactions (normal Ghidra behavior).
+                    // Only treat it as an error when the transaction was explicitly aborted.
+                    if (!ended && abortedTxId.get() != null) {
                         String details = buildEndTransactionFailureDetails(program, transactionName, txId, success,
                             abortedTxId.get());
                         Msg.error(TransactionHelper.class, details);

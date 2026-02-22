@@ -258,10 +258,10 @@ public class FunctionEndpoints extends AbstractEndpoint {
                         continue;
                     }
                     
-                    if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
+                    if (nameRegexFilter != null && !java.util.regex.Pattern.compile(nameRegexFilter).matcher(f.getName()).find()) {
                         continue;
                     }
-                    
+
                     if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
                         continue;
                     }
@@ -611,7 +611,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                                 matches = false;
                             }
 
-                            if (nameRegexFilter != null && !containingFunc.getName().matches(nameRegexFilter)) {
+                            if (nameRegexFilter != null && !java.util.regex.Pattern.compile(nameRegexFilter).matcher(containingFunc.getName()).find()) {
                                 matches = false;
                             }
 
@@ -655,7 +655,7 @@ public class FunctionEndpoints extends AbstractEndpoint {
                             continue;
                         }
 
-                        if (nameRegexFilter != null && !f.getName().matches(nameRegexFilter)) {
+                        if (nameRegexFilter != null && !java.util.regex.Pattern.compile(nameRegexFilter).matcher(f.getName()).find()) {
                             continue;
                         }
 
