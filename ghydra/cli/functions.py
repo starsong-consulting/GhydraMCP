@@ -24,8 +24,11 @@ def functions():
 @click.option('--name-contains', help='Filter by function name substring (case-insensitive)')
 @click.option('--name-matches', help='Filter by function name regex pattern')
 @click.option('--containing-address', help='Find function containing this address (hex)')
+@click.option('--addr-min', help='Only return functions at or above this address (hex)')
+@click.option('--addr-max', help='Only return functions at or below this address (hex)')
 @click.pass_context
-def list_functions(ctx, offset, limit, name_contains, name_matches, containing_address):
+def list_functions(ctx, offset, limit, name_contains, name_matches, containing_address,
+                   addr_min, addr_max):
     """List all functions with optional filtering.
 
     \b
@@ -34,6 +37,7 @@ def list_functions(ctx, offset, limit, name_contains, name_matches, containing_a
         ghydra functions list --name-contains main
         ghydra functions list --name-matches "^sub_.*"
         ghydra functions list --containing-address 0x401234
+        ghydra functions list --addr-min 0x401000 --addr-max 0x402000
         ghydra functions list --limit 50
     """
     client = ctx.obj['client']
@@ -41,7 +45,6 @@ def list_functions(ctx, offset, limit, name_contains, name_matches, containing_a
     config = ctx.obj['config']
 
     try:
-        # Build query parameters
         params = {
             'offset': offset,
             'limit': limit
@@ -49,16 +52,16 @@ def list_functions(ctx, offset, limit, name_contains, name_matches, containing_a
 
         if name_contains:
             params['name_contains'] = name_contains
-
         if name_matches:
             params['name_matches_regex'] = name_matches
-
         if containing_address:
             params['containing_addr'] = validate_address(containing_address)
+        if addr_min:
+            params['addr_min'] = validate_address(addr_min)
+        if addr_max:
+            params['addr_max'] = validate_address(addr_max)
 
-        # Make API request
         response = client.get('functions', params=params)
-
         output = formatter.format_functions_list(response)
 
         if should_page(config, ctx.obj['output_json']):
@@ -128,6 +131,66 @@ def get_containing(ctx, address):
 
     try:
         params = {'containing_addr': validate_address(address)}
+        response = client.get('functions', params=params)
+        output = formatter.format_functions_list(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@functions.command('get-next')
+@click.argument('address')
+@click.pass_context
+def get_next(ctx, address):
+    """Get the next function after the given address (by memory order).
+
+    \b
+    Example:
+        ghydra functions get-next 0x401000
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {'after': validate_address(address)}
+        response = client.get('functions', params=params)
+        output = formatter.format_functions_list(response)
+
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)
+
+
+@functions.command('get-prev')
+@click.argument('address')
+@click.pass_context
+def get_prev(ctx, address):
+    """Get the previous function before the given address (by memory order).
+
+    \b
+    Example:
+        ghydra functions get-prev 0x402000
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {'before': validate_address(address)}
         response = client.get('functions', params=params)
         output = formatter.format_functions_list(response)
 

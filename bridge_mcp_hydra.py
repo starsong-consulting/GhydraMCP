@@ -2103,24 +2103,28 @@ def instances_current() -> dict:
 # Function tools
 @mcp.tool()
 @text_output
-def functions_list(offset: int = 0, limit: int = 100, 
-                  name_contains: str = None, 
+def functions_list(offset: int = 0, limit: int = 100,
+                  name_contains: str = None,
                   name_matches_regex: str = None,
+                  addr_min: str = None,
+                  addr_max: str = None,
                   port: int = None) -> dict:
     """List functions with filtering and pagination
-    
+
     Args:
         offset: Pagination offset (default: 0)
         limit: Maximum items to return (default: 100)
         name_contains: Substring name filter (case-insensitive)
         name_matches_regex: Regex name filter
+        addr_min: Only return functions at or above this address (hex)
+        addr_max: Only return functions at or below this address (hex)
         port: Specific Ghidra instance port (optional)
-        
+
     Returns:
         dict: List of functions with pagination information
     """
     port = _get_instance_port(port)
-    
+
     params = {
         "offset": offset,
         "limit": limit
@@ -2129,16 +2133,19 @@ def functions_list(offset: int = 0, limit: int = 100,
         params["name_contains"] = name_contains
     if name_matches_regex:
         params["name_matches_regex"] = name_matches_regex
+    if addr_min:
+        params["addr_min"] = addr_min
+    if addr_max:
+        params["addr_max"] = addr_max
 
     response = safe_get(port, "functions", params)
     simplified = simplify_response(response)
-    
-    # Ensure we maintain pagination metadata
+
     if isinstance(simplified, dict) and "error" not in simplified:
         simplified.setdefault("size", len(simplified.get("result", [])))
         simplified.setdefault("offset", offset)
         simplified.setdefault("limit", limit)
-    
+
     return simplified
 
 @mcp.tool()
@@ -2194,6 +2201,40 @@ def functions_get_containing(address: str, port: int = None) -> dict:
     
     response = safe_get(port, "functions", params)
     return simplify_response(response)
+
+@mcp.tool()
+@text_output
+def functions_get_next(address: str, port: int = None) -> dict:
+    """Get the next function after the given address (by memory order)
+
+    Args:
+        address: Reference address in hex format
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Function immediately after the given address, or empty result if none
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "functions", {"after": address})
+    return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def functions_get_prev(address: str, port: int = None) -> dict:
+    """Get the previous function before the given address (by memory order)
+
+    Args:
+        address: Reference address in hex format
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Function immediately before the given address, or empty result if none
+    """
+    port = _get_instance_port(port)
+    response = safe_get(port, "functions", {"before": address})
+    return simplify_response(response)
+
 
 @mcp.tool()
 @text_output

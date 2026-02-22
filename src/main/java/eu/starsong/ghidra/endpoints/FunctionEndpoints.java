@@ -569,6 +569,23 @@ public class FunctionEndpoints extends AbstractEndpoint {
         }
     }
 
+    private Map<String, Object> buildFunctionListEntry(Function f) {
+        Map<String, Object> func = new HashMap<>();
+        func.put("name", f.getName());
+        func.put("address", f.getEntryPoint().toString());
+
+        Map<String, Object> links = new HashMap<>();
+        Map<String, String> selfLink = new HashMap<>();
+        selfLink.put("href", "/functions/" + f.getEntryPoint());
+        links.put("self", selfLink);
+        Map<String, String> programLink = new HashMap<>();
+        programLink.put("href", "/program");
+        links.put("program", programLink);
+        func.put("_links", links);
+
+        return func;
+    }
+
     /**
      * Handle requests to the /functions endpoint
      */
@@ -590,53 +607,62 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 String nameRegexFilter = params.get("name_matches_regex");
                 String addrFilter = params.get("addr");
                 String containingAddrFilter = params.get("containing_addr");
+                String afterAddrFilter = params.get("after");
+                String beforeAddrFilter = params.get("before");
+                String addrMinFilter = params.get("addr_min");
+                String addrMaxFilter = params.get("addr_max");
 
                 List<Map<String, Object>> functions = new ArrayList<>();
 
-                // Handle special case: if containing_addr is specified, find the function containing that address
-                if (containingAddrFilter != null && !containingAddrFilter.isEmpty()) {
+                if (afterAddrFilter != null && !afterAddrFilter.isEmpty()) {
+                    try {
+                        Address afterAddr = program.getAddressFactory().getAddress(afterAddrFilter);
+                        for (Function f : program.getFunctionManager().getFunctions(afterAddr, true)) {
+                            if (f.getEntryPoint().compareTo(afterAddr) > 0) {
+                                functions.add(buildFunctionListEntry(f));
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid after format: " + afterAddrFilter, "INVALID_PARAMETER");
+                        return;
+                    }
+                } else if (beforeAddrFilter != null && !beforeAddrFilter.isEmpty()) {
+                    try {
+                        Address beforeAddr = program.getAddressFactory().getAddress(beforeAddrFilter);
+                        for (Function f : program.getFunctionManager().getFunctions(beforeAddr, false)) {
+                            if (f.getEntryPoint().compareTo(beforeAddr) < 0) {
+                                functions.add(buildFunctionListEntry(f));
+                                break;
+                            }
+                        }
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid before format: " + beforeAddrFilter, "INVALID_PARAMETER");
+                        return;
+                    }
+                } else if (containingAddrFilter != null && !containingAddrFilter.isEmpty()) {
                     try {
                         Address containingAddr = program.getAddressFactory().getAddress(containingAddrFilter);
                         Function containingFunc = program.getFunctionManager().getFunctionContaining(containingAddr);
 
                         if (containingFunc != null) {
-                            // Apply other filters to the found function
                             boolean matches = true;
 
                             if (nameFilter != null && !containingFunc.getName().equals(nameFilter)) {
                                 matches = false;
                             }
-
                             if (nameContainsFilter != null && !containingFunc.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
                                 matches = false;
                             }
-
                             if (nameRegexFilter != null && !java.util.regex.Pattern.compile(nameRegexFilter).matcher(containingFunc.getName()).find()) {
                                 matches = false;
                             }
-
                             if (addrFilter != null && !containingFunc.getEntryPoint().toString().equals(addrFilter)) {
                                 matches = false;
                             }
 
                             if (matches) {
-                                Map<String, Object> func = new HashMap<>();
-                                func.put("name", containingFunc.getName());
-                                func.put("address", containingFunc.getEntryPoint().toString());
-
-                                // Add HATEOAS links (fixed to use proper URL paths)
-                                Map<String, Object> links = new HashMap<>();
-                                Map<String, String> selfLink = new HashMap<>();
-                                selfLink.put("href", "/functions/" + containingFunc.getEntryPoint());
-                                links.put("self", selfLink);
-
-                                Map<String, String> programLink = new HashMap<>();
-                                programLink.put("href", "/program");
-                                links.put("program", programLink);
-
-                                func.put("_links", links);
-
-                                functions.add(func);
+                                functions.add(buildFunctionListEntry(containingFunc));
                             }
                         }
                     } catch (Exception e) {
@@ -644,42 +670,41 @@ public class FunctionEndpoints extends AbstractEndpoint {
                         return;
                     }
                 } else {
-                    // Get all functions
+                    Address addrMin = null;
+                    Address addrMax = null;
+                    try {
+                        if (addrMinFilter != null && !addrMinFilter.isEmpty()) {
+                            addrMin = program.getAddressFactory().getAddress(addrMinFilter);
+                        }
+                        if (addrMaxFilter != null && !addrMaxFilter.isEmpty()) {
+                            addrMax = program.getAddressFactory().getAddress(addrMaxFilter);
+                        }
+                    } catch (Exception e) {
+                        sendErrorResponse(exchange, 400, "Invalid address range: " + e.getMessage(), "INVALID_PARAMETER");
+                        return;
+                    }
+
                     for (Function f : program.getFunctionManager().getFunctions(true)) {
-                        // Apply filters
                         if (nameFilter != null && !f.getName().equals(nameFilter)) {
                             continue;
                         }
-
                         if (nameContainsFilter != null && !f.getName().toLowerCase().contains(nameContainsFilter.toLowerCase())) {
                             continue;
                         }
-
                         if (nameRegexFilter != null && !java.util.regex.Pattern.compile(nameRegexFilter).matcher(f.getName()).find()) {
                             continue;
                         }
-
                         if (addrFilter != null && !f.getEntryPoint().toString().equals(addrFilter)) {
                             continue;
                         }
+                        if (addrMin != null && f.getEntryPoint().compareTo(addrMin) < 0) {
+                            continue;
+                        }
+                        if (addrMax != null && f.getEntryPoint().compareTo(addrMax) > 0) {
+                            continue;
+                        }
 
-                        Map<String, Object> func = new HashMap<>();
-                        func.put("name", f.getName());
-                        func.put("address", f.getEntryPoint().toString());
-
-                        // Add HATEOAS links (fixed to use proper URL paths)
-                        Map<String, Object> links = new HashMap<>();
-                        Map<String, String> selfLink = new HashMap<>();
-                        selfLink.put("href", "/functions/" + f.getEntryPoint());
-                        links.put("self", selfLink);
-
-                        Map<String, String> programLink = new HashMap<>();
-                        programLink.put("href", "/program");
-                        links.put("program", programLink);
-
-                        func.put("_links", links);
-
-                        functions.add(func);
+                        functions.add(buildFunctionListEntry(f));
                     }
                 }
                 
