@@ -3805,14 +3805,14 @@ def datatypes_search(name: str, offset: int = 0, limit: int = 100, port: int = N
 
 @mcp.tool()
 @text_output
-def datatypes_create_struct(name: str, category: str = "/", fields_json: str = None,
+def datatypes_create_struct(name: str, category: str = "/", fields: list = None,
                             port: int = None) -> dict:
     """Create a struct datatype
 
     Args:
         name: Struct name
         category: Category path (default: '/')
-        fields_json: Optional JSON array string for fields
+        fields: Optional list of field objects, each with 'name', 'type', and optionally 'size', 'offset', 'comment'
         port: Specific Ghidra instance port (optional)
 
     Returns:
@@ -3830,15 +3830,15 @@ def datatypes_create_struct(name: str, category: str = "/", fields_json: str = N
 
     port = _get_instance_port(port)
     payload = {"name": name, "category": category}
-    if fields_json:
-        payload["fields"] = fields_json
+    if fields:
+        payload["fields"] = fields
     response = safe_post(port, "datatypes/struct", payload)
     return simplify_response(response)
 
 
 @mcp.tool()
 @text_output
-def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values_json: str = None,
+def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values: dict = None,
                           port: int = None) -> dict:
     """Create an enum datatype
 
@@ -3846,7 +3846,7 @@ def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values_
         name: Enum name
         size: Enum storage size in bytes (default: 4)
         category: Category path (default: '/')
-        values_json: Optional JSON object string for enum values
+        values: Optional dict mapping enum value names to integer values, e.g. {"VALUE_A": 0, "VALUE_B": 1}
         port: Specific Ghidra instance port (optional)
 
     Returns:
@@ -3864,22 +3864,22 @@ def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values_
 
     port = _get_instance_port(port)
     payload = {"name": name, "size": size, "category": category}
-    if values_json:
-        payload["values"] = values_json
+    if values:
+        payload["values"] = values
     response = safe_post(port, "datatypes/enum", payload)
     return simplify_response(response)
 
 
 @mcp.tool()
 @text_output
-def datatypes_create_union(name: str, category: str = "/", fields_json: str = None,
+def datatypes_create_union(name: str, category: str = "/", fields: list = None,
                            port: int = None) -> dict:
     """Create a union datatype
 
     Args:
         name: Union name
         category: Category path (default: '/')
-        fields_json: Optional JSON array string for fields
+        fields: Optional list of field objects, each with 'name', 'type', and optionally 'size', 'comment'
         port: Specific Ghidra instance port (optional)
 
     Returns:
@@ -3897,8 +3897,8 @@ def datatypes_create_union(name: str, category: str = "/", fields_json: str = No
 
     port = _get_instance_port(port)
     payload = {"name": name, "category": category}
-    if fields_json:
-        payload["fields"] = fields_json
+    if fields:
+        payload["fields"] = fields
     response = safe_post(port, "datatypes/union", payload)
     return simplify_response(response)
 

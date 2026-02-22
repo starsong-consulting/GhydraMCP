@@ -1,5 +1,7 @@
 """Data type commands."""
 
+import json
+
 import click
 
 from ..client.exceptions import GhidraError
@@ -100,7 +102,7 @@ def create_struct(ctx, name, category, fields_json):
     try:
         data = {'name': name, 'category': category}
         if fields_json:
-            data['fields'] = fields_json
+            data['fields'] = json.loads(fields_json)
 
         response = client.post('datatypes/struct', json_data=data)
         output = formatter.format_simple_result(response)
@@ -126,7 +128,7 @@ def create_enum(ctx, name, size, category, values_json):
     try:
         data = {'name': name, 'size': size, 'category': category}
         if values_json:
-            data['values'] = values_json
+            data['values'] = json.loads(values_json)
 
         response = client.post('datatypes/enum', json_data=data)
         output = formatter.format_simple_result(response)
@@ -151,7 +153,7 @@ def create_union(ctx, name, category, fields_json):
     try:
         data = {'name': name, 'category': category}
         if fields_json:
-            data['fields'] = fields_json
+            data['fields'] = json.loads(fields_json)
         response = client.post('datatypes/union', json_data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
