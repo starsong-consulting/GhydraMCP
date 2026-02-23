@@ -70,6 +70,10 @@ public class MemoryEndpoints extends AbstractEndpoint {
                 if ((addressStr == null || addressStr.isEmpty()) && exchange.getAttribute("address") instanceof String) {
                     addressStr = (String) exchange.getAttribute("address");
                 }
+                String segmentStr = qparams.get("segment");
+                if (segmentStr != null && !segmentStr.isEmpty() && addressStr != null && !addressStr.isEmpty()) {
+                    addressStr = segmentStr + "::" + addressStr;
+                }
                 String lengthStr = qparams.get("length");
                 
                 // Create ResponseBuilder for HATEOAS-compliant response

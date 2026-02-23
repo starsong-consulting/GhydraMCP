@@ -19,8 +19,9 @@ def memory():
 @click.option('--address', '-a', required=True, help='Memory address (hex)')
 @click.option('--length', type=int, default=16, help='Number of bytes to read')
 @click.option('--format', type=click.Choice(['hex', 'base64', 'string']), default='hex', help='Output format')
+@click.option('--segment', '-s', help='Memory segment/overlay name (e.g. "runtime")')
 @click.pass_context
-def read_memory(ctx, address, length, format):
+def read_memory(ctx, address, length, format, segment):
     """Read bytes from memory.
 
     \b
@@ -28,6 +29,7 @@ def read_memory(ctx, address, length, format):
         ghydra memory read --address 0x401000
         ghydra memory read --address 0x401000 --length 64
         ghydra memory read --address 0x401000 --format string
+        ghydra memory read --address 0x1000 --segment runtime
     """
     client = ctx.obj['client']
     formatter = ctx.obj['formatter']
@@ -39,6 +41,8 @@ def read_memory(ctx, address, length, format):
             'length': length,
             'format': format
         }
+        if segment:
+            params['segment'] = segment
 
         response = client.get('memory', params=params)
         output = formatter.format_memory(response)

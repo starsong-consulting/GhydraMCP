@@ -2574,13 +2574,15 @@ def functions_get_variables(name: str = None, address: str = None, port: int = N
 # Memory tools
 @mcp.tool()
 @text_output
-def memory_read(address: str, length: int = 16, format: str = "hex", port: int = None) -> dict:
+def memory_read(address: str, length: int = 16, format: str = "hex", segment: str = None,
+                port: int = None) -> dict:
     """Read bytes from memory
-    
+
     Args:
         address: Memory address in hex format
         length: Number of bytes to read (default: 16)
         format: Output format - "hex", "base64", or "string" (default: "hex")
+        segment: Optional memory segment/overlay name to qualify the address (e.g. "runtime")
         port: Specific Ghidra instance port (optional)
     
     Returns:
@@ -2611,7 +2613,9 @@ def memory_read(address: str, length: int = 16, format: str = "hex", port: int =
         "length": length,
         "format": format
     }
-    
+    if segment:
+        params["segment"] = segment
+
     response = safe_get(port, "memory", params)
     simplified = simplify_response(response)
     
