@@ -10,8 +10,13 @@ import eu.starsong.ghidra.server.Resource;
 import eu.starsong.ghidra.service.DecompilerService;
 import eu.starsong.ghidra.service.FunctionService;
 import eu.starsong.ghidra.service.XrefService;
+import eu.starsong.ghidra.util.DataFlowUtil;
+import eu.starsong.ghidra.util.GhidraUtil;
+import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
+import ghidra.util.task.TaskMonitor;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 
@@ -38,6 +43,70 @@ public class AnalysisResource implements Resource {
         app.get("/analysis/callgraph", ctx -> callGraph(contextFactory.apply(ctx)));
         app.get("/analysis/callers/{address}", ctx -> callers(contextFactory.apply(ctx)));
         app.get("/analysis/callees/{address}", ctx -> callees(contextFactory.apply(ctx)));
+        app.get("/analysis/status", ctx -> status(contextFactory.apply(ctx)));
+        app.post("/analysis/run", ctx -> run(contextFactory.apply(ctx)));
+        app.get("/analysis/dataflow", ctx -> dataflow(contextFactory.apply(ctx)));
+    }
+
+    private void status(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        AutoAnalysisManager am = AutoAnalysisManager.getAnalysisManager(program);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("programName", program.getName());
+        result.put("isAnalyzing", am.isAnalyzing());
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+            .self("/analysis/status")
+            .link("run", "/analysis/run", "POST")
+            .link("program", "/program")
+            .build());
+    }
+
+    private void run(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        AutoAnalysisManager am = AutoAnalysisManager.getAnalysisManager(program);
+        if (am.isAnalyzing()) {
+            ctx.status(409);
+            ctx.json(Response.error(ctx.ctx(), ctx.port(), "ANALYSIS_RUNNING", "Analysis is already running"));
+            return;
+        }
+        RunRequest req;
+        try { req = ctx.bodyAsClass(RunRequest.class); } catch (Exception e) { req = new RunRequest(); }
+        boolean background = req.background == null ? true : req.background;
+        am.reAnalyzeAll(null);
+        am.startAnalysis(TaskMonitor.DUMMY, background);
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of(
+                "started", true,
+                "background", background,
+                "message", "Analysis started on program: " + program.getName()))
+            .self("/analysis/run")
+            .link("status", "/analysis/status")
+            .build());
+    }
+
+    private void dataflow(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String addressStr = ctx.queryParam("address");
+        if (addressStr == null || addressStr.isEmpty()) {
+            throw new IllegalArgumentException("address query parameter is required");
+        }
+        String direction = ctx.queryParam("direction", "forward");
+        if (!"forward".equals(direction) && !"backward".equals(direction)) {
+            throw new IllegalArgumentException("direction must be 'forward' or 'backward'");
+        }
+        int maxSteps = ctx.queryParamAsInt("max_steps", 50);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        Map<String, Object> result = DataFlowUtil.analyzeReferenceFlow(program, address, direction, maxSteps);
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+            .self("/analysis/dataflow?address={}&direction={}&max_steps={}", addressStr, direction, maxSteps)
+            .link("program", "/program")
+            .build());
+    }
+
+    private static class RunRequest {
+        public Boolean background;
     }
 
     /**
