@@ -133,7 +133,7 @@ def list_strings(ctx, offset, limit, filter):
         if filter:
             params['filter'] = filter
 
-        response = client.get('data/strings', params=params)
+        response = client.get('strings', params=params)
         output = formatter.format_strings_list(response)
 
         if should_page(config, ctx.obj['output_json']):

@@ -119,7 +119,7 @@ def write_memory(ctx, address, bytes_data, format):
             'format': format
         }
 
-        response = client.post(f'memory/{validate_address(address)}', json_data=data)
+        response = client.patch(f'programs/current/memory/{validate_address(address)}', data=data)
         output = formatter.format_simple_result(response)
         click.echo(output)
 

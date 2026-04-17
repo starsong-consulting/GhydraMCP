@@ -623,10 +623,13 @@ def update_variable(ctx, address, variable_name, new_name, new_data_type):
 
 @functions.command('set-comment')
 @click.option('--address', '-a', required=True, help='Function address (hex)')
-@click.option('--comment', required=True, help='Comment text')
+@click.option('--comment', required=True, help='Comment text (empty string removes comment)')
 @click.pass_context
 def set_comment(ctx, address, comment):
-    """Set comment for a function.
+    """Set a decompiler-friendly comment at a function.
+
+    Tries to set the function's plate comment first; falls back to a pre-comment
+    at the entry address if the function PATCH is unavailable.
 
     \b
     Example:
@@ -634,16 +637,23 @@ def set_comment(ctx, address, comment):
     """
     client = ctx.obj['client']
     formatter = ctx.obj['formatter']
+    addr = validate_address(address)
 
     try:
-        endpoint = f'functions/{validate_address(address)}'
-        data = {'comment': comment}
-        response = client.patch(endpoint, data=data)
-
+        response = client.patch(f'functions/{addr}', data={'comment': comment})
         output = formatter.format_simple_result(response)
         click.echo(output)
-
-    except GhidraError as e:
-        error_output = formatter.format_error(e)
-        rich_echo(error_output, err=True)
-        ctx.exit(1)
+        return
+    except GhidraError as primary_err:
+        # Fall back to a pre-comment if the function endpoint can't set the comment.
+        try:
+            response = client.post(
+                f'memory/{addr}/comments/pre',
+                json_data={'comment': comment},
+            )
+            output = formatter.format_simple_result(response)
+            click.echo(output)
+        except GhidraError as fallback_err:
+            rich_echo(formatter.format_error(primary_err), err=True)
+            rich_echo(formatter.format_error(fallback_err), err=True)
+            ctx.exit(1)
