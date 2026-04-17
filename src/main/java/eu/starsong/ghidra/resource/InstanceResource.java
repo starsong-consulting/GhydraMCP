@@ -23,6 +23,46 @@ public class InstanceResource implements Resource {
     public void register(Javalin app, Function<Context, GhidraContext> contextFactory) {
         app.get("/instances", ctx -> list(contextFactory.apply(ctx)));
         app.get("/instances/{port}", ctx -> getByPort(contextFactory.apply(ctx)));
+        app.post("/registerInstance", ctx -> registerInstance(contextFactory.apply(ctx)));
+        app.post("/unregisterInstance", ctx -> unregisterInstance(contextFactory.apply(ctx)));
+    }
+
+    private void registerInstance(GhidraContext ctx) {
+        PortRequest req = ctx.bodyAsClass(PortRequest.class);
+        if (req.port == null || req.port <= 0) {
+            throw new IllegalArgumentException("Invalid or missing port number");
+        }
+        // Matches main's behaviour: acknowledge the request. Actual registration
+        // happens when the plugin on that port starts and inserts itself into
+        // the activeInstances map.
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(),
+                Map.of("message", "Instance registration acknowledged for port " + req.port))
+            .self("/registerInstance")
+            .link("instances", "/instances")
+            .build());
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void unregisterInstance(GhidraContext ctx) {
+        PortRequest req = ctx.bodyAsClass(PortRequest.class);
+        if (req.port == null || req.port <= 0) {
+            throw new IllegalArgumentException("Invalid or missing port number");
+        }
+        Map instances = (Map) ctx.activeInstances();
+        if (!instances.containsKey(req.port)) {
+            throw new eu.starsong.ghidra.server.GhydraServer.NotFoundException(
+                "No instance found on port " + req.port, "RESOURCE_NOT_FOUND");
+        }
+        instances.remove(req.port);
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(),
+                Map.of("message", "Instance unregistered for port " + req.port))
+            .self("/unregisterInstance")
+            .link("instances", "/instances")
+            .build());
+    }
+
+    private static class PortRequest {
+        public Integer port;
     }
 
     /**

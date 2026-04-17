@@ -31,6 +31,50 @@ public class MemoryResource implements Resource {
         app.get("/memory", ctx -> listBlocks(contextFactory.apply(ctx)));
         app.get("/memory/{address}", ctx -> readMemory(contextFactory.apply(ctx)));
         app.get("/memory/search", ctx -> searchMemory(contextFactory.apply(ctx)));
+        app.get("/memory/{address}/comments/{type}", ctx -> getComment(contextFactory.apply(ctx)));
+        app.post("/memory/{address}/comments/{type}", ctx -> setComment(contextFactory.apply(ctx)));
+    }
+
+    private void getComment(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        String type = ctx.pathParam("type");
+        String comment = memoryService.getComment(program, address, type);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("address", address);
+        result.put("comment_type", type);
+        result.put("comment", comment != null ? comment : "");
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+            .self("/memory/{}/comments/{}", address, type)
+            .link("memory", "/memory/{}", address)
+            .build());
+    }
+
+    private void setComment(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        String type = ctx.pathParam("type");
+        CommentRequest req = ctx.bodyAsClass(CommentRequest.class);
+        if (req.comment == null) {
+            throw new IllegalArgumentException("comment is required");
+        }
+        try {
+            memoryService.setComment(program, address, type, req.comment);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("address", address);
+            result.put("comment_type", type);
+            result.put("comment", req.comment);
+            ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+                .self("/memory/{}/comments/{}", address, type)
+                .link("memory", "/memory/{}", address)
+                .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set comment: " + e.getMessage(), e);
+        }
+    }
+
+    private static class CommentRequest {
+        public String comment;
     }
 
     /**

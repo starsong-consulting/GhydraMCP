@@ -3,7 +3,9 @@ package eu.starsong.ghidra.service;
 import eu.starsong.ghidra.dto.MemoryBlockDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
 import eu.starsong.ghidra.util.GhidraUtil;
+import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
+import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
@@ -89,6 +91,45 @@ public class MemoryService {
             sb.append(String.format("%02x", b & 0xff));
         }
         return sb.toString();
+    }
+
+    /**
+     * Get a comment at an address of the given type.
+     */
+    public String getComment(Program program, String addressStr, String commentType) {
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        return program.getListing().getComment(parseCommentType(commentType), address);
+    }
+
+    /**
+     * Set a comment at an address of the given type.
+     */
+    public void setComment(Program program, String addressStr, String commentType, String comment) throws Exception {
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        CommentType type = parseCommentType(commentType);
+        TransactionHelper.executeInTransaction(program,
+            "Set " + commentType + " comment at " + addressStr, () -> {
+                program.getListing().setComment(address, type, comment);
+                return null;
+            });
+    }
+
+    private CommentType parseCommentType(String s) {
+        if (s == null) throw new IllegalArgumentException("comment_type is required");
+        return switch (s.toLowerCase()) {
+            case "plate" -> CommentType.PLATE;
+            case "pre" -> CommentType.PRE;
+            case "post" -> CommentType.POST;
+            case "eol" -> CommentType.EOL;
+            case "repeatable" -> CommentType.REPEATABLE;
+            default -> throw new IllegalArgumentException("Invalid comment type: " + s);
+        };
     }
 
     /**
