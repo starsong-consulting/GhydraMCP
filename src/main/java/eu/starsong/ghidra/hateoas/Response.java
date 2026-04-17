@@ -145,8 +145,20 @@ public class Response {
     public Map<String, Object> build() {
         Map<String, Object> result = new LinkedHashMap<>(response);
 
-        if (!meta.isEmpty()) {
-            result.put("meta", meta);
+        // id, instance, and timestamp live at the top level to match main's
+        // shape; the bridge's simplify_response strips them from there.
+        // Pagination and custom meta keys stay nested under "meta".
+        Map<String, Object> nestedMeta = null;
+        for (Map.Entry<String, Object> e : meta.entrySet()) {
+            if ("id".equals(e.getKey()) || "instance".equals(e.getKey()) || "timestamp".equals(e.getKey())) {
+                result.put(e.getKey(), e.getValue());
+            } else {
+                if (nestedMeta == null) nestedMeta = new LinkedHashMap<>();
+                nestedMeta.put(e.getKey(), e.getValue());
+            }
+        }
+        if (nestedMeta != null) {
+            result.put("meta", nestedMeta);
         }
 
         if (!links.isEmpty()) {
@@ -167,6 +179,7 @@ public class Response {
         }
         meta.put("id", requestId);
         meta.put("instance", "http://localhost:" + port);
+        meta.put("timestamp", System.currentTimeMillis());
     }
 
     private static String format(String template, Object... args) {
