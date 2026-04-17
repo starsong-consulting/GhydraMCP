@@ -31,15 +31,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class GhidraUtil {
-
-    private static final int DEFAULT_DECOMPILATION_TIMEOUT_SECONDS =
-        Integer.getInteger("ghidra.mcp.decompile.timeout", 1200);
-    private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
 
     /**
      * Parse an integer from a string, or return defaultValue if null/invalid.
@@ -47,7 +40,7 @@ public class GhidraUtil {
     public static int parseIntOrDefault(String val, int defaultValue) {
         if (val == null) return defaultValue;
         try {
-            return Integer.decode(val);
+            return Integer.parseInt(val);
         }
         catch (NumberFormatException e) {
             return defaultValue;
@@ -78,223 +71,6 @@ public class GhidraUtil {
         }
     }
     
-    /**
-     * Resolves a data type by name using multiple lookup strategies.
-     * Tries direct path lookup, search by name, function signature parser,
-     * and built-in primitive type constructors as fallbacks.
-     *
-     * @param program The current program (used for DataTypeManager access)
-     * @param dataTypeName The name of the data type to resolve
-     * @return The resolved DataType, or null if not found by any strategy
-     */
-    public static DataType resolveDataType(Program program, String dataTypeName) {
-        if (program == null || dataTypeName == null) {
-            return null;
-        }
-
-        String normalizedName = dataTypeName.trim();
-        if (normalizedName.isEmpty()) {
-            return null;
-        }
-
-        // Parse C-style array suffixes, e.g. uint64_t[8], char[16], int[4][2].
-        List<Integer> dimensions = new ArrayList<>();
-        String baseTypeName = normalizedName;
-        while (true) {
-            Matcher matcher = ARRAY_TYPE_PATTERN.matcher(baseTypeName);
-            if (!matcher.matches()) {
-                break;
-            }
-
-            String countText = matcher.group(2);
-            int elementCount;
-            try {
-                elementCount = Integer.parseInt(countText);
-            } catch (NumberFormatException e) {
-                return null;
-            }
-            if (elementCount <= 0) {
-                return null;
-            }
-
-            dimensions.add(0, elementCount);
-            baseTypeName = matcher.group(1).trim();
-            if (baseTypeName.isEmpty()) {
-                return null;
-            }
-        }
-
-        DataType dataType = resolveBaseDataType(program, baseTypeName);
-        if (dataType == null) {
-            return null;
-        }
-
-        // Wrap base type in array dimensions from inner to outer.
-        for (Integer dimension : dimensions) {
-            int elementLength = dataType.getLength();
-            if (elementLength <= 0) {
-                return null;
-            }
-            dataType = new ghidra.program.model.data.ArrayDataType(dataType, dimension, elementLength);
-        }
-
-        return dataType;
-    }
-
-    private static DataType resolveBaseDataType(Program program, String dataTypeName) {
-        DataTypeManager dtm = program.getDataTypeManager();
-
-        // Try direct path lookup
-        DataType dataType = dtm.getDataType("/" + dataTypeName);
-
-        // Try search by name
-        if (dataType == null) {
-            dataType = dtm.findDataType("/" + dataTypeName);
-        }
-
-        // Prefer exact datatype-name matches defined in this program before parser/built-ins.
-        if (dataType == null) {
-            List<DataType> namedMatches = new ArrayList<>();
-            dtm.findDataTypes(dataTypeName, namedMatches);
-            dataType = choosePreferredDataType(namedMatches, dataTypeName);
-        }
-
-        // Try function signature parser
-        if (dataType == null) {
-            try {
-                ghidra.app.util.parser.FunctionSignatureParser parser =
-                    new ghidra.app.util.parser.FunctionSignatureParser(dtm, null);
-                dataType = parser.parse(null, dataTypeName);
-            } catch (Exception e) {
-                Msg.debug(GhidraUtil.class, "Function signature parser failed for '" + dataTypeName + "': " + e.getMessage());
-            }
-        }
-
-        // Try built-in primitive types as a last resort
-        if (dataType == null) {
-            switch (dataTypeName.toLowerCase(Locale.ROOT)) {
-                case "byte":
-                case "int8_t":
-                    dataType = new ghidra.program.model.data.ByteDataType();
-                    break;
-                case "uint8_t":
-                    dataType = new ghidra.program.model.data.UnsignedCharDataType();
-                    break;
-                case "char":
-                    dataType = new ghidra.program.model.data.CharDataType();
-                    break;
-                case "signed char":
-                    dataType = new ghidra.program.model.data.SignedCharDataType();
-                    break;
-                case "unsigned char":
-                    dataType = new ghidra.program.model.data.UnsignedCharDataType();
-                    break;
-                case "word":
-                case "int16_t":
-                    dataType = new ghidra.program.model.data.WordDataType();
-                    break;
-                case "uint16_t":
-                case "ushort":
-                case "unsigned short":
-                    dataType = new ghidra.program.model.data.UnsignedShortDataType();
-                    break;
-                case "dword":
-                case "int32_t":
-                    dataType = new ghidra.program.model.data.DWordDataType();
-                    break;
-                case "qword":
-                    dataType = new ghidra.program.model.data.QWordDataType();
-                    break;
-                case "float":
-                    dataType = new ghidra.program.model.data.FloatDataType();
-                    break;
-                case "double":
-                    dataType = new ghidra.program.model.data.DoubleDataType();
-                    break;
-                case "int":
-                    dataType = new ghidra.program.model.data.IntegerDataType();
-                    break;
-                case "uint32_t":
-                case "unsigned int":
-                    dataType = new ghidra.program.model.data.UnsignedIntegerDataType();
-                    break;
-                case "uint64_t":
-                case "ulonglong":
-                case "unsigned long long":
-                case "unsigned __int64":
-                    dataType = new ghidra.program.model.data.UnsignedLongLongDataType();
-                    break;
-                case "int64_t":
-                case "__int64":
-                case "long long":
-                    dataType = new ghidra.program.model.data.LongLongDataType();
-                    break;
-                case "long":
-                    dataType = new ghidra.program.model.data.LongDataType();
-                    break;
-                case "pointer":
-                    dataType = new ghidra.program.model.data.PointerDataType();
-                    break;
-                case "string":
-                    dataType = new ghidra.program.model.data.StringDataType();
-                    break;
-            }
-        }
-
-        return dataType;
-    }
-
-    private static DataType choosePreferredDataType(List<DataType> candidates, String requestedName) {
-        if (candidates == null || candidates.isEmpty()) {
-            return null;
-        }
-
-        for (DataType candidate : candidates) {
-            if (candidate != null && requestedName.equals(candidate.getName()) && !isLikelyBuiltIn(candidate)) {
-                return candidate;
-            }
-        }
-        for (DataType candidate : candidates) {
-            if (candidate != null && requestedName.equalsIgnoreCase(candidate.getName()) && !isLikelyBuiltIn(candidate)) {
-                return candidate;
-            }
-        }
-        for (DataType candidate : candidates) {
-            if (candidate != null && requestedName.equals(candidate.getName())) {
-                return candidate;
-            }
-        }
-        for (DataType candidate : candidates) {
-            if (candidate != null && requestedName.equalsIgnoreCase(candidate.getName())) {
-                return candidate;
-            }
-        }
-
-        return candidates.get(0);
-    }
-
-    private static boolean isLikelyBuiltIn(DataType dataType) {
-        if (dataType == null) {
-            return false;
-        }
-
-        String categoryPath = "";
-        try {
-            if (dataType.getCategoryPath() != null) {
-                categoryPath = dataType.getCategoryPath().getPath().toLowerCase(Locale.ROOT);
-            }
-        } catch (Exception ignored) {
-            // Best-effort only.
-        }
-
-        if (categoryPath.contains("/builtin") || categoryPath.contains("/builtins")) {
-            return true;
-        }
-
-        String className = dataType.getClass().getName().toLowerCase(Locale.ROOT);
-        return className.contains("builtin");
-    }
-
     /**
      * Gets the current address as a string from the Ghidra tool.
      * @param tool The Ghidra plugin tool.
@@ -560,7 +336,7 @@ public class GhidraUtil {
      * @return The decompiled code as a string, or null if decompilation failed.
      */
     public static String decompileFunction(Function function) {
-        return decompileFunction(function, true, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
+        return decompileFunction(function, true, 30);
     }
 
     /**
@@ -592,17 +368,8 @@ public class GhidraUtil {
             DecompileResults results = decompiler.decompileFunction(function, timeout, TaskMonitor.DUMMY);
             if (results.decompileCompleted()) {
                 return results.getDecompiledFunction().getC();
-            } else if (results.isTimedOut()) {
-                int suggestedTimeout = Math.max(timeout * 2, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS);
-                return "// Decompilation timed out after " + timeout + " seconds.\n" +
-                       "// This function likely needs more time.\n" +
-                       "// Retry with a higher timeout (for example timeout=" + suggestedTimeout + ").";
             } else {
                 Msg.warn(GhidraUtil.class, "Decompilation failed for function: " + function.getName());
-                String error = results.getErrorMessage();
-                if (error != null && !error.isEmpty()) {
-                    return "// Decompilation failed for " + function.getName() + ": " + error;
-                }
                 return "// Decompilation failed for " + function.getName();
             }
         } catch (Exception e) {
@@ -613,85 +380,6 @@ public class GhidraUtil {
         }
     }
     
-    /**
-     * Gets information about variables in a function using a pre-decompiled HighFunction.
-     * Avoids creating a new DecompInterface when results are already cached.
-     *
-     * @param function The function to get variables from.
-     * @param highFunc The pre-decompiled HighFunction (may be null, in which case
-     *                 only database variables are returned).
-     * @return A list of maps containing information about each variable.
-     */
-    public static List<Map<String, Object>> getFunctionVariables(Function function, HighFunction highFunc) {
-        List<Map<String, Object>> variables = new ArrayList<>();
-
-        if (function == null) {
-            return variables;
-        }
-
-        // Add parameters
-        for (Parameter param : function.getParameters()) {
-            Map<String, Object> varInfo = new HashMap<>();
-            varInfo.put("name", param.getName());
-            varInfo.put("type", param.getDataType().getName());
-            varInfo.put("isParameter", true);
-            varInfo.put("storage", param.getVariableStorage().toString());
-            varInfo.put("source", "database");
-            variables.add(varInfo);
-        }
-
-        // Add local variables from database
-        for (Variable var : function.getAllVariables()) {
-            if (var instanceof Parameter) {
-                continue;
-            }
-
-            Map<String, Object> varInfo = new HashMap<>();
-            varInfo.put("name", var.getName());
-            varInfo.put("type", var.getDataType().getName());
-            varInfo.put("isParameter", false);
-            varInfo.put("storage", var.getVariableStorage().toString());
-            varInfo.put("source", "database");
-            variables.add(varInfo);
-        }
-
-        // Add decompiler-generated variables from the provided HighFunction
-        if (highFunc != null) {
-            for (java.util.Iterator<ghidra.program.model.pcode.HighSymbol> iter =
-                    highFunc.getLocalSymbolMap().getSymbols(); iter.hasNext(); ) {
-
-                ghidra.program.model.pcode.HighSymbol highSymbol = iter.next();
-
-                boolean alreadyAdded = false;
-                for (Map<String, Object> var : variables) {
-                    if (var.get("name").equals(highSymbol.getName())) {
-                        alreadyAdded = true;
-                        break;
-                    }
-                }
-
-                if (!alreadyAdded) {
-                    Map<String, Object> varInfo = new HashMap<>();
-                    varInfo.put("name", highSymbol.getName());
-                    varInfo.put("type", highSymbol.getDataType() != null ?
-                        highSymbol.getDataType().getName() : "unknown");
-                    varInfo.put("isParameter", highSymbol.isParameter());
-                    varInfo.put("storage", highSymbol.getStorage() != null ?
-                        highSymbol.getStorage().toString() : "unknown");
-                    varInfo.put("source", "decompiler");
-
-                    if (highSymbol.getPCAddress() != null) {
-                        varInfo.put("pcAddress", highSymbol.getPCAddress().toString());
-                    }
-
-                    variables.add(varInfo);
-                }
-            }
-        }
-
-        return variables;
-    }
-
     /**
      * Gets information about variables in a function, including decompiler variables.
      * @param function The function to get variables from.
@@ -734,7 +422,7 @@ public class GhidraUtil {
         DecompInterface decompiler = new DecompInterface();
         try {
             decompiler.openProgram(function.getProgram());
-            DecompileResults results = decompiler.decompileFunction(function, DEFAULT_DECOMPILATION_TIMEOUT_SECONDS, TaskMonitor.DUMMY);
+            DecompileResults results = decompiler.decompileFunction(function, 30, TaskMonitor.DUMMY);
             
             if (results.decompileCompleted()) {
                 HighFunction highFunc = results.getHighFunction();
@@ -836,23 +524,21 @@ public class GhidraUtil {
                     function.setCallingConvention(callingConvention);
                 }
                 
-                // Remove all existing parameters
-                while (function.getParameterCount() > 0) {
-                    function.removeParameter(0);
-                }
-                
-                // Add each parameter
+                // Build parameter list
+                List<Parameter> newParams = new ArrayList<>();
                 if (paramDefs != null) {
                     for (int i = 0; i < paramDefs.length; i++) {
                         ghidra.program.model.data.ParameterDefinition paramDef = paramDefs[i];
                         String name = paramDef.getName();
                         ghidra.program.model.data.DataType dataType = paramDef.getDataType();
-                        
-                        // Create parameter and then add it
-                        Parameter param = new ParameterImpl(name, dataType, program);
-                        function.addParameter(param, sourceType);
+                        newParams.add(new ParameterImpl(name, dataType, program));
                     }
                 }
+
+                // Replace all parameters at once using replaceParameters
+                function.replaceParameters(newParams,
+                    ghidra.program.model.listing.Function.FunctionUpdateType.DYNAMIC_STORAGE_ALL_PARAMS,
+                    false, sourceType);
                 
                 return true;
             } catch (ghidra.util.exception.InvalidInputException e) {
