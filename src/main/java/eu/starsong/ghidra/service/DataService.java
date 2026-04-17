@@ -2,10 +2,10 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.DataDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
-import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
@@ -91,7 +91,7 @@ public class DataService {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
 
-        DataType dataType = resolveDataType(program, dataTypeName);
+        DataType dataType = GhidraUtil.resolveDataType(program, dataTypeName);
         if (dataType == null) {
             throw new IllegalArgumentException("Unknown data type: " + dataTypeName);
         }
@@ -122,30 +122,6 @@ public class DataService {
             program.getListing().clearCodeUnits(address, address.add(data.getLength() - 1), false);
             return null;
         });
-    }
-
-    /**
-     * Resolve a data type by name.
-     */
-    public DataType resolveDataType(Program program, String dataTypeName) {
-        DataTypeManager dtm = program.getDataTypeManager();
-
-        // Try direct lookup
-        DataType dt = dtm.getDataType("/" + dataTypeName);
-        if (dt != null) return dt;
-
-        // Try find
-        List<DataType> found = new ArrayList<>();
-        dtm.findDataTypes(dataTypeName, found);
-        if (!found.isEmpty()) return found.get(0);
-
-        // Try built-in types
-        ghidra.program.model.data.BuiltInDataTypeManager builtIn =
-            ghidra.program.model.data.BuiltInDataTypeManager.getDataTypeManager();
-        dt = builtIn.getDataType("/" + dataTypeName);
-        if (dt != null) return dt;
-
-        return null;
     }
 
     /**

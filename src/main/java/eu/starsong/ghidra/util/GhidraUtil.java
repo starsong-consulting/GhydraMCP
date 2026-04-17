@@ -30,9 +30,14 @@ import ghidra.util.task.TaskMonitor;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class GhidraUtil {
+
+    private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
 
     /**
      * Parse an integer from a string, or return defaultValue if null/invalid.
@@ -46,29 +51,143 @@ public class GhidraUtil {
             return defaultValue;
         }
     }
-    
-    /**
-     * Finds a data type by name within the program's data type managers.
-     * @param program The current program.
-     * @param dataTypeName The name of the data type to find.
-     * @return The found DataType, or null if not found.
-     */
-    public static DataType findDataType(Program program, String dataTypeName) {
-        if (program == null || dataTypeName == null || dataTypeName.isEmpty()) {
-            return null;
-        }
-        DataTypeManager dtm = program.getDataTypeManager();
-        List<DataType> foundTypes = new ArrayList<>();
-        dtm.findDataTypes(dataTypeName, foundTypes);
 
-        if (!foundTypes.isEmpty()) {
-            // Prefer the first match, might need more sophisticated logic
-            // if multiple types with the same name exist in different categories.
-            return foundTypes.get(0); 
-        } else {
-            Msg.warn(GhidraUtil.class, "Data type not found: " + dataTypeName);
+    /**
+     * Resolve a data type by name, handling C-style array suffixes, path lookups,
+     * signature parser strings, and common primitive aliases (byte, dword, uint32_t, ...).
+     */
+    public static DataType resolveDataType(Program program, String dataTypeName) {
+        if (program == null || dataTypeName == null) {
             return null;
         }
+
+        String normalizedName = dataTypeName.trim();
+        if (normalizedName.isEmpty()) {
+            return null;
+        }
+
+        List<Integer> dimensions = new ArrayList<>();
+        String baseTypeName = normalizedName;
+        while (true) {
+            Matcher matcher = ARRAY_TYPE_PATTERN.matcher(baseTypeName);
+            if (!matcher.matches()) {
+                break;
+            }
+            int elementCount;
+            try {
+                elementCount = Integer.parseInt(matcher.group(2));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+            if (elementCount <= 0) {
+                return null;
+            }
+            dimensions.add(0, elementCount);
+            baseTypeName = matcher.group(1).trim();
+            if (baseTypeName.isEmpty()) {
+                return null;
+            }
+        }
+
+        DataType dataType = resolveBaseDataType(program, baseTypeName);
+        if (dataType == null) {
+            return null;
+        }
+
+        for (Integer dimension : dimensions) {
+            int elementLength = dataType.getLength();
+            if (elementLength <= 0) {
+                return null;
+            }
+            dataType = new ghidra.program.model.data.ArrayDataType(dataType, dimension, elementLength);
+        }
+        return dataType;
+    }
+
+    private static DataType resolveBaseDataType(Program program, String dataTypeName) {
+        DataTypeManager dtm = program.getDataTypeManager();
+
+        DataType dataType = dtm.getDataType("/" + dataTypeName);
+        if (dataType == null) {
+            dataType = dtm.findDataType("/" + dataTypeName);
+        }
+        if (dataType == null) {
+            List<DataType> namedMatches = new ArrayList<>();
+            dtm.findDataTypes(dataTypeName, namedMatches);
+            dataType = choosePreferredDataType(namedMatches, dataTypeName);
+        }
+        if (dataType == null) {
+            try {
+                ghidra.app.util.parser.FunctionSignatureParser parser =
+                    new ghidra.app.util.parser.FunctionSignatureParser(dtm, null);
+                dataType = parser.parse(null, dataTypeName);
+            } catch (Exception e) {
+                Msg.debug(GhidraUtil.class, "Function signature parser failed for '" + dataTypeName + "': " + e.getMessage());
+            }
+        }
+        if (dataType == null) {
+            dataType = resolvePrimitiveAlias(dataTypeName);
+        }
+        return dataType;
+    }
+
+    private static DataType resolvePrimitiveAlias(String name) {
+        return switch (name.toLowerCase(Locale.ROOT)) {
+            case "byte", "int8_t" -> new ghidra.program.model.data.ByteDataType();
+            case "uint8_t" -> new ghidra.program.model.data.UnsignedCharDataType();
+            case "char" -> new ghidra.program.model.data.CharDataType();
+            case "signed char" -> new ghidra.program.model.data.SignedCharDataType();
+            case "unsigned char" -> new ghidra.program.model.data.UnsignedCharDataType();
+            case "word", "int16_t" -> new ghidra.program.model.data.WordDataType();
+            case "uint16_t", "ushort", "unsigned short" -> new ghidra.program.model.data.UnsignedShortDataType();
+            case "dword", "int32_t" -> new ghidra.program.model.data.DWordDataType();
+            case "qword" -> new ghidra.program.model.data.QWordDataType();
+            case "float" -> new ghidra.program.model.data.FloatDataType();
+            case "double" -> new ghidra.program.model.data.DoubleDataType();
+            case "int" -> new ghidra.program.model.data.IntegerDataType();
+            case "uint32_t", "unsigned int" -> new ghidra.program.model.data.UnsignedIntegerDataType();
+            case "uint64_t", "ulonglong", "unsigned long long", "unsigned __int64" ->
+                new ghidra.program.model.data.UnsignedLongLongDataType();
+            case "int64_t", "__int64", "long long" -> new ghidra.program.model.data.LongLongDataType();
+            case "long" -> new ghidra.program.model.data.LongDataType();
+            case "pointer" -> new ghidra.program.model.data.PointerDataType();
+            case "string" -> new ghidra.program.model.data.StringDataType();
+            default -> null;
+        };
+    }
+
+    private static DataType choosePreferredDataType(List<DataType> candidates, String requestedName) {
+        if (candidates == null || candidates.isEmpty()) {
+            return null;
+        }
+        for (DataType c : candidates) {
+            if (c != null && requestedName.equals(c.getName()) && !isLikelyBuiltIn(c)) return c;
+        }
+        for (DataType c : candidates) {
+            if (c != null && requestedName.equalsIgnoreCase(c.getName()) && !isLikelyBuiltIn(c)) return c;
+        }
+        for (DataType c : candidates) {
+            if (c != null && requestedName.equals(c.getName())) return c;
+        }
+        for (DataType c : candidates) {
+            if (c != null && requestedName.equalsIgnoreCase(c.getName())) return c;
+        }
+        return candidates.get(0);
+    }
+
+    private static boolean isLikelyBuiltIn(DataType dataType) {
+        if (dataType == null) return false;
+        String categoryPath = "";
+        try {
+            if (dataType.getCategoryPath() != null) {
+                categoryPath = dataType.getCategoryPath().getPath().toLowerCase(Locale.ROOT);
+            }
+        } catch (Exception ignored) {
+        }
+        if (categoryPath.contains("/builtin") || categoryPath.contains("/builtins")) {
+            return true;
+        }
+        return dataType.getClass().getName().toLowerCase(Locale.ROOT).contains("builtin");
     }
     
     /**
