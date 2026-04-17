@@ -1,16 +1,25 @@
 package eu.starsong.ghidra.service;
 
+import eu.starsong.ghidra.dto.DisassemblyInstructionDto;
 import eu.starsong.ghidra.dto.FunctionDto;
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
+import ghidra.app.decompiler.DecompInterface;
+import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
+import ghidra.program.model.listing.Instruction;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.pcode.HighFunction;
+import ghidra.program.model.pcode.HighFunctionDBUtil;
+import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.symbol.SourceType;
 import ghidra.util.Msg;
+import ghidra.util.task.ConsoleTaskMonitor;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -188,6 +197,120 @@ public class FunctionService {
         });
 
         return FunctionDto.from(fn);
+    }
+
+    /**
+     * Find the function containing a given address.
+     */
+    public Function findContaining(Program program, String addressStr) {
+        Address addr = GhidraUtil.resolveAddress(program, addressStr);
+        if (addr == null) return null;
+        return program.getFunctionManager().getFunctionContaining(addr);
+    }
+
+    public FunctionDto requireContaining(Program program, String addressStr) {
+        Function fn = findContaining(program, addressStr);
+        if (fn == null) {
+            throw new NotFoundException("No function contains address: " + addressStr, "FUNCTION_NOT_FOUND");
+        }
+        return FunctionDto.from(fn);
+    }
+
+    /**
+     * Find the next function after the given address (by memory order).
+     */
+    public Function findNext(Program program, String addressStr) {
+        Address addr = GhidraUtil.resolveAddress(program, addressStr);
+        if (addr == null) return null;
+        Function current = program.getFunctionManager().getFunctionContaining(addr);
+        Address searchFrom = current != null ? current.getBody().getMaxAddress().next() : addr.next();
+        if (searchFrom == null) return null;
+        FunctionIterator it = program.getFunctionManager().getFunctions(searchFrom, true);
+        return it.hasNext() ? it.next() : null;
+    }
+
+    /**
+     * Find the previous function before the given address (by memory order).
+     */
+    public Function findPrev(Program program, String addressStr) {
+        Address addr = GhidraUtil.resolveAddress(program, addressStr);
+        if (addr == null) return null;
+        Function current = program.getFunctionManager().getFunctionContaining(addr);
+        Address searchFrom = current != null ? current.getEntryPoint().previous() : addr.previous();
+        if (searchFrom == null) return null;
+        FunctionIterator it = program.getFunctionManager().getFunctions(searchFrom, false);
+        return it.hasNext() ? it.next() : null;
+    }
+
+    /**
+     * Set the function's signature using Ghidra's signature parser.
+     */
+    public FunctionDto setSignature(Program program, String addressStr, String signature) throws Exception {
+        Function fn = requireFunctionByAddress(program, addressStr);
+        boolean ok = TransactionHelper.executeInTransaction(program, "Set Function Signature", () ->
+            GhidraUtil.setFunctionSignature(fn, signature));
+        if (!ok) {
+            throw new IllegalArgumentException("Failed to set signature: " + signature);
+        }
+        return FunctionDto.from(fn);
+    }
+
+    /**
+     * Disassemble a function body.
+     */
+    public List<DisassemblyInstructionDto> disassemble(Program program, Function function) {
+        List<DisassemblyInstructionDto> results = new ArrayList<>();
+        Listing listing = program.getListing();
+        Address start = function.getEntryPoint();
+        Address end = function.getBody().getMaxAddress();
+        for (Instruction i : listing.getInstructions(start, true)) {
+            if (i.getAddress().compareTo(end) > 0) break;
+            results.add(DisassemblyInstructionDto.from(i, program));
+        }
+        return results;
+    }
+
+    /**
+     * Update a local variable (rename and/or retype) in a function.
+     */
+    public boolean updateLocalVariable(Program program, Function function, String variableName,
+                                       String newName, String newDataTypeName) throws Exception {
+        DecompileResults decompResults;
+        DecompInterface decomp = new DecompInterface();
+        try {
+            decomp.openProgram(program);
+            decompResults = decomp.decompileFunction(function, 60, new ConsoleTaskMonitor());
+        } finally {
+            decomp.dispose();
+        }
+        if (decompResults == null || !decompResults.decompileCompleted()) {
+            throw new IllegalStateException("Decompilation failed for " + function.getName());
+        }
+        HighFunction highFunc = decompResults.getHighFunction();
+        if (highFunc == null) {
+            throw new IllegalStateException("No high function available");
+        }
+
+        ghidra.program.model.data.DataType resolvedType = null;
+        if (newDataTypeName != null && !newDataTypeName.isEmpty()) {
+            resolvedType = GhidraUtil.resolveDataType(program, newDataTypeName);
+            if (resolvedType == null) {
+                throw new IllegalArgumentException("Unknown data type: " + newDataTypeName);
+            }
+        }
+        final ghidra.program.model.data.DataType finalType = resolvedType;
+
+        return TransactionHelper.executeInTransaction(program,
+            "Update variable " + variableName + " in " + function.getName(), () -> {
+                for (var it = highFunc.getLocalSymbolMap().getSymbols(); it.hasNext(); ) {
+                    HighSymbol sym = it.next();
+                    if (sym.getName().equals(variableName)) {
+                        HighFunctionDBUtil.updateDBVariable(sym, newName, finalType, SourceType.USER_DEFINED);
+                        return true;
+                    }
+                }
+                return false;
+            });
     }
 
     // -------------------------------------------------------------------------
