@@ -75,7 +75,8 @@ public class GhydraMCP extends Plugin implements ApplicationLevelPlugin {
                 new DataTypeResource(),
                 new VariableResource(),
                 new ClassResource(),
-                new NamespaceResource()
+                new NamespaceResource(),
+                new ProjectResource()
             );
 
             server.start();

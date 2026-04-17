@@ -123,6 +123,11 @@ public class GhydraServer {
             ctx.json(Response.error(ctx, port, "NO_PROGRAM_LOADED", e.getMessage()));
         });
 
+        app.exception(eu.starsong.ghidra.service.ProjectService.NoProjectException.class, (e, ctx) -> {
+            ctx.status(HttpStatus.SERVICE_UNAVAILABLE);
+            ctx.json(Response.error(ctx, port, "NO_PROJECT_OPEN", e.getMessage()));
+        });
+
         app.exception(NotFoundException.class, (e, ctx) -> {
             ctx.status(HttpStatus.NOT_FOUND);
             ctx.json(Response.error(ctx, port, e.errorCode(), e.getMessage()));
