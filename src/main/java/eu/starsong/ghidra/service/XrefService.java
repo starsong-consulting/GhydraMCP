@@ -1,6 +1,7 @@
 package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.XrefDto;
+import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.symbol.Reference;
@@ -20,7 +21,7 @@ public class XrefService {
      * Get references TO an address.
      */
     public List<XrefDto> getReferencesTo(Program program, String addressStr) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
@@ -39,7 +40,7 @@ public class XrefService {
      * Get references FROM an address.
      */
     public List<XrefDto> getReferencesFrom(Program program, String addressStr) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }

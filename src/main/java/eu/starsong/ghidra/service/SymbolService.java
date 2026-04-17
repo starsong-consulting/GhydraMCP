@@ -2,6 +2,7 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.SymbolDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
@@ -82,7 +83,7 @@ public class SymbolService {
      * Find raw symbol by address.
      */
     public Symbol findByAddress(Program program, String addressStr) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             return null;
         }
@@ -110,7 +111,7 @@ public class SymbolService {
      * Create a label at an address.
      */
     public SymbolDto createLabel(Program program, String addressStr, String name) throws Exception {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }

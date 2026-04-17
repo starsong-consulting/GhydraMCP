@@ -8,8 +8,11 @@ import ghidra.app.services.ProgramManager;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
+import ghidra.program.model.address.AddressSpace;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeManager;
+import ghidra.program.model.mem.Memory;
+import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionManager;
 import ghidra.program.model.listing.Parameter;
@@ -38,6 +41,101 @@ import java.util.regex.Pattern;
 public class GhidraUtil {
 
     private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
+
+    /**
+     * Resolve an address string. Accepts direct parse, implicit hex prefix for bare hex-looking
+     * values, space-qualified form (space::offset), and prefers overlay spaces when ambiguous.
+     *
+     * Port of main's AbstractEndpoint#resolveAddress — shared by all resources that take addresses.
+     */
+    public static Address resolveAddress(Program program, String rawAddress, boolean preferOverlay) {
+        if (program == null || rawAddress == null) return null;
+        String addr = rawAddress.trim();
+        if (addr.isEmpty()) return null;
+
+        AddressFactory addressFactory = program.getAddressFactory();
+        Address parsed = tryParseAddress(addressFactory, addr);
+        String preferredSpaceName = null;
+
+        if (parsed == null && !addr.contains("::") && !addr.startsWith("0x") && !addr.startsWith("0X")) {
+            parsed = tryParseAddress(addressFactory, "0x" + addr);
+        }
+
+        if (addr.contains("::")) {
+            int idx = addr.indexOf("::");
+            preferredSpaceName = addr.substring(0, idx).trim();
+            String offsetPart = addr.substring(idx + 2).trim();
+            if (parsed == null) {
+                Long offset = parseAddressOffset(offsetPart);
+                if (offset != null) {
+                    AddressSpace space = addressFactory.getAddressSpace(preferredSpaceName);
+                    if (space != null) {
+                        try { parsed = space.getAddress(offset); } catch (Exception ignored) {}
+                    }
+                }
+            }
+        }
+
+        if (preferOverlay && !addr.contains("::")) {
+            Long offset = parseAddressOffset(
+                addr.startsWith("0x") || addr.startsWith("0X") ? addr : "0x" + addr);
+            if (offset == null) offset = parseAddressOffset(addr);
+            if (offset != null) {
+                Address overlayAddress = findOverlayAddressByOffset(program, offset, null);
+                if (overlayAddress != null) return overlayAddress;
+            }
+        }
+
+        if (preferOverlay && parsed != null && !parsed.getAddressSpace().isOverlaySpace()) {
+            Address overlayAddress = findOverlayAddressByOffset(program, parsed.getOffset(), preferredSpaceName);
+            if (overlayAddress != null) return overlayAddress;
+        }
+        return parsed;
+    }
+
+    public static Address resolveAddress(Program program, String rawAddress) {
+        return resolveAddress(program, rawAddress, true);
+    }
+
+    private static Address tryParseAddress(AddressFactory factory, String s) {
+        try { return factory.getAddress(s); } catch (Exception e) { return null; }
+    }
+
+    private static Long parseAddressOffset(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) return null;
+        try {
+            if (trimmed.startsWith("0x") || trimmed.startsWith("0X")) {
+                return Long.parseUnsignedLong(trimmed.substring(2), 16);
+            }
+            if (trimmed.matches("^[0-9a-fA-F]+$")) {
+                return Long.parseUnsignedLong(trimmed, 16);
+            }
+            return Long.parseLong(trimmed);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private static Address findOverlayAddressByOffset(Program program, long offset, String preferredSpaceName) {
+        Memory memory = program.getMemory();
+        Address fallback = null;
+        for (MemoryBlock block : memory.getBlocks()) {
+            Address start = block.getStart();
+            AddressSpace space = start.getAddressSpace();
+            if (!space.isOverlaySpace()) continue;
+            if (preferredSpaceName != null && !preferredSpaceName.isEmpty()
+                && !preferredSpaceName.equals(space.getName())) continue;
+            try {
+                Address candidate = space.getAddress(offset);
+                if (!block.contains(candidate)) continue;
+                if (space.getName().toLowerCase().contains("runtime")) return candidate;
+                if (fallback == null) fallback = candidate;
+            } catch (Exception ignored) {}
+        }
+        return fallback;
+    }
 
     /**
      * Parse an integer from a string, or return defaultValue if null/invalid.

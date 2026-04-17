@@ -3,6 +3,7 @@ package eu.starsong.ghidra.service;
 import eu.starsong.ghidra.dto.FunctionDto;
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
@@ -57,7 +58,7 @@ public class FunctionService {
      * Get the raw Ghidra Function by address.
      */
     public Function findByAddress(Program program, String addressStr) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             return null;
         }
@@ -167,7 +168,7 @@ public class FunctionService {
      * Create a function at an address.
      */
     public FunctionDto create(Program program, String addressStr, String name) throws Exception {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }

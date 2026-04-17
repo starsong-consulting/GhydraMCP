@@ -2,6 +2,7 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.MemoryBlockDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.Memory;
@@ -41,7 +42,7 @@ public class MemoryService {
      * Get the memory block containing an address.
      */
     public MemoryBlockDto getBlockContaining(Program program, String addressStr) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
@@ -58,7 +59,7 @@ public class MemoryService {
      * Read bytes from memory.
      */
     public byte[] readBytes(Program program, String addressStr, int length) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }

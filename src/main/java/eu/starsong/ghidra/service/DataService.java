@@ -9,6 +9,9 @@ import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolTable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -67,7 +70,7 @@ public class DataService {
      * Find raw Data at address.
      */
     public Data findByAddress(Program program, String addressStr) {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             return null;
         }
@@ -86,7 +89,7 @@ public class DataService {
      * Set data type at an address.
      */
     public DataDto setDataType(Program program, String addressStr, String dataTypeName) throws Exception {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
@@ -105,24 +108,124 @@ public class DataService {
     }
 
     /**
-     * Clear data at an address.
+     * Rename the label at an address (Ghidra's "Edit Label" action). Does not
+     * define, clear, or change existing data at the address.
      */
-    public void clearData(Program program, String addressStr) throws Exception {
-        Address address = program.getAddressFactory().getAddress(addressStr);
+    public UpdateResult renameLabel(Program program, String addressStr, String newName) throws Exception {
+        if (newName == null || newName.isEmpty()) {
+            throw new IllegalArgumentException("newName is required");
+        }
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
-
-        Data data = program.getListing().getDataAt(address);
-        if (data == null) {
-            throw new NotFoundException("No data at address: " + addressStr, "DATA_NOT_FOUND");
-        }
-
-        TransactionHelper.executeInTransaction(program, "Clear Data", () -> {
-            program.getListing().clearCodeUnits(address, address.add(data.getLength() - 1), false);
-            return null;
+        return TransactionHelper.executeInTransaction(program, "Rename label at " + addressStr, () -> {
+            SymbolTable symTable = program.getSymbolTable();
+            Symbol existing = symTable.getPrimarySymbol(address);
+            String originalName = existing != null ? existing.getName() : null;
+            if (existing != null) {
+                existing.setName(newName, SourceType.USER_DEFINED);
+            } else {
+                symTable.createLabel(address, newName, SourceType.USER_DEFINED);
+            }
+            Data data = program.getListing().getDataAt(address);
+            String typeName = data != null ? data.getDataType().getName() : null;
+            return new UpdateResult(address.toString(), newName, originalName, typeName, null);
         });
     }
+
+    /**
+     * Combined update: rename and/or retype at an address. If only newName is
+     * provided, behaves like renameLabel. If type is provided, the data is
+     * (re)defined; pure rename leaves existing data alone.
+     */
+    public UpdateResult update(Program program, String addressStr, String newName, String typeName) throws Exception {
+        boolean hasName = newName != null && !newName.isEmpty();
+        boolean hasType = typeName != null && !typeName.isEmpty();
+        if (!hasName && !hasType) {
+            throw new IllegalArgumentException("At least one of newName or type must be provided");
+        }
+        if (hasName && !hasType) {
+            return renameLabel(program, addressStr, newName);
+        }
+
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        DataType dataType = GhidraUtil.resolveDataType(program, typeName);
+        if (dataType == null) {
+            throw new IllegalArgumentException("Unknown data type: " + typeName);
+        }
+
+        return TransactionHelper.executeInTransaction(program, "Update data at " + addressStr, () -> {
+            Listing listing = program.getListing();
+            SymbolTable symTable = program.getSymbolTable();
+            Symbol existing = symTable.getPrimarySymbol(address);
+            String originalName = existing != null ? existing.getName() : null;
+
+            Data oldData = listing.getDataAt(address);
+            String originalType = oldData != null ? oldData.getDataType().getName() : null;
+
+            listing.clearCodeUnits(address, address.add(dataType.getLength() - 1), false);
+            Data newData = listing.createData(address, dataType);
+
+            if (hasName) {
+                existing = symTable.getPrimarySymbol(address);
+                if (existing != null) {
+                    existing.setName(newName, SourceType.USER_DEFINED);
+                } else {
+                    symTable.createLabel(address, newName, SourceType.USER_DEFINED);
+                }
+            }
+
+            String finalName = hasName ? newName : originalName;
+            return new UpdateResult(address.toString(), finalName, originalName, newData.getDataType().getName(), originalType);
+        });
+    }
+
+    /**
+     * Clear data or instruction at an address. Returns what was cleared.
+     */
+    public ClearResult clearAt(Program program, String addressStr) throws Exception {
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        return TransactionHelper.executeInTransaction(program, "Clear at " + addressStr, () -> {
+            Listing listing = program.getListing();
+            Data existing = listing.getDefinedDataAt(address);
+            if (existing != null) {
+                String type = existing.getDataType().getName();
+                int length = existing.getLength();
+                Symbol sym = program.getSymbolTable().getPrimarySymbol(address);
+                String name = sym != null ? sym.getName() : null;
+                listing.clearCodeUnits(address, address.add(length - 1), true);
+                return new ClearResult(address.toString(), "data", type, length, name);
+            }
+            if (listing.getInstructionAt(address) != null) {
+                listing.clearCodeUnits(address, address, true);
+                return new ClearResult(address.toString(), "instruction", null, 0, null);
+            }
+            return new ClearResult(address.toString(), "none", null, 0, null);
+        });
+    }
+
+    public record UpdateResult(
+        String address,
+        String name,
+        String originalName,
+        String dataType,
+        String originalType
+    ) {}
+
+    public record ClearResult(
+        String address,
+        String cleared,    // "data", "instruction", or "none"
+        String originalType,
+        int length,
+        String originalName
+    ) {}
 
     /**
      * Filter for data listing.
