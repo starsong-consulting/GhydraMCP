@@ -92,6 +92,26 @@ def run_data_tests():
         print(f"Error running data operations tests: {str(e)}")
         return False
 
+def run_port_tests():
+    """Run the Javalin-port edge-case tests."""
+    print_header("Running Javalin Port Edge-Case Tests")
+    try:
+        result = subprocess.run(
+            [sys.executable, "test_javalin_port.py"],
+            capture_output=True,
+            text=True
+        )
+        if result.stdout:
+            print("STDOUT:")
+            print(result.stdout)
+        if result.stderr:
+            print("STDERR:")
+            print(result.stderr)
+        return result.returncode == 0
+    except Exception as e:
+        print(f"Error running port edge-case tests: {str(e)}")
+        return False
+
 def run_comment_tests():
     """Run the comment functionality tests."""
     print_header("Running Comment Tests")
@@ -125,16 +145,19 @@ def run_all_tests():
     mcp_bridge_success = run_mcp_bridge_tests()
     data_tests_success = run_data_tests()
     comment_tests_success = run_comment_tests()
-    
+    port_tests_success = run_port_tests()
+
     # Print a summary
     print_header("Test Summary")
     print(f"HTTP API Tests: {'PASSED' if http_api_success else 'FAILED'}")
     print(f"MCP Bridge Tests: {'PASSED' if mcp_bridge_success else 'FAILED'}")
     print(f"Data Operations Tests: {'PASSED' if data_tests_success else 'FAILED'}")
     print(f"Comment Tests: {'PASSED' if comment_tests_success else 'FAILED'}")
-    print(f"Overall: {'PASSED' if (http_api_success and mcp_bridge_success and data_tests_success and comment_tests_success) else 'FAILED'}")
-    
-    return http_api_success and mcp_bridge_success and data_tests_success and comment_tests_success
+    print(f"Javalin Port Edge-Case Tests: {'PASSED' if port_tests_success else 'FAILED'}")
+    print(f"Overall: {'PASSED' if (http_api_success and mcp_bridge_success and data_tests_success and comment_tests_success and port_tests_success) else 'FAILED'}")
+
+    return (http_api_success and mcp_bridge_success and data_tests_success
+            and comment_tests_success and port_tests_success)
 
 if __name__ == "__main__":
     # Check if we have the required dependencies
@@ -159,9 +182,12 @@ if __name__ == "__main__":
         elif sys.argv[1] == "--comments":
             # Run only the comment tests
             success = run_comment_tests()
+        elif sys.argv[1] == "--port":
+            # Run only the Javalin port edge-case tests
+            success = run_port_tests()
         else:
             print(f"Unknown argument: {sys.argv[1]}")
-            print("Usage: python run_tests.py [--http|--mcp|--data|--comments]")
+            print("Usage: python run_tests.py [--http|--mcp|--data|--comments|--port]")
             sys.exit(1)
     else:
         # Run all tests

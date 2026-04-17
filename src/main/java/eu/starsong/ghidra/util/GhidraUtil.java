@@ -29,7 +29,7 @@ import java.util.regex.Pattern;
 
 public class GhidraUtil {
 
-    private static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
+    static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
 
     /**
      * Resolve an address string. Accepts direct parse, implicit hex prefix for bare hex-looking
@@ -88,7 +88,7 @@ public class GhidraUtil {
         try { return factory.getAddress(s); } catch (Exception e) { return null; }
     }
 
-    private static Long parseAddressOffset(String value) {
+    static Long parseAddressOffset(String value) {
         if (value == null) return null;
         String trimmed = value.trim();
         if (trimmed.isEmpty()) return null;
@@ -185,7 +185,7 @@ public class GhidraUtil {
         return dataType;
     }
 
-    private static DataType resolvePrimitiveAlias(String name) {
+    static DataType resolvePrimitiveAlias(String name) {
         return switch (name.toLowerCase(Locale.ROOT)) {
             case "byte", "int8_t" -> new ghidra.program.model.data.ByteDataType();
             case "uint8_t" -> new ghidra.program.model.data.UnsignedCharDataType();
