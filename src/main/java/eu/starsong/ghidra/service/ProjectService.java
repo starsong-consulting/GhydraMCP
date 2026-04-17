@@ -17,8 +17,32 @@ import java.util.List;
 
 public class ProjectService {
 
+    /**
+     * List all projects visible from this plugin context. In practice, Ghidra
+     * plugins see exactly one active project, so this returns a list of
+     * length 0 or 1.
+     */
+    public List<ProjectDto> listAll(PluginTool tool) {
+        Project project = tool != null ? tool.getProject() : null;
+        if (project == null) return new ArrayList<>();
+        List<ProjectDto> out = new ArrayList<>();
+        out.add(toDto(project));
+        return out;
+    }
+
+    public ProjectDto getByName(PluginTool tool, String name) {
+        for (ProjectDto p : listAll(tool)) {
+            if (name.equals(p.name())) return p;
+        }
+        throw new NotFoundException("Project not found: " + name, "PROJECT_NOT_FOUND");
+    }
+
     public ProjectDto getCurrent(PluginTool tool) {
         Project project = requireProject(tool);
+        return toDto(project);
+    }
+
+    private ProjectDto toDto(Project project) {
         ProjectLocator locator = project.getProjectLocator();
         ProjectData data = project.getProjectData();
 

@@ -32,7 +32,9 @@ public class DataResource implements Resource {
         app.get("/strings", ctx -> listStrings(contextFactory.apply(ctx)));
         app.get("/data/{address}", ctx -> getByAddress(contextFactory.apply(ctx)));
         app.put("/data/{address}", ctx -> setDataType(contextFactory.apply(ctx)));
+        app.post("/data/{address}", ctx -> createAt(contextFactory.apply(ctx)));
         app.patch("/data/{address}", ctx -> update(contextFactory.apply(ctx)));
+        app.patch("/data/{address}/type", ctx -> update(contextFactory.apply(ctx)));
         app.delete("/data/{address}", ctx -> clearAt(contextFactory.apply(ctx)));
 
         // Legacy POST routes (bridge compatibility)
@@ -106,13 +108,32 @@ public class DataResource implements Resource {
         }
 
         try {
-            DataDto data = dataService.setDataType(program, address, request.type);
+            DataDto data = dataService.setDataType(program, address, request.type, request.size);
             ctx.json(Response.ok(ctx.ctx(), ctx.port(), data)
                 .self("/data/{}", address)
                 .link("data", "/data")
                 .build());
         } catch (Exception e) {
             throw new RuntimeException("Failed to set data type: " + e.getMessage(), e);
+        }
+    }
+
+    private void createAt(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        SetTypeRequest req = ctx.bodyAsClass(SetTypeRequest.class);
+        if (req.type == null || req.type.isEmpty()) {
+            throw new IllegalArgumentException("type field is required");
+        }
+        try {
+            DataDto data = dataService.setDataType(program, address, req.type, req.size);
+            ctx.status(201);
+            ctx.json(Response.ok(ctx.ctx(), ctx.port(), data)
+                .self("/data/{}", address)
+                .link("data", "/data")
+                .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create data: " + e.getMessage(), e);
         }
     }
 
@@ -185,6 +206,7 @@ public class DataResource implements Resource {
 
     private static class SetTypeRequest {
         public String type;
+        public Integer size;
     }
 
     private static class UpdateRequest {

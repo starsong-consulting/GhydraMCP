@@ -94,6 +94,54 @@ public class MemoryService {
     }
 
     /**
+     * Write bytes to memory. Input is a hex string (space/non-hex chars stripped).
+     */
+    public int writeBytes(Program program, String addressStr, String hexBytes) throws Exception {
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        if (hexBytes == null || hexBytes.isEmpty()) {
+            throw new IllegalArgumentException("bytes is required");
+        }
+        String cleaned = hexBytes.replaceAll("[^0-9a-fA-F]", "");
+        if (cleaned.length() % 2 != 0) {
+            throw new IllegalArgumentException("hex byte string must have even length");
+        }
+        byte[] data = new byte[cleaned.length() / 2];
+        for (int i = 0; i < cleaned.length(); i += 2) {
+            data[i / 2] = (byte) Integer.parseInt(cleaned.substring(i, i + 2), 16);
+        }
+        Address finalAddress = address;
+        byte[] finalData = data;
+        return TransactionHelper.executeInTransaction(program,
+            "Write memory at " + addressStr, () -> {
+                program.getMemory().setBytes(finalAddress, finalData);
+                return finalData.length;
+            });
+    }
+
+    /**
+     * Disassemble instructions starting at an address.
+     */
+    public List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> disassembleAt(
+            Program program, String addressStr, int limit) {
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) {
+            throw new IllegalArgumentException("Invalid address: " + addressStr);
+        }
+        List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> results = new java.util.ArrayList<>();
+        var instrIter = program.getListing().getInstructions(address, true);
+        int collected = 0;
+        while (instrIter.hasNext() && (limit <= 0 || collected < limit)) {
+            var instr = instrIter.next();
+            results.add(eu.starsong.ghidra.dto.DisassemblyInstructionDto.from(instr, program));
+            collected++;
+        }
+        return results;
+    }
+
+    /**
      * Get a comment at an address of the given type.
      */
     public String getComment(Program program, String addressStr, String commentType) {

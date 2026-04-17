@@ -3,6 +3,7 @@ package eu.starsong.ghidra.resource;
 import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.server.GhidraContext;
 import eu.starsong.ghidra.server.Resource;
+import eu.starsong.ghidra.service.MemoryService;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
@@ -21,11 +22,36 @@ import java.util.function.Function;
  */
 public class ProgramResource implements Resource {
 
+    private final MemoryService memoryService = new MemoryService();
+
     @Override
     public void register(Javalin app, Function<Context, GhidraContext> contextFactory) {
         app.get("/program", ctx -> getCurrentProgram(contextFactory.apply(ctx)));
         app.get("/programs", ctx -> listPrograms(contextFactory.apply(ctx)));
         app.get("/programs/current", ctx -> getCurrentProgram(contextFactory.apply(ctx)));
+        app.patch("/programs/current/memory/{address}", ctx -> writeMemory(contextFactory.apply(ctx)));
+    }
+
+    private void writeMemory(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        MemoryWriteRequest req = ctx.bodyAsClass(MemoryWriteRequest.class);
+        try {
+            int written = memoryService.writeBytes(program, address, req.bytes);
+            ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of(
+                    "address", address,
+                    "bytesWritten", written))
+                .self("/programs/current/memory/{}", address)
+                .link("memory", "/memory/{}", address)
+                .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to write memory: " + e.getMessage(), e);
+        }
+    }
+
+    private static class MemoryWriteRequest {
+        public String bytes;
+        public String format; // unused in simple hex-only handler
     }
 
     /**

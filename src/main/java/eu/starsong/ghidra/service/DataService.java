@@ -86,9 +86,10 @@ public class DataService {
     }
 
     /**
-     * Set data type at an address.
+     * Set data type at an address. If size is provided (e.g. for variable-length
+     * types like strings), createData is called with an explicit length.
      */
-    public DataDto setDataType(Program program, String addressStr, String dataTypeName) throws Exception {
+    public DataDto setDataType(Program program, String addressStr, String dataTypeName, Integer size) throws Exception {
         Address address = GhidraUtil.resolveAddress(program, addressStr);
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
@@ -99,12 +100,28 @@ public class DataService {
             throw new IllegalArgumentException("Unknown data type: " + dataTypeName);
         }
 
+        int length;
+        if (size != null && size > 0) {
+            length = size;
+        } else {
+            length = dataType.getLength();
+            if (length <= 0) {
+                throw new IllegalArgumentException("Type '" + dataTypeName
+                    + "' has non-positive length; specify size explicitly");
+            }
+        }
+        final int finalLength = length;
+
         Data data = TransactionHelper.executeInTransaction(program, "Set Data Type", () -> {
-            program.getListing().clearCodeUnits(address, address.add(dataType.getLength() - 1), false);
-            return program.getListing().createData(address, dataType);
+            program.getListing().clearCodeUnits(address, address.add(finalLength - 1), false);
+            return program.getListing().createData(address, dataType, finalLength);
         });
 
         return DataDto.from(data);
+    }
+
+    public DataDto setDataType(Program program, String addressStr, String dataTypeName) throws Exception {
+        return setDataType(program, addressStr, dataTypeName, null);
     }
 
     /**

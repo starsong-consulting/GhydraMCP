@@ -31,6 +31,26 @@ public class ProjectResource implements Resource {
         app.get("/project", ctx -> current(contextFactory.apply(ctx)));
         app.get("/project/files", ctx -> files(contextFactory.apply(ctx)));
         app.post("/project/open", ctx -> openFile(contextFactory.apply(ctx)));
+        app.get("/projects", ctx -> listAll(contextFactory.apply(ctx)));
+        app.get("/projects/{name}", ctx -> getByName(contextFactory.apply(ctx)));
+    }
+
+    private void listAll(GhidraContext ctx) {
+        List<ProjectDto> projects = service.listAll(ctx.tool());
+        ctx.json(eu.starsong.ghidra.hateoas.Response.ok(ctx.ctx(), ctx.port(), projects)
+            .self("/projects")
+            .link("project", "/project")
+            .build());
+    }
+
+    private void getByName(GhidraContext ctx) {
+        String name = ctx.pathParam("name");
+        ProjectDto project = service.getByName(ctx.tool(), name);
+        ctx.json(eu.starsong.ghidra.hateoas.Response.ok(ctx.ctx(), ctx.port(), project)
+            .self("/projects/{}", name)
+            .link("projects", "/projects")
+            .link("project", "/project")
+            .build());
     }
 
     private void current(GhidraContext ctx) {

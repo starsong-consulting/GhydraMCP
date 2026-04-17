@@ -33,6 +33,19 @@ public class MemoryResource implements Resource {
         app.get("/memory/search", ctx -> searchMemory(contextFactory.apply(ctx)));
         app.get("/memory/{address}/comments/{type}", ctx -> getComment(contextFactory.apply(ctx)));
         app.post("/memory/{address}/comments/{type}", ctx -> setComment(contextFactory.apply(ctx)));
+        app.get("/memory/{address}/disassembly", ctx -> disassembly(contextFactory.apply(ctx)));
+    }
+
+    private void disassembly(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        var pagination = ctx.pagination();
+        List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> instructions =
+            memoryService.disassembleAt(program, address, pagination.offset() + pagination.limit());
+        var result = Paginator.paginate(instructions, pagination, "/memory/" + address + "/disassembly");
+        ctx.json(result.toResponse()
+            .link("memory", "/memory/{}", address)
+            .build());
     }
 
     private void getComment(GhidraContext ctx) {
