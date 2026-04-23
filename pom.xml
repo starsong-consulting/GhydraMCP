@@ -4,10 +4,10 @@
 
   <modelVersion>4.0.0</modelVersion>
   <groupId>eu.starsong.ghidra</groupId>
-  <artifactId>GhydraMCP</artifactId>
+  <artifactId>Ghydra</artifactId>
   <packaging>jar</packaging>
   <version>dev</version>
-  <name>GhydraMCP</name>
+  <name>Ghydra</name>
   <url>https://github.com/starsong-consulting/GhydraMCP</url>
   
   <properties>
@@ -25,7 +25,7 @@
     <maven.install.skip>true</maven.install.skip>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
     <revision>dev</revision>
-    <inner.zip.filename>GhydraMCP-${git.commit.id.describe}-${maven.build.timestamp}.zip</inner.zip.filename>
+    <inner.zip.filename>Ghydra-${git.commit.id.describe}-${maven.build.timestamp}.zip</inner.zip.filename>
   </properties>
 
   <dependencies>
@@ -171,7 +171,7 @@
               <addDefaultImplementationEntries>false</addDefaultImplementationEntries>
             </manifest>
             <manifestEntries>
-              <Implementation-Title>GhydraMCP</Implementation-Title>
+              <Implementation-Title>Ghydra</Implementation-Title>
               <Implementation-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Implementation-Version>
               <Plugin-Class>eu.starsong.ghidra.GhydraPlugin</Plugin-Class>
               <Plugin-Name>Ghydra</Plugin-Name>
@@ -180,7 +180,7 @@
               <Plugin-Description>Ghidra HATEOAS interface for all CodeBrowser instances in parallel</Plugin-Description>
             </manifestEntries>
           </archive>
-          <finalName>GhydraMCP</finalName>
+          <finalName>Ghydra</finalName>
           <excludes>
             <exclude>**/App.class</exclude>
           </excludes>
@@ -200,7 +200,7 @@
             <goals><goal>shade</goal></goals>
             <configuration>
               <createDependencyReducedPom>false</createDependencyReducedPom>
-              <finalName>GhydraMCP</finalName>
+              <finalName>Ghydra</finalName>
               <shadedArtifactAttached>false</shadedArtifactAttached>
               <filters>
                 <filter>
@@ -222,7 +222,7 @@
                     <Plugin-Name>Ghydra</Plugin-Name>
                     <Plugin-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Plugin-Version>
                     <Plugin-Author>Teal Bauer (based on ghidra-mcp by Laurie Wired)</Plugin-Author>
-                    <Implementation-Title>GhydraMCP</Implementation-Title>
+                    <Implementation-Title>Ghydra</Implementation-Title>
                     <Implementation-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Implementation-Version>
                   </manifestEntries>
                 </transformer>
@@ -256,7 +256,7 @@
               <descriptors>
                 <descriptor>src/assembly/ghidra-extension.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
+              <finalName>Ghydra-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
@@ -272,7 +272,7 @@
               <descriptors>
                 <descriptor>src/assembly/complete-package.xml</descriptor>
               </descriptors>
-              <finalName>GhydraMCP-Complete-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
+              <finalName>Ghydra-Complete-${git.commit.id.describe}-${maven.build.timestamp}</finalName>
               <appendAssemblyId>false</appendAssemblyId>
             </configuration>
           </execution>
