@@ -118,4 +118,32 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
     public boolean isBaseInstance() {
         return isBaseInstance;
     }
+
+    /**
+     * Build a metadata snapshot for this instance — what InstanceResource
+     * surfaces under /instances so clients can pick the right port without
+     * polling /info on every one.
+     */
+    public Map<String, Object> getInstanceSnapshot() {
+        Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+        snapshot.put("port", port);
+        snapshot.put("url", "http://localhost:" + port);
+        snapshot.put("isBaseInstance", isBaseInstance);
+        snapshot.put("toolName", tool != null ? tool.getName() : null);
+
+        ghidra.framework.model.Project project = tool != null ? tool.getProject() : null;
+        snapshot.put("project", project != null ? project.getName() : null);
+
+        ProgramManager pm = tool != null ? tool.getService(ProgramManager.class) : null;
+        ghidra.program.model.listing.Program current = pm != null ? pm.getCurrentProgram() : null;
+        if (current != null) {
+            snapshot.put("file", current.getName());
+            snapshot.put("executable", current.getExecutablePath());
+            snapshot.put("architecture", current.getLanguageID().getIdAsString());
+            snapshot.put("imageBase", current.getImageBase().toString());
+        } else {
+            snapshot.put("file", null);
+        }
+        return snapshot;
+    }
 }

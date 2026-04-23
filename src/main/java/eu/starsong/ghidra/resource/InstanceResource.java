@@ -66,22 +66,23 @@ public class InstanceResource implements Resource {
     }
 
     /**
-     * GET /instances - List all active instances
+     * GET /instances - list every active instance with its loaded program / project / tool.
      */
     private void list(GhidraContext ctx) {
         Map<Integer, ?> instances = ctx.activeInstances();
 
         List<Map<String, Object>> instanceList = new ArrayList<>();
         for (Integer port : instances.keySet()) {
-            Map<String, Object> instance = new LinkedHashMap<>();
-            instance.put("port", port);
-            instance.put("url", "http://localhost:" + port);
+            Map<String, Object> instance = snapshotFor(port, instances);
             instance.put("isCurrent", port == ctx.port());
 
             Map<String, Object> links = new LinkedHashMap<>();
             links.put("self", Links.href("/instances/{}", port));
             links.put("connect", Links.href("http://localhost:{}", port));
             links.put("info", Links.href("http://localhost:{}/info", port));
+            if (instance.get("file") != null) {
+                links.put("program", Links.href("http://localhost:{}/program", port));
+            }
             instance.put("_links", links);
 
             instanceList.add(instance);
@@ -95,9 +96,6 @@ public class InstanceResource implements Resource {
             .build());
     }
 
-    /**
-     * GET /instances/{port} - Get info about a specific instance
-     */
     private void getByPort(GhidraContext ctx) {
         int port = Integer.parseInt(ctx.pathParam("port"));
         Map<Integer, ?> instances = ctx.activeInstances();
@@ -107,9 +105,7 @@ public class InstanceResource implements Resource {
                 "Instance not found on port: " + port, "INSTANCE_NOT_FOUND");
         }
 
-        Map<String, Object> instance = new LinkedHashMap<>();
-        instance.put("port", port);
-        instance.put("url", "http://localhost:" + port);
+        Map<String, Object> instance = snapshotFor(port, instances);
         instance.put("isCurrent", port == ctx.port());
         instance.put("active", true);
 
@@ -119,5 +115,21 @@ public class InstanceResource implements Resource {
             .link("connect", "http://localhost:" + port)
             .link("info", "http://localhost:" + port + "/info")
             .build());
+    }
+
+    /**
+     * Query the live plugin on that port for its project/program snapshot.
+     * Falls back to the bare port/url pair if the map entry isn't a GhydraPlugin
+     * (shouldn't happen in practice but keeps the route honest).
+     */
+    private Map<String, Object> snapshotFor(Integer port, Map<Integer, ?> instances) {
+        Object pluginInstance = instances.get(port);
+        if (pluginInstance instanceof eu.starsong.ghidra.GhydraPlugin p) {
+            return new LinkedHashMap<>(p.getInstanceSnapshot());
+        }
+        Map<String, Object> fallback = new LinkedHashMap<>();
+        fallback.put("port", port);
+        fallback.put("url", "http://localhost:" + port);
+        return fallback;
     }
 }
