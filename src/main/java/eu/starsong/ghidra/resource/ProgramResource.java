@@ -58,13 +58,24 @@ public class ProgramResource implements Resource {
      * GET /program or /programs/current - Get current program info
      */
     private void getCurrentProgram(GhidraContext ctx) {
+        // TODO: extract this into ProgramInfoDto once the dual field names
+        // (language/languageId, compiler/compilerSpecId) are decided — pick one
+        // set and drop the other, then the flat map goes away.
         Program program = ctx.requireProgram();
+
+        // programId uses main's "project:/path" shape so the bridge can split it.
+        String projectName = program.getDomainFile().getProjectLocator() != null
+            ? program.getDomainFile().getProjectLocator().getName() : "";
+        String programId = projectName + ":" + program.getDomainFile().getPathname();
 
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("name", program.getName());
+        data.put("programId", programId);
         data.put("path", program.getExecutablePath());
         data.put("language", program.getLanguageID().getIdAsString());
+        data.put("languageId", program.getLanguageID().getIdAsString());
         data.put("compiler", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
+        data.put("compilerSpecId", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
         data.put("processor", program.getLanguage().getProcessor().toString());
         data.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
         data.put("minAddress", program.getMinAddress().toString());
