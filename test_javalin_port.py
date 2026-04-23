@@ -19,7 +19,7 @@ import unittest
 
 import requests
 
-DEFAULT_PORT = 8192
+DEFAULT_PORT = int(os.getenv("GHYDRAMCP_TEST_PORT") or "8192")
 BASE = os.getenv("GHYDRAMCP_TEST_HOST") or "localhost"
 URL = f"http://{BASE}:{DEFAULT_PORT}"
 
@@ -472,10 +472,14 @@ class MutationTests(unittest.TestCase):
 
     def test_symbol_patch_rename(self):
         """Rename a symbol then rename it back."""
-        syms = requests.get(f"{URL}/symbols", params={"limit": 20}).json().get("result", [])
+        syms = requests.get(f"{URL}/symbols", params={"limit": 50}).json().get("result", [])
         target = None
         for s in syms:
-            if s.get("address") and s.get("name") and not s["name"].startswith("_"):
+            addr = s.get("address", "")
+            name = s.get("name", "")
+            # External addresses ("EXTERNAL:00000001") aren't renameable the same
+            # way, and entry-point symbols (often starts with '_') are fragile.
+            if addr and name and not name.startswith("_") and not addr.startswith("EXTERNAL"):
                 target = s
                 break
         if target is None:
