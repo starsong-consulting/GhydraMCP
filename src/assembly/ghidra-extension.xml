@@ -22,28 +22,12 @@
         </fileSet>
     </fileSets>
     
-    <dependencySets>
-        <!-- Main project JAR -->
-        <dependencySet>
-            <useProjectArtifact>true</useProjectArtifact>
-            <useTransitiveDependencies>false</useTransitiveDependencies>
-            <includes>
-                <include>eu.starsong.ghidra:GhydraMCP</include>
-            </includes>
+    <!-- The main jar is already shaded (includes Javalin/Jetty/Kotlin/SLF4J),
+         so lib/ only needs the single artifact. -->
+    <files>
+        <file>
+            <source>${project.build.directory}/GhydraMCP.jar</source>
             <outputDirectory>GhydraMCP/lib</outputDirectory>
-            <outputFileNameMapping>GhydraMCP.jar</outputFileNameMapping>
-            <unpack>false</unpack>
-        </dependencySet>
-        <!-- Runtime deps: Javalin + Jetty + SLF4J + Kotlin -->
-        <dependencySet>
-            <useProjectArtifact>false</useProjectArtifact>
-            <scope>runtime</scope>
-            <excludes>
-                <exclude>ghidra:*</exclude>
-                <exclude>com.google.code.gson:gson</exclude>
-            </excludes>
-            <outputDirectory>GhydraMCP/lib</outputDirectory>
-            <unpack>false</unpack>
-        </dependencySet>
-    </dependencySets>
+        </file>
+    </files>
 </assembly>
