@@ -34,7 +34,7 @@ public class NamespaceResource implements Resource {
 
         var result = Paginator.paginate(namespaces, pagination, "/namespaces");
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .build());
     }

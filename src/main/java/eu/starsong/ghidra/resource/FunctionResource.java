@@ -82,7 +82,7 @@ public class FunctionResource implements Resource {
             var single_result = Paginator.paginate(single, pagination, "/functions")
                 .withItemLinks(s -> Links.builder()
                     .self("/functions/{}", s.address()).build());
-            ctx.json(single_result.toResponse().link("program", "/program").build());
+            ctx.json(single_result.toResponse(ctx.ctx(), ctx.port()).link("program", "/program").build());
             return;
         }
 
@@ -101,7 +101,7 @@ public class FunctionResource implements Resource {
                 .link("decompile", "/functions/{}/decompile", fn.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .link("create", "/functions", "POST")
             .build());
@@ -168,7 +168,7 @@ public class FunctionResource implements Resource {
         var pagination = ctx.pagination();
         List<DisassemblyInstructionDto> instructions = functionService.disassemble(program, fn);
         var result = Paginator.paginate(instructions, pagination, basePath);
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .meta("function", Map.of(
                 "name", fn.getName(),
                 "address", fn.getEntryPoint().toString(),

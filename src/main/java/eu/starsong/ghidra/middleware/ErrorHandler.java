@@ -24,6 +24,6 @@ public class ErrorHandler implements ExceptionHandler<Exception> {
         Msg.error(this, "Unhandled exception in " + ctx.path(), e);
 
         ctx.status(HttpStatus.INTERNAL_SERVER_ERROR);
-        ctx.json(Response.error(ctx, port, "INTERNAL_ERROR", "Internal server error: " + e.getMessage()));
+        ctx.json(Response.error(ctx, port, "INTERNAL_ERROR", "Internal server error: " + e.getMessage()).build());
     }
 }

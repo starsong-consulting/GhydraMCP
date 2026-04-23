@@ -39,7 +39,7 @@ public class ClassResource implements Resource {
                 .self("/classes/{}", c.name())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .build());
     }

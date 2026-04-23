@@ -68,7 +68,7 @@ public class StructResource implements Resource {
                 .link("fields", "/structs/{}/fields", s.name())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .link("create", "/structs", "POST")
             .build());

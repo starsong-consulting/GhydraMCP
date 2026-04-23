@@ -28,12 +28,14 @@ public class MemoryResource implements Resource {
 
     @Override
     public void register(Javalin app, Function<Context, GhidraContext> contextFactory) {
+        // /memory/search must register before /memory/{address}, otherwise Javalin
+        // routes "search" as an address literal.
         app.get("/memory", ctx -> listBlocks(contextFactory.apply(ctx)));
-        app.get("/memory/{address}", ctx -> readMemory(contextFactory.apply(ctx)));
         app.get("/memory/search", ctx -> searchMemory(contextFactory.apply(ctx)));
         app.get("/memory/{address}/comments/{type}", ctx -> getComment(contextFactory.apply(ctx)));
         app.post("/memory/{address}/comments/{type}", ctx -> setComment(contextFactory.apply(ctx)));
         app.get("/memory/{address}/disassembly", ctx -> disassembly(contextFactory.apply(ctx)));
+        app.get("/memory/{address}", ctx -> readMemory(contextFactory.apply(ctx)));
     }
 
     private void disassembly(GhidraContext ctx) {
@@ -43,7 +45,7 @@ public class MemoryResource implements Resource {
         List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> instructions =
             memoryService.disassembleAt(program, address, pagination.offset() + pagination.limit());
         var result = Paginator.paginate(instructions, pagination, "/memory/" + address + "/disassembly");
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("memory", "/memory/{}", address)
             .build());
     }
@@ -103,7 +105,7 @@ public class MemoryResource implements Resource {
                 .self("/memory/{}", block.start())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .link("segments", "/segments")
             .build());

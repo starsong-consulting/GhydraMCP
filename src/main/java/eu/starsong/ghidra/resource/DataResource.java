@@ -61,7 +61,7 @@ public class DataResource implements Resource {
                 .link("memory", "/memory/{}", d.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .link("strings", "/strings")
             .build());
@@ -78,7 +78,7 @@ public class DataResource implements Resource {
                 .self("/data/{}", d.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("data", "/data")
             .link("program", "/program")
             .build());

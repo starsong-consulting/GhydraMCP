@@ -120,22 +120,22 @@ public class GhydraServer {
 
         app.exception(GhidraContext.NoProgramException.class, (e, ctx) -> {
             ctx.status(HttpStatus.SERVICE_UNAVAILABLE);
-            ctx.json(Response.error(ctx, port, "NO_PROGRAM_LOADED", e.getMessage()));
+            ctx.json(Response.error(ctx, port, "NO_PROGRAM_LOADED", e.getMessage()).build());
         });
 
         app.exception(eu.starsong.ghidra.service.ProjectService.NoProjectException.class, (e, ctx) -> {
             ctx.status(HttpStatus.SERVICE_UNAVAILABLE);
-            ctx.json(Response.error(ctx, port, "NO_PROJECT_OPEN", e.getMessage()));
+            ctx.json(Response.error(ctx, port, "NO_PROJECT_OPEN", e.getMessage()).build());
         });
 
         app.exception(NotFoundException.class, (e, ctx) -> {
             ctx.status(HttpStatus.NOT_FOUND);
-            ctx.json(Response.error(ctx, port, e.errorCode(), e.getMessage()));
+            ctx.json(Response.error(ctx, port, e.errorCode(), e.getMessage()).build());
         });
 
         app.exception(BadRequestException.class, (e, ctx) -> {
             ctx.status(HttpStatus.BAD_REQUEST);
-            ctx.json(Response.error(ctx, port, e.errorCode(), e.getMessage()));
+            ctx.json(Response.error(ctx, port, e.errorCode(), e.getMessage()).build());
         });
 
         app.exception(Exception.class, new ErrorHandler(port));

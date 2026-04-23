@@ -55,7 +55,7 @@ public class SegmentResource implements Resource {
                 .link("memory", "/memory/{}", seg.start())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .link("memory", "/memory")
             .build());

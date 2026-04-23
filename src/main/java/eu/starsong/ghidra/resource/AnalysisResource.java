@@ -66,7 +66,7 @@ public class AnalysisResource implements Resource {
         AutoAnalysisManager am = AutoAnalysisManager.getAnalysisManager(program);
         if (am.isAnalyzing()) {
             ctx.status(409);
-            ctx.json(Response.error(ctx.ctx(), ctx.port(), "ANALYSIS_RUNNING", "Analysis is already running"));
+            ctx.json(Response.error(ctx.ctx(), ctx.port(), "ANALYSIS_RUNNING", "Analysis is already running").build());
             return;
         }
         RunRequest req;
@@ -190,7 +190,7 @@ public class AnalysisResource implements Resource {
                 .link("callees", "/analysis/callees/{}", f.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("function", "/functions/{}", address)
             .link("callgraph", "/analysis/callgraph?address={}", address)
             .build());
@@ -227,7 +227,7 @@ public class AnalysisResource implements Resource {
                 .link("callees", "/analysis/callees/{}", f.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("function", "/functions/{}", address)
             .link("callgraph", "/analysis/callgraph?address={}", address)
             .build());

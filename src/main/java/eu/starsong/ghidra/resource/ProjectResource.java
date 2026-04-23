@@ -71,7 +71,7 @@ public class ProjectResource implements Resource {
 
         String basePath = "/project/files?folder=" + folder + "&recursive=" + recursive;
         var result = Paginator.paginate(items, pagination, basePath);
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .meta("project", ctx.tool().getProject().getName())
             .meta("folder", folder)
             .meta("recursive", recursive)

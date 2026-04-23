@@ -56,7 +56,7 @@ public class XrefResource implements Resource {
                 .link("to", "/memory/{}", xref.toAddress())
                 .build());
 
-        Response response = result.toResponse()
+        Response response = result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program");
 
         if (toAddr != null) {
@@ -77,7 +77,7 @@ public class XrefResource implements Resource {
 
         var result = Paginator.paginate(xrefs, ctx.pagination(), "/xrefs/to/" + address);
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("target", "/functions/{}", address)
             .link("xrefs", "/xrefs")
             .build());
@@ -94,7 +94,7 @@ public class XrefResource implements Resource {
 
         var result = Paginator.paginate(xrefs, ctx.pagination(), "/xrefs/from/" + address);
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("source", "/functions/{}", address)
             .link("xrefs", "/xrefs")
             .build());
@@ -111,7 +111,7 @@ public class XrefResource implements Resource {
 
         var result = Paginator.paginate(xrefs, ctx.pagination(), "/xrefs/calls/to/" + address);
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("function", "/functions/{}", address)
             .link("xrefs", "/xrefs")
             .build());
@@ -128,7 +128,7 @@ public class XrefResource implements Resource {
 
         var result = Paginator.paginate(xrefs, ctx.pagination(), "/xrefs/calls/from/" + address);
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("function", "/functions/{}", address)
             .link("xrefs", "/xrefs")
             .build());

@@ -63,7 +63,7 @@ public class SymbolResource implements Resource {
                 .self("/symbols/{}", sym.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
             .link("imports", "/symbols/imports")
             .link("exports", "/symbols/exports")
@@ -85,7 +85,7 @@ public class SymbolResource implements Resource {
                 .self("/symbols/{}", sym.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("symbols", "/symbols")
             .link("exports", "/symbols/exports")
             .build());
@@ -105,7 +105,7 @@ public class SymbolResource implements Resource {
                 .self("/symbols/{}", sym.address())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("symbols", "/symbols")
             .link("imports", "/symbols/imports")
             .build());

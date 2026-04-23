@@ -1,5 +1,8 @@
 package eu.starsong.ghidra.hateoas;
 
+import com.google.gson.Gson;
+import io.javalin.http.Context;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -81,12 +84,22 @@ public class PaginatedResult<T> {
      * Build a Response with pagination metadata and links.
      */
     public Response toResponse() {
+        return toResponse(null, 0);
+    }
+
+    /**
+     * Build a Response with pagination metadata and links, including the
+     * top-level id/instance/timestamp meta fields for HATEOAS compliance.
+     */
+    public Response toResponse(Context ctx, int port) {
         List<?> resultItems = itemLinksBuilder != null
             ? items.stream().map(this::wrapWithLinks).toList()
             : items;
 
-        return Response.ok(resultItems)
-            .pagination(offset, limit, total, basePath);
+        Response r = ctx != null
+            ? Response.ok(ctx, port, resultItems)
+            : Response.ok(resultItems);
+        return r.pagination(offset, limit, total, basePath);
     }
 
     /**
@@ -144,9 +157,27 @@ public class PaginatedResult<T> {
             return result;
         }
 
-        Map<String, Object> wrapper = new LinkedHashMap<>();
-        wrapper.put("data", item);
-        wrapper.put("_links", itemLinks);
-        return wrapper;
+        // Flatten: convert record/POJO to a Map via Gson, then embed _links
+        // directly at the top level so the JSON shape is
+        //   {"name": ..., "address": ..., "_links": {...}}
+        // rather than {"data": {...}, "_links": {...}}. This matches main's
+        // shape and what the bridge/CLI/tests expect.
+        Gson gson = GSON;
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> asMap = gson.fromJson(gson.toJson(item), Map.class);
+            if (asMap == null) {
+                return item;
+            }
+            Map<String, Object> result = new LinkedHashMap<>(asMap);
+            result.put("_links", itemLinks);
+            return result;
+        } catch (Exception e) {
+            // Fallback: if the item doesn't serialize to a JSON object,
+            // leave it alone rather than fabricate a wrapper.
+            return item;
+        }
     }
+
+    private static final Gson GSON = new Gson();
 }

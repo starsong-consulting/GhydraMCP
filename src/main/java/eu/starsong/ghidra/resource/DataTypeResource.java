@@ -52,7 +52,7 @@ public class DataTypeResource implements Resource {
                 .self("/datatypes?name={}", dt.name())
                 .build());
 
-        ctx.json(result.toResponse()
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("create_struct", "/datatypes/struct", "POST")
             .link("create_enum", "/datatypes/enum", "POST")
             .link("create_union", "/datatypes/union", "POST")
