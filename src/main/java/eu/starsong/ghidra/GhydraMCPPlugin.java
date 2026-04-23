@@ -28,16 +28,22 @@ import java.util.concurrent.ConcurrentHashMap;
     description = "Exposes program data via HATEOAS HTTP API for AI-assisted reverse engineering with MCP (Model Context Protocol).",
     servicesRequired = { ProgramManager.class }
 )
-public class GhydraMCP extends Plugin implements ApplicationLevelPlugin {
+public class GhydraMCPPlugin extends Plugin implements ApplicationLevelPlugin {
 
-    public static final Map<Integer, GhydraMCP> activeInstances = new ConcurrentHashMap<>();
+    static {
+        // Prints to the Ghidra launcher console before logger init.
+        System.err.println("[GhydraMCPPlugin] static init: class loaded from " +
+            GhydraMCPPlugin.class.getProtectionDomain().getCodeSource().getLocation());
+    }
+
+    public static final Map<Integer, GhydraMCPPlugin> activeInstances = new ConcurrentHashMap<>();
     private static final Object baseInstanceLock = new Object();
 
     private GhydraServer server;
     private int port;
     private boolean isBaseInstance = false;
 
-    public GhydraMCP(PluginTool tool) {
+    public GhydraMCPPlugin(PluginTool tool) {
         super(tool);
 
         this.port = GhydraServer.findAvailablePort(activeInstances);

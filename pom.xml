@@ -173,7 +173,7 @@
             <manifestEntries>
               <Implementation-Title>GhydraMCP</Implementation-Title>
               <Implementation-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Implementation-Version>
-              <Plugin-Class>eu.starsong.ghidra.GhydraMCP</Plugin-Class>
+              <Plugin-Class>eu.starsong.ghidra.GhydraMCPPlugin</Plugin-Class>
               <Plugin-Name>GhydraMCP</Plugin-Name>
               <Plugin-Version>${git.commit.id.abbrev}-${maven.build.timestamp}</Plugin-Version>
               <Plugin-Author>LaurieWired, Teal Bauer</Plugin-Author>
@@ -187,6 +187,7 @@
           <outputDirectory>${project.build.directory}</outputDirectory>
         </configuration>
       </plugin>
+
       
       <!-- The Assembly Plugin -->
       <plugin>
