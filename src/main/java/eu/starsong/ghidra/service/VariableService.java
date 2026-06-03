@@ -55,12 +55,9 @@ public class VariableService {
             return new Page(page, hasMore, globalCount);
         }
 
-        // Estimate total: globals + rough local estimate.
-        int funcCount = GhidraSwing.runRead(() -> {
-            int count = 0;
-            for (Function f : program.getFunctionManager().getFunctions(true)) count++;
-            return count;
-        });
+        // Estimate total: globals + rough local estimate. getFunctionCount() is O(1),
+        // avoiding a full function-table scan just for the estimate.
+        int funcCount = program.getFunctionManager().getFunctionCount();
         int totalEstimate = globalCount + (lowerSearch != null ? funcCount / 5 : funcCount * 2);
 
         int remainingSpace = endIdx - page.size() - offset;
@@ -151,7 +148,9 @@ public class VariableService {
             }
             if (locals.size() >= needed) break;
         }
-        boolean hasMore = functionsProcessed < funcCount || locals.size() >= needed;
+        // More locals may exist only if functions remain unprocessed; filling the page
+        // does not by itself imply more (it previously over-reported a next page).
+        boolean hasMore = functionsProcessed < funcCount;
         return new LocalCollectResult(locals, hasMore);
     }
 
