@@ -105,7 +105,8 @@ class TableFormatter(BaseFormatter):
     def format_decompiled_code(self, data: Dict[str, Any]) -> str:
         """Format decompiled code with syntax highlighting."""
         result = data.get("result", {})
-        code = result.get("decompiled") or result.get("ccode") or result.get("decompiled_text", "")
+        code = (result.get("decompiled") or result.get("decompilation")
+                or result.get("ccode") or result.get("decompiled_text", ""))
         retry_recommended = bool(result.get("retry_recommended"))
         suggested_timeout = result.get("suggested_timeout_seconds")
         message = result.get("message")
