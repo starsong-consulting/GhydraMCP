@@ -13,6 +13,7 @@ import eu.starsong.ghidra.server.Resource;
 import eu.starsong.ghidra.service.DecompilerService;
 import eu.starsong.ghidra.service.FunctionService;
 import eu.starsong.ghidra.service.FunctionService.FunctionFilter;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.program.model.listing.Function;
 
@@ -167,14 +168,18 @@ public class FunctionResource implements Resource {
                                     Function fn, String basePath) {
         var pagination = ctx.pagination();
         List<DisassemblyInstructionDto> instructions = functionService.disassemble(program, fn);
-        var result = Paginator.paginate(instructions, pagination, basePath);
-        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
-            .meta("function", Map.of(
+        Map<String, Object> fnMeta = GhidraSwing.runRead(() -> {
+            return Map.<String, Object>of(
                 "name", fn.getName(),
                 "address", fn.getEntryPoint().toString(),
-                "signature", fn.getSignature().toString()))
-            .link("function", "/functions/{}", fn.getEntryPoint().toString())
-            .link("decompile", "/functions/{}/decompile", fn.getEntryPoint().toString())
+                "signature", fn.getSignature().toString());
+        });
+        String entryPoint = (String) fnMeta.get("address");
+        var result = Paginator.paginate(instructions, pagination, basePath);
+        ctx.json(result.toResponse(ctx.ctx(), ctx.port())
+            .meta("function", fnMeta)
+            .link("function", "/functions/{}", entryPoint)
+            .link("decompile", "/functions/{}/decompile", entryPoint)
             .build());
     }
 
@@ -193,16 +198,23 @@ public class FunctionResource implements Resource {
     }
 
     private void respondVariables(GhidraContext ctx, Function fn, String selfPath) {
+        // getFunctionVariables runs the decompiler internally — must NOT go on the EDT.
         List<Map<String, Object>> vars = GhidraUtil.getFunctionVariables(fn);
+        FunctionRef ref = GhidraSwing.runRead(() -> {
+            return new FunctionRef(fn.getName(), fn.getEntryPoint().toString());
+        });
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of(
                 "function", Map.of(
-                    "name", fn.getName(),
-                    "address", fn.getEntryPoint().toString()),
+                    "name", ref.name(),
+                    "address", ref.address()),
                 "variables", vars))
             .self(selfPath)
-            .link("function", "/functions/{}", fn.getEntryPoint().toString())
-            .link("decompile", "/functions/{}/decompile", fn.getEntryPoint().toString())
+            .link("function", "/functions/{}", ref.address())
+            .link("decompile", "/functions/{}/decompile", ref.address())
             .build());
+    }
+
+    private record FunctionRef(String name, String address) {
     }
 
     private void updateVariable(GhidraContext ctx) {
@@ -220,9 +232,12 @@ public class FunctionResource implements Resource {
             if (!ok) {
                 throw new NotFoundException("Variable not found: " + varName, "VARIABLE_NOT_FOUND");
             }
+            FunctionRef ref = GhidraSwing.runRead(() -> {
+                return new FunctionRef(fn.getName(), fn.getEntryPoint().toString());
+            });
             ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of(
-                    "function", fn.getName(),
-                    "address", fn.getEntryPoint().toString(),
+                    "function", ref.name(),
+                    "address", ref.address(),
                     "name", req.name != null ? req.name : varName))
                 .self("/functions/{}/variables/{}", address, varName)
                 .link("variables", "/functions/{}/variables", address)

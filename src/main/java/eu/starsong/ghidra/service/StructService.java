@@ -39,8 +39,10 @@ public class StructService {
     }
 
     public Optional<StructDto> getByName(Program program, String name) {
-        Structure s = findStruct(program, name);
-        return Optional.ofNullable(s).map(StructDto::from);
+        return GhidraSwing.runRead(() -> {
+            Structure s = findStruct(program, name);
+            return Optional.ofNullable(s).map(StructDto::from);
+        });
     }
 
     public StructDto requireByName(Program program, String name) {

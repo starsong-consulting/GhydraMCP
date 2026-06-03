@@ -82,8 +82,10 @@ public class SymbolService {
      * Get a symbol by address.
      */
     public Optional<SymbolDto> getByAddress(Program program, String addressStr) {
-        Symbol sym = findByAddress(program, addressStr);
-        return Optional.ofNullable(sym).map(SymbolDto::from);
+        return GhidraSwing.runRead(() -> {
+            Symbol sym = findByAddress(program, addressStr);
+            return Optional.ofNullable(sym).map(SymbolDto::from);
+        });
     }
 
     /**
@@ -111,7 +113,9 @@ public class SymbolService {
             return null;
         });
 
-        return SymbolDto.from(symbol);
+        return GhidraSwing.runRead(() -> {
+            return SymbolDto.from(symbol);
+        });
     }
 
     /**
@@ -127,7 +131,9 @@ public class SymbolService {
             return program.getSymbolTable().createLabel(address, name, SourceType.USER_DEFINED);
         });
 
-        return SymbolDto.from(symbol);
+        return GhidraSwing.runRead(() -> {
+            return SymbolDto.from(symbol);
+        });
     }
 
     /**

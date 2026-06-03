@@ -11,6 +11,7 @@ import eu.starsong.ghidra.service.DecompilerService;
 import eu.starsong.ghidra.service.FunctionService;
 import eu.starsong.ghidra.service.XrefService;
 import eu.starsong.ghidra.util.DataFlowUtil;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
 import ghidra.program.model.address.Address;
@@ -109,6 +110,9 @@ public class AnalysisResource implements Resource {
         public Boolean background;
     }
 
+    private record CallGraphResult(Map<String, Object> data, String entryPoint) {
+    }
+
     /**
      * GET /analysis/callgraph - Get call graph for a function
      */
@@ -124,38 +128,45 @@ public class AnalysisResource implements Resource {
             throw new IllegalArgumentException("Either address or name query parameter is required");
         }
 
-        Function startFn;
-        if (address != null && !address.isEmpty()) {
-            startFn = functionService.requireFunctionByAddress(program, address);
-        } else {
-            startFn = functionService.requireFunctionByName(program, name);
-        }
+        final boolean byAddress = address != null && !address.isEmpty();
+        final String lookup = byAddress ? address : name;
 
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("root", FunctionSummaryDto.from(startFn));
-        result.put("depth", depth);
-        result.put("direction", direction);
+        // The traversal dereferences live Function objects (FunctionSummaryDto.from,
+        // getEntryPoint, recursive xref walks). Run the whole read+build on the EDT.
+        CallGraphResult cg = GhidraSwing.runRead(() -> {
+            Function startFn = byAddress
+                ? functionService.requireFunctionByAddress(program, lookup)
+                : functionService.requireFunctionByName(program, lookup);
 
-        Set<String> visited = new HashSet<>();
-        visited.add(startFn.getEntryPoint().toString());
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("root", FunctionSummaryDto.from(startFn));
+            data.put("depth", depth);
+            data.put("direction", direction);
 
-        if ("callers".equals(direction) || "both".equals(direction)) {
-            List<Map<String, Object>> callers = buildCallTree(program, startFn, depth, true, visited);
-            result.put("callers", callers);
-        }
+            String entryPoint = startFn.getEntryPoint().toString();
+            Set<String> visited = new HashSet<>();
+            visited.add(entryPoint);
 
-        if ("callees".equals(direction) || "both".equals(direction)) {
-            visited.clear();
-            visited.add(startFn.getEntryPoint().toString());
-            List<Map<String, Object>> callees = buildCallTree(program, startFn, depth, false, visited);
-            result.put("callees", callees);
-        }
+            if ("callers".equals(direction) || "both".equals(direction)) {
+                List<Map<String, Object>> callers = buildCallTree(program, startFn, depth, true, visited);
+                data.put("callers", callers);
+            }
 
-        ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
-            .self("/analysis/callgraph?address={}", startFn.getEntryPoint())
-            .link("function", "/functions/{}", startFn.getEntryPoint())
-            .link("callers", "/analysis/callers/{}", startFn.getEntryPoint())
-            .link("callees", "/analysis/callees/{}", startFn.getEntryPoint())
+            if ("callees".equals(direction) || "both".equals(direction)) {
+                visited.clear();
+                visited.add(entryPoint);
+                List<Map<String, Object>> callees = buildCallTree(program, startFn, depth, false, visited);
+                data.put("callees", callees);
+            }
+
+            return new CallGraphResult(data, entryPoint);
+        });
+
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), cg.data())
+            .self("/analysis/callgraph?address={}", cg.entryPoint())
+            .link("function", "/functions/{}", cg.entryPoint())
+            .link("callers", "/analysis/callers/{}", cg.entryPoint())
+            .link("callees", "/analysis/callees/{}", cg.entryPoint())
             .build());
     }
 
@@ -166,22 +177,25 @@ public class AnalysisResource implements Resource {
         var program = ctx.requireProgram();
         String address = ctx.pathParam("address");
 
-        Function fn = functionService.requireFunctionByAddress(program, address);
+        List<FunctionSummaryDto> callers = GhidraSwing.runRead(() -> {
+            functionService.requireFunctionByAddress(program, address);
 
-        List<XrefDto> callXrefs = xrefService.getCallsTo(program, address);
+            List<XrefDto> callXrefs = xrefService.getCallsTo(program, address);
 
-        Set<String> seen = new HashSet<>();
-        List<FunctionSummaryDto> callers = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            List<FunctionSummaryDto> list = new ArrayList<>();
 
-        for (XrefDto xref : callXrefs) {
-            if (xref.fromFunctionAddress() != null && !seen.contains(xref.fromFunctionAddress())) {
-                seen.add(xref.fromFunctionAddress());
-                Function callerFn = functionService.findByAddress(program, xref.fromFunctionAddress());
-                if (callerFn != null) {
-                    callers.add(FunctionSummaryDto.from(callerFn));
+            for (XrefDto xref : callXrefs) {
+                if (xref.fromFunctionAddress() != null && !seen.contains(xref.fromFunctionAddress())) {
+                    seen.add(xref.fromFunctionAddress());
+                    Function callerFn = functionService.findByAddress(program, xref.fromFunctionAddress());
+                    if (callerFn != null) {
+                        list.add(FunctionSummaryDto.from(callerFn));
+                    }
                 }
             }
-        }
+            return list;
+        });
 
         var result = Paginator.paginate(callers, ctx.pagination(), "/analysis/callers/" + address)
             .withItemLinks(f -> Links.builder()
@@ -203,22 +217,25 @@ public class AnalysisResource implements Resource {
         var program = ctx.requireProgram();
         String address = ctx.pathParam("address");
 
-        Function fn = functionService.requireFunctionByAddress(program, address);
+        List<FunctionSummaryDto> callees = GhidraSwing.runRead(() -> {
+            functionService.requireFunctionByAddress(program, address);
 
-        List<XrefDto> callXrefs = xrefService.getCallsFrom(program, address);
+            List<XrefDto> callXrefs = xrefService.getCallsFrom(program, address);
 
-        Set<String> seen = new HashSet<>();
-        List<FunctionSummaryDto> callees = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            List<FunctionSummaryDto> list = new ArrayList<>();
 
-        for (XrefDto xref : callXrefs) {
-            if (xref.toFunctionAddress() != null && !seen.contains(xref.toFunctionAddress())) {
-                seen.add(xref.toFunctionAddress());
-                Function calleeFn = functionService.findByAddress(program, xref.toFunctionAddress());
-                if (calleeFn != null) {
-                    callees.add(FunctionSummaryDto.from(calleeFn));
+            for (XrefDto xref : callXrefs) {
+                if (xref.toFunctionAddress() != null && !seen.contains(xref.toFunctionAddress())) {
+                    seen.add(xref.toFunctionAddress());
+                    Function calleeFn = functionService.findByAddress(program, xref.toFunctionAddress());
+                    if (calleeFn != null) {
+                        list.add(FunctionSummaryDto.from(calleeFn));
+                    }
                 }
             }
-        }
+            return list;
+        });
 
         var result = Paginator.paginate(callees, ctx.pagination(), "/analysis/callees/" + address)
             .withItemLinks(f -> Links.builder()

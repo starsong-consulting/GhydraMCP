@@ -33,12 +33,14 @@ public class MemoryService {
      * Get a memory block by name.
      */
     public MemoryBlockDto getBlockByName(Program program, String name) {
-        Memory memory = program.getMemory();
-        MemoryBlock block = memory.getBlock(name);
-        if (block == null) {
-            throw new NotFoundException("Memory block not found: " + name, "BLOCK_NOT_FOUND");
-        }
-        return MemoryBlockDto.from(block);
+        return GhidraSwing.runRead(() -> {
+            Memory memory = program.getMemory();
+            MemoryBlock block = memory.getBlock(name);
+            if (block == null) {
+                throw new NotFoundException("Memory block not found: " + name, "BLOCK_NOT_FOUND");
+            }
+            return MemoryBlockDto.from(block);
+        });
     }
 
     /**
@@ -50,12 +52,14 @@ public class MemoryService {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
 
-        Memory memory = program.getMemory();
-        MemoryBlock block = memory.getBlock(address);
-        if (block == null) {
-            throw new NotFoundException("No memory block at address: " + addressStr, "BLOCK_NOT_FOUND");
-        }
-        return MemoryBlockDto.from(block);
+        return GhidraSwing.runRead(() -> {
+            Memory memory = program.getMemory();
+            MemoryBlock block = memory.getBlock(address);
+            if (block == null) {
+                throw new NotFoundException("No memory block at address: " + addressStr, "BLOCK_NOT_FOUND");
+            }
+            return MemoryBlockDto.from(block);
+        });
     }
 
     /**
@@ -67,19 +71,21 @@ public class MemoryService {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
 
-        Memory memory = program.getMemory();
-        byte[] bytes = new byte[length];
-        try {
-            int bytesRead = memory.getBytes(address, bytes);
-            if (bytesRead < length) {
-                byte[] result = new byte[bytesRead];
-                System.arraycopy(bytes, 0, result, 0, bytesRead);
-                return result;
+        return GhidraSwing.runRead(() -> {
+            Memory memory = program.getMemory();
+            byte[] bytes = new byte[length];
+            try {
+                int bytesRead = memory.getBytes(address, bytes);
+                if (bytesRead < length) {
+                    byte[] result = new byte[bytesRead];
+                    System.arraycopy(bytes, 0, result, 0, bytesRead);
+                    return result;
+                }
+                return bytes;
+            } catch (Exception e) {
+                throw new RuntimeException("Failed to read memory at " + addressStr + ": " + e.getMessage(), e);
             }
-            return bytes;
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to read memory at " + addressStr + ": " + e.getMessage(), e);
-        }
+        });
     }
 
     /**
@@ -153,7 +159,10 @@ public class MemoryService {
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
-        return program.getListing().getComment(parseCommentType(commentType), address);
+        CommentType type = parseCommentType(commentType);
+        return GhidraSwing.runRead(() -> {
+            return program.getListing().getComment(type, address);
+        });
     }
 
     /**

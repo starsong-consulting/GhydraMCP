@@ -4,6 +4,7 @@ import eu.starsong.ghidra.dto.FunctionDto;
 import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.server.GhidraContext;
 import eu.starsong.ghidra.server.Resource;
+import eu.starsong.ghidra.util.GhidraSwing;
 import ghidra.app.services.CodeViewerService;
 import ghidra.program.util.ProgramLocation;
 import io.javalin.Javalin;
@@ -49,13 +50,16 @@ public class UiResource implements Resource {
             throw new eu.starsong.ghidra.server.GhydraServer.NotFoundException(
                 "No current UI location", "NO_CURRENT_LOCATION");
         }
-        ghidra.program.model.listing.Function fn =
-            program.getFunctionManager().getFunctionContaining(loc.getAddress());
-        if (fn == null) {
+        final var address = loc.getAddress();
+        FunctionDto dto = GhidraSwing.runRead(() -> {
+            ghidra.program.model.listing.Function fn =
+                program.getFunctionManager().getFunctionContaining(address);
+            return FunctionDto.from(fn);
+        });
+        if (dto == null) {
             throw new eu.starsong.ghidra.server.GhydraServer.NotFoundException(
-                "No function at current UI location: " + loc.getAddress(), "FUNCTION_NOT_FOUND");
+                "No function at current UI location: " + address, "FUNCTION_NOT_FOUND");
         }
-        FunctionDto dto = FunctionDto.from(fn);
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), dto)
             .self("/function")
             .link("program", "/program")

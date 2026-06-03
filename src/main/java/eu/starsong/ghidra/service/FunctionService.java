@@ -62,8 +62,10 @@ public class FunctionService {
      * Get a function by its entry point address.
      */
     public Optional<FunctionDto> getByAddress(Program program, String addressStr) {
-        Function fn = findByAddress(program, addressStr);
-        return Optional.ofNullable(fn).map(FunctionDto::from);
+        return GhidraSwing.runRead(() -> {
+            Function fn = findByAddress(program, addressStr);
+            return Optional.ofNullable(fn).map(FunctionDto::from);
+        });
     }
 
     /**
@@ -100,8 +102,10 @@ public class FunctionService {
      * Get a function by its name.
      */
     public Optional<FunctionDto> getByName(Program program, String name) {
-        Function fn = findByName(program, name);
-        return Optional.ofNullable(fn).map(FunctionDto::from);
+        return GhidraSwing.runRead(() -> {
+            Function fn = findByName(program, name);
+            return Optional.ofNullable(fn).map(FunctionDto::from);
+        });
     }
 
     /**
@@ -149,7 +153,9 @@ public class FunctionService {
             return null;
         });
 
-        return FunctionDto.from(fn);
+        return GhidraSwing.runRead(() -> {
+            return FunctionDto.from(fn);
+        });
     }
 
     /**
@@ -163,7 +169,9 @@ public class FunctionService {
             return null;
         });
 
-        return FunctionDto.from(fn);
+        return GhidraSwing.runRead(() -> {
+            return FunctionDto.from(fn);
+        });
     }
 
     /**
@@ -201,7 +209,9 @@ public class FunctionService {
             );
         });
 
-        return FunctionDto.from(fn);
+        return GhidraSwing.runRead(() -> {
+            return FunctionDto.from(fn);
+        });
     }
 
     /**
@@ -218,7 +228,9 @@ public class FunctionService {
         if (fn == null) {
             throw new NotFoundException("No function contains address: " + addressStr, "FUNCTION_NOT_FOUND");
         }
-        return FunctionDto.from(fn);
+        return GhidraSwing.runRead(() -> {
+            return FunctionDto.from(fn);
+        });
     }
 
     /**
@@ -261,7 +273,9 @@ public class FunctionService {
         if (!ok) {
             throw new IllegalArgumentException("Failed to set signature: " + signature);
         }
-        return FunctionDto.from(fn);
+        return GhidraSwing.runRead(() -> {
+            return FunctionDto.from(fn);
+        });
     }
 
     /**

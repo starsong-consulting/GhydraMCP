@@ -4,6 +4,7 @@ import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.server.GhidraContext;
 import eu.starsong.ghidra.server.Resource;
 import eu.starsong.ghidra.service.MemoryService;
+import eu.starsong.ghidra.util.GhidraSwing;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
@@ -63,32 +64,37 @@ public class ProgramResource implements Resource {
         // set and drop the other, then the flat map goes away.
         Program program = ctx.requireProgram();
 
-        // programId uses main's "project:/path" shape so the bridge can split it.
-        String projectName = program.getDomainFile().getProjectLocator() != null
-            ? program.getDomainFile().getProjectLocator().getName() : "";
-        String programId = projectName + ":" + program.getDomainFile().getPathname();
+        // Assembling this snapshot touches many DB facets (language, compiler, address
+        // factory, function manager, symbol table, memory blocks). Run the whole build
+        // on the EDT so the compound read doesn't interleave with UI activity.
+        Map<String, Object> data = GhidraSwing.runRead(() -> {
+            // programId uses main's "project:/path" shape so the bridge can split it.
+            String projectName = program.getDomainFile().getProjectLocator() != null
+                ? program.getDomainFile().getProjectLocator().getName() : "";
+            String programId = projectName + ":" + program.getDomainFile().getPathname();
 
-        Map<String, Object> data = new LinkedHashMap<>();
-        data.put("name", program.getName());
-        data.put("programId", programId);
-        data.put("path", program.getExecutablePath());
-        data.put("language", program.getLanguageID().getIdAsString());
-        data.put("languageId", program.getLanguageID().getIdAsString());
-        data.put("compiler", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
-        data.put("compilerSpecId", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
-        data.put("processor", program.getLanguage().getProcessor().toString());
-        data.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
-        data.put("minAddress", program.getMinAddress().toString());
-        data.put("maxAddress", program.getMaxAddress().toString());
-        data.put("imageBase", program.getImageBase().toString());
-        data.put("creationDate", program.getCreationDate().toString());
+            Map<String, Object> d = new LinkedHashMap<>();
+            d.put("name", program.getName());
+            d.put("programId", programId);
+            d.put("path", program.getExecutablePath());
+            d.put("language", program.getLanguageID().getIdAsString());
+            d.put("languageId", program.getLanguageID().getIdAsString());
+            d.put("compiler", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
+            d.put("compilerSpecId", program.getCompilerSpec().getCompilerSpecID().getIdAsString());
+            d.put("processor", program.getLanguage().getProcessor().toString());
+            d.put("addressSize", program.getAddressFactory().getDefaultAddressSpace().getSize());
+            d.put("minAddress", program.getMinAddress().toString());
+            d.put("maxAddress", program.getMaxAddress().toString());
+            d.put("imageBase", program.getImageBase().toString());
+            d.put("creationDate", program.getCreationDate().toString());
 
-        // Add statistics
-        Map<String, Object> stats = new LinkedHashMap<>();
-        stats.put("functionCount", program.getFunctionManager().getFunctionCount());
-        stats.put("symbolCount", program.getSymbolTable().getNumSymbols());
-        stats.put("memoryBlockCount", program.getMemory().getBlocks().length);
-        data.put("statistics", stats);
+            Map<String, Object> stats = new LinkedHashMap<>();
+            stats.put("functionCount", program.getFunctionManager().getFunctionCount());
+            stats.put("symbolCount", program.getSymbolTable().getNumSymbols());
+            stats.put("memoryBlockCount", program.getMemory().getBlocks().length);
+            d.put("statistics", stats);
+            return d;
+        });
 
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), data)
             .self("/program")

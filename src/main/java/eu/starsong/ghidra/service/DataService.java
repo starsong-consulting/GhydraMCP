@@ -65,8 +65,10 @@ public class DataService {
      * Get data at an address.
      */
     public Optional<DataDto> getByAddress(Program program, String addressStr) {
-        Data data = findByAddress(program, addressStr);
-        return Optional.ofNullable(data).map(DataDto::from);
+        return GhidraSwing.runRead(() -> {
+            Data data = findByAddress(program, addressStr);
+            return Optional.ofNullable(data).map(DataDto::from);
+        });
     }
 
     /**
@@ -120,7 +122,9 @@ public class DataService {
             return program.getListing().createData(address, dataType, finalLength);
         });
 
-        return DataDto.from(data);
+        return GhidraSwing.runRead(() -> {
+            return DataDto.from(data);
+        });
     }
 
     public DataDto setDataType(Program program, String addressStr, String dataTypeName) throws Exception {
