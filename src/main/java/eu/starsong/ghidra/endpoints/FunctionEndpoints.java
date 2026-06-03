@@ -1382,7 +1382,9 @@ public class FunctionEndpoints extends AbstractEndpoint {
                 HighFunction hf = (results != null && results.decompileCompleted()) ? results.getHighFunction() : null;
                 variables = GhidraSwing.runRead(() -> { return GhidraUtil.getFunctionVariables(function, hf); });
             } else {
-                variables = GhidraSwing.runRead(() -> { return GhidraUtil.getFunctionVariables(function); });
+                // The no-arg overload decompiles internally; the decompiler manages its own
+                // threading and must NOT run on the EDT, so this stays off the Swing thread.
+                variables = GhidraUtil.getFunctionVariables(function);
             }
             
             Map<String, Object> functionInfo = new HashMap<>();
