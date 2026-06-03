@@ -2,6 +2,7 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.SymbolDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
@@ -35,14 +36,16 @@ public class SymbolService {
      */
     public List<SymbolDto> list(Program program, SymbolFilter filter) {
         SymbolTable symbolTable = program.getSymbolTable();
-        SymbolIterator symbols = symbolTable.getAllSymbols(true);
 
         Predicate<Symbol> predicate = filter != null ? filter.toPredicate() : sym -> true;
 
-        return StreamSupport.stream(symbols.spliterator(), false)
-            .filter(predicate)
-            .map(SymbolDto::from)
-            .toList();
+        return GhidraSwing.runRead(() -> {
+            SymbolIterator symbols = symbolTable.getAllSymbols(true);
+            return StreamSupport.stream(symbols.spliterator(), false)
+                .filter(predicate)
+                .map(SymbolDto::from)
+                .toList();
+        });
     }
 
     /**
@@ -50,11 +53,13 @@ public class SymbolService {
      */
     public List<SymbolDto> listImports(Program program) {
         SymbolTable symbolTable = program.getSymbolTable();
-        SymbolIterator symbols = symbolTable.getExternalSymbols();
 
-        return StreamSupport.stream(symbols.spliterator(), false)
-            .map(SymbolDto::from)
-            .toList();
+        return GhidraSwing.runRead(() -> {
+            SymbolIterator symbols = symbolTable.getExternalSymbols();
+            return StreamSupport.stream(symbols.spliterator(), false)
+                .map(SymbolDto::from)
+                .toList();
+        });
     }
 
     /**
@@ -62,13 +67,15 @@ public class SymbolService {
      */
     public List<SymbolDto> listExports(Program program) {
         SymbolTable symbolTable = program.getSymbolTable();
-        SymbolIterator symbols = symbolTable.getAllSymbols(true);
 
-        return StreamSupport.stream(symbols.spliterator(), false)
-            .filter(Symbol::isGlobal)
-            .filter(sym -> !sym.isExternal())
-            .map(SymbolDto::from)
-            .toList();
+        return GhidraSwing.runRead(() -> {
+            SymbolIterator symbols = symbolTable.getAllSymbols(true);
+            return StreamSupport.stream(symbols.spliterator(), false)
+                .filter(Symbol::isGlobal)
+                .filter(sym -> !sym.isExternal())
+                .map(SymbolDto::from)
+                .toList();
+        });
     }
 
     /**

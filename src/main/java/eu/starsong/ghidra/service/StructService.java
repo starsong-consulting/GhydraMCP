@@ -3,6 +3,7 @@ package eu.starsong.ghidra.service;
 import eu.starsong.ghidra.dto.StructDto;
 import eu.starsong.ghidra.dto.StructSummaryDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.data.CategoryPath;
@@ -24,15 +25,17 @@ public class StructService {
 
     public List<StructSummaryDto> list(Program program, String categoryFilter) {
         DataTypeManager dtm = program.getDataTypeManager();
-        List<StructSummaryDto> results = new ArrayList<>();
-        dtm.getAllDataTypes().forEachRemaining(dt -> {
-            if (!(dt instanceof Structure s)) return;
-            if (categoryFilter != null && !categoryFilter.isEmpty()
-                && !s.getCategoryPath().getPath().contains(categoryFilter)) return;
-            results.add(StructSummaryDto.from(s));
+        return GhidraSwing.runRead(() -> {
+            List<StructSummaryDto> results = new ArrayList<>();
+            dtm.getAllDataTypes().forEachRemaining(dt -> {
+                if (!(dt instanceof Structure s)) return;
+                if (categoryFilter != null && !categoryFilter.isEmpty()
+                    && !s.getCategoryPath().getPath().contains(categoryFilter)) return;
+                results.add(StructSummaryDto.from(s));
+            });
+            results.sort((a, b) -> a.name().compareTo(b.name()));
+            return results;
         });
-        results.sort((a, b) -> a.name().compareTo(b.name()));
-        return results;
     }
 
     public Optional<StructDto> getByName(Program program, String name) {
@@ -181,13 +184,15 @@ public class StructService {
     }
 
     private DataType findStructByName(DataTypeManager dtm, String name) {
-        DataType[] result = new DataType[1];
-        dtm.getAllDataTypes().forEachRemaining(dt -> {
-            if (dt instanceof Structure && dt.getName().equals(name) && result[0] == null) {
-                result[0] = dt;
-            }
+        return GhidraSwing.runRead(() -> {
+            DataType[] result = new DataType[1];
+            dtm.getAllDataTypes().forEachRemaining(dt -> {
+                if (dt instanceof Structure && dt.getName().equals(name) && result[0] == null) {
+                    result[0] = dt;
+                }
+            });
+            return result[0];
         });
-        return result[0];
     }
 
     private DataTypeComponent locateField(Structure struct, Integer fieldOffset, String fieldName) {

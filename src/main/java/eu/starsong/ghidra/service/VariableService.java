@@ -1,6 +1,7 @@
 package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.VariableDto;
+import eu.starsong.ghidra.util.GhidraSwing;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Data;
@@ -55,8 +56,11 @@ public class VariableService {
         }
 
         // Estimate total: globals + rough local estimate.
-        int funcCount = 0;
-        for (Function f : program.getFunctionManager().getFunctions(true)) funcCount++;
+        int funcCount = GhidraSwing.runRead(() -> {
+            int count = 0;
+            for (Function f : program.getFunctionManager().getFunctions(true)) count++;
+            return count;
+        });
         int totalEstimate = globalCount + (lowerSearch != null ? funcCount / 5 : funcCount * 2);
 
         int remainingSpace = endIdx - page.size() - offset;
@@ -77,17 +81,20 @@ public class VariableService {
     }
 
     private List<VariableDto> collectGlobals(Program program, String lowerSearch) {
-        SymbolTable symbolTable = program.getSymbolTable();
-        List<VariableDto> globals = new ArrayList<>();
-        for (Symbol symbol : symbolTable.getDefinedSymbols()) {
-            if (!symbol.isGlobal() || symbol.isExternal()) continue;
-            if (symbol.getSymbolType() == SymbolType.FUNCTION || symbol.getSymbolType() == SymbolType.LABEL) continue;
-            if (lowerSearch != null && !symbol.getName().toLowerCase().contains(lowerSearch)) continue;
-            globals.add(VariableDto.global(
-                symbol.getName(),
-                symbol.getAddress().toString(),
-                getDataTypeName(program, symbol.getAddress())));
-        }
+        List<VariableDto> globals = GhidraSwing.runRead(() -> {
+            SymbolTable symbolTable = program.getSymbolTable();
+            List<VariableDto> result = new ArrayList<>();
+            for (Symbol symbol : symbolTable.getDefinedSymbols()) {
+                if (!symbol.isGlobal() || symbol.isExternal()) continue;
+                if (symbol.getSymbolType() == SymbolType.FUNCTION || symbol.getSymbolType() == SymbolType.LABEL) continue;
+                if (lowerSearch != null && !symbol.getName().toLowerCase().contains(lowerSearch)) continue;
+                result.add(VariableDto.global(
+                    symbol.getName(),
+                    symbol.getAddress().toString(),
+                    getDataTypeName(program, symbol.getAddress())));
+            }
+            return result;
+        });
         globals.sort(Comparator.comparing(VariableDto::name));
         return globals;
     }
@@ -101,7 +108,13 @@ public class VariableService {
         int seenLocals = 0;
         int functionsProcessed = 0;
 
-        for (Function function : program.getFunctionManager().getFunctions(true)) {
+        final List<Function> allFunctions = GhidraSwing.runRead(() -> {
+            List<Function> fns = new ArrayList<>();
+            for (Function f : program.getFunctionManager().getFunctions(true)) fns.add(f);
+            return fns;
+        });
+
+        for (Function function : allFunctions) {
             if (functionsProcessed >= MAX_FUNCTIONS_PER_PAGE) break;
             functionsProcessed++;
 

@@ -4,6 +4,7 @@ import eu.starsong.ghidra.dto.DisassemblyInstructionDto;
 import eu.starsong.ghidra.dto.FunctionDto;
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.app.decompiler.DecompInterface;
@@ -45,14 +46,16 @@ public class FunctionService {
      * List functions matching a filter.
      */
     public List<FunctionSummaryDto> list(Program program, FunctionFilter filter) {
-        FunctionIterator functions = program.getFunctionManager().getFunctions(true);
-
         Predicate<Function> predicate = filter != null ? filter.toPredicate() : fn -> true;
 
-        return StreamSupport.stream(functions.spliterator(), false)
-            .filter(predicate)
-            .map(FunctionSummaryDto::from)
-            .toList();
+        return GhidraSwing.runRead(() -> {
+            FunctionIterator functions = program.getFunctionManager().getFunctions(true);
+            List<FunctionSummaryDto> out = StreamSupport.stream(functions.spliterator(), false)
+                .filter(predicate)
+                .map(FunctionSummaryDto::from)
+                .toList();
+            return out;
+        });
     }
 
     /**
@@ -105,13 +108,15 @@ public class FunctionService {
      * Get the raw Ghidra Function by name.
      */
     public Function findByName(Program program, String name) {
-        FunctionIterator functions = program.getFunctionManager().getFunctions(true);
-        for (Function fn : functions) {
-            if (fn.getName().equals(name)) {
-                return fn;
+        return GhidraSwing.runRead(() -> {
+            FunctionIterator functions = program.getFunctionManager().getFunctions(true);
+            for (Function fn : functions) {
+                if (fn.getName().equals(name)) {
+                    return fn;
+                }
             }
-        }
-        return null;
+            return null;
+        });
     }
 
     /**
@@ -222,11 +227,13 @@ public class FunctionService {
     public Function findNext(Program program, String addressStr) {
         Address addr = GhidraUtil.resolveAddress(program, addressStr);
         if (addr == null) return null;
-        Function current = program.getFunctionManager().getFunctionContaining(addr);
-        Address searchFrom = current != null ? current.getBody().getMaxAddress().next() : addr.next();
-        if (searchFrom == null) return null;
-        FunctionIterator it = program.getFunctionManager().getFunctions(searchFrom, true);
-        return it.hasNext() ? it.next() : null;
+        return GhidraSwing.runRead(() -> {
+            Function current = program.getFunctionManager().getFunctionContaining(addr);
+            Address searchFrom = current != null ? current.getBody().getMaxAddress().next() : addr.next();
+            if (searchFrom == null) return null;
+            FunctionIterator it = program.getFunctionManager().getFunctions(searchFrom, true);
+            return it.hasNext() ? it.next() : null;
+        });
     }
 
     /**
@@ -235,11 +242,13 @@ public class FunctionService {
     public Function findPrev(Program program, String addressStr) {
         Address addr = GhidraUtil.resolveAddress(program, addressStr);
         if (addr == null) return null;
-        Function current = program.getFunctionManager().getFunctionContaining(addr);
-        Address searchFrom = current != null ? current.getEntryPoint().previous() : addr.previous();
-        if (searchFrom == null) return null;
-        FunctionIterator it = program.getFunctionManager().getFunctions(searchFrom, false);
-        return it.hasNext() ? it.next() : null;
+        return GhidraSwing.runRead(() -> {
+            Function current = program.getFunctionManager().getFunctionContaining(addr);
+            Address searchFrom = current != null ? current.getEntryPoint().previous() : addr.previous();
+            if (searchFrom == null) return null;
+            FunctionIterator it = program.getFunctionManager().getFunctions(searchFrom, false);
+            return it.hasNext() ? it.next() : null;
+        });
     }
 
     /**
@@ -259,15 +268,17 @@ public class FunctionService {
      * Disassemble a function body.
      */
     public List<DisassemblyInstructionDto> disassemble(Program program, Function function) {
-        List<DisassemblyInstructionDto> results = new ArrayList<>();
-        Listing listing = program.getListing();
-        Address start = function.getEntryPoint();
-        Address end = function.getBody().getMaxAddress();
-        for (Instruction i : listing.getInstructions(start, true)) {
-            if (i.getAddress().compareTo(end) > 0) break;
-            results.add(DisassemblyInstructionDto.from(i, program));
-        }
-        return results;
+        return GhidraSwing.runRead(() -> {
+            List<DisassemblyInstructionDto> results = new ArrayList<>();
+            Listing listing = program.getListing();
+            Address start = function.getEntryPoint();
+            Address end = function.getBody().getMaxAddress();
+            for (Instruction i : listing.getInstructions(start, true)) {
+                if (i.getAddress().compareTo(end) > 0) break;
+                results.add(DisassemblyInstructionDto.from(i, program));
+            }
+            return results;
+        });
     }
 
     /**

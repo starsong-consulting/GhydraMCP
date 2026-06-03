@@ -4,6 +4,7 @@ import eu.starsong.ghidra.dto.DataTypeSummaryDto;
 import eu.starsong.ghidra.dto.EnumDto;
 import eu.starsong.ghidra.dto.StructDto;
 import eu.starsong.ghidra.dto.UnionDto;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.data.CategoryPath;
@@ -28,30 +29,32 @@ public class DataTypeService {
     public List<DataTypeSummaryDto> list(Program program, String categoryFilter, String kindFilter, String nameFilter) {
         DataTypeManager dtm = program.getDataTypeManager();
         List<DataTypeSummaryDto> results = new ArrayList<>();
-        Iterator<DataType> iter = dtm.getAllDataTypes();
         String lowerName = nameFilter != null ? nameFilter.toLowerCase() : null;
 
-        while (iter.hasNext()) {
-            DataType dt = iter.next();
-            if (categoryFilter != null && !categoryFilter.isEmpty()
-                && !dt.getCategoryPath().getPath().contains(categoryFilter)) continue;
-            if (lowerName != null && !lowerName.isEmpty()) {
-                String dtName = dt.getName() != null ? dt.getName().toLowerCase() : "";
-                String dtDisplay = dt.getDisplayName() != null ? dt.getDisplayName().toLowerCase() : "";
-                if (!dtName.contains(lowerName) && !dtDisplay.contains(lowerName)) continue;
+        return GhidraSwing.runRead(() -> {
+            Iterator<DataType> iter = dtm.getAllDataTypes();
+            while (iter.hasNext()) {
+                DataType dt = iter.next();
+                if (categoryFilter != null && !categoryFilter.isEmpty()
+                    && !dt.getCategoryPath().getPath().contains(categoryFilter)) continue;
+                if (lowerName != null && !lowerName.isEmpty()) {
+                    String dtName = dt.getName() != null ? dt.getName().toLowerCase() : "";
+                    String dtDisplay = dt.getDisplayName() != null ? dt.getDisplayName().toLowerCase() : "";
+                    if (!dtName.contains(lowerName) && !dtDisplay.contains(lowerName)) continue;
+                }
+                if (kindFilter != null && !kindFilter.isEmpty()) {
+                    boolean match = switch (kindFilter) {
+                        case "struct" -> dt instanceof Structure;
+                        case "enum" -> dt instanceof Enum;
+                        case "union" -> dt instanceof Union;
+                        default -> false;
+                    };
+                    if (!match) continue;
+                }
+                results.add(DataTypeSummaryDto.from(dt));
             }
-            if (kindFilter != null && !kindFilter.isEmpty()) {
-                boolean match = switch (kindFilter) {
-                    case "struct" -> dt instanceof Structure;
-                    case "enum" -> dt instanceof Enum;
-                    case "union" -> dt instanceof Union;
-                    default -> false;
-                };
-                if (!match) continue;
-            }
-            results.add(DataTypeSummaryDto.from(dt));
-        }
-        return results;
+            return results;
+        });
     }
 
     public StructDto createStruct(Program program, String name, String category, List<FieldSpec> fields) throws Exception {

@@ -2,6 +2,7 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.DataDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
@@ -33,13 +34,14 @@ public class DataService {
 
         Predicate<Data> predicate = filter != null ? filter.toPredicate() : d -> true;
 
-        for (Data data : listing.getDefinedData(true)) {
-            if (predicate.test(data)) {
-                results.add(DataDto.from(data));
+        return GhidraSwing.runRead(() -> {
+            for (Data data : listing.getDefinedData(true)) {
+                if (predicate.test(data)) {
+                    results.add(DataDto.from(data));
+                }
             }
-        }
-
-        return results;
+            return results;
+        });
     }
 
     /**
@@ -49,13 +51,14 @@ public class DataService {
         Listing listing = program.getListing();
         List<DataDto> results = new ArrayList<>();
 
-        for (Data data : listing.getDefinedData(true)) {
-            if (data.getDataType().getName().toLowerCase().contains("string")) {
-                results.add(DataDto.from(data));
+        return GhidraSwing.runRead(() -> {
+            for (Data data : listing.getDefinedData(true)) {
+                if (data.getDataType().getName().toLowerCase().contains("string")) {
+                    results.add(DataDto.from(data));
+                }
             }
-        }
-
-        return results;
+            return results;
+        });
     }
 
     /**

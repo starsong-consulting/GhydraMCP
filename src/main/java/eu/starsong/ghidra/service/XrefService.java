@@ -1,6 +1,7 @@
 package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.XrefDto;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Program;
@@ -27,13 +28,15 @@ public class XrefService {
         }
 
         ReferenceManager refMgr = program.getReferenceManager();
-        ReferenceIterator iter = refMgr.getReferencesTo(address);
 
-        List<XrefDto> results = new ArrayList<>();
-        while (iter.hasNext()) {
-            results.add(XrefDto.from(iter.next(), program));
-        }
-        return results;
+        return GhidraSwing.runRead(() -> {
+            ReferenceIterator iter = refMgr.getReferencesTo(address);
+            List<XrefDto> results = new ArrayList<>();
+            while (iter.hasNext()) {
+                results.add(XrefDto.from(iter.next(), program));
+            }
+            return results;
+        });
     }
 
     /**
@@ -46,11 +49,13 @@ public class XrefService {
         }
 
         ReferenceManager refMgr = program.getReferenceManager();
-        Reference[] refs = refMgr.getReferencesFrom(address);
 
-        return Arrays.stream(refs)
-            .map(ref -> XrefDto.from(ref, program))
-            .toList();
+        return GhidraSwing.runRead(() -> {
+            Reference[] refs = refMgr.getReferencesFrom(address);
+            return Arrays.stream(refs)
+                .map(ref -> XrefDto.from(ref, program))
+                .toList();
+        });
     }
 
     /**

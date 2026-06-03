@@ -2,6 +2,7 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.MemoryBlockDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
@@ -23,9 +24,9 @@ public class MemoryService {
      */
     public List<MemoryBlockDto> listBlocks(Program program) {
         Memory memory = program.getMemory();
-        return Arrays.stream(memory.getBlocks())
+        return GhidraSwing.runRead(() -> Arrays.stream(memory.getBlocks())
             .map(MemoryBlockDto::from)
-            .toList();
+            .toList());
     }
 
     /**
@@ -130,15 +131,18 @@ public class MemoryService {
         if (address == null) {
             throw new IllegalArgumentException("Invalid address: " + addressStr);
         }
-        List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> results = new java.util.ArrayList<>();
-        var instrIter = program.getListing().getInstructions(address, true);
-        int collected = 0;
-        while (instrIter.hasNext() && (limit <= 0 || collected < limit)) {
-            var instr = instrIter.next();
-            results.add(eu.starsong.ghidra.dto.DisassemblyInstructionDto.from(instr, program));
-            collected++;
-        }
-        return results;
+        Address finalAddress = address;
+        return GhidraSwing.runRead(() -> {
+            List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> results = new java.util.ArrayList<>();
+            var instrIter = program.getListing().getInstructions(finalAddress, true);
+            int collected = 0;
+            while (instrIter.hasNext() && (limit <= 0 || collected < limit)) {
+                var instr = instrIter.next();
+                results.add(eu.starsong.ghidra.dto.DisassemblyInstructionDto.from(instr, program));
+                collected++;
+            }
+            return results;
+        });
     }
 
     /**
@@ -185,21 +189,23 @@ public class MemoryService {
      */
     public List<String> searchBytes(Program program, byte[] pattern, int maxResults) {
         Memory memory = program.getMemory();
-        List<String> results = new java.util.ArrayList<>();
+        return GhidraSwing.runRead(() -> {
+            List<String> results = new java.util.ArrayList<>();
 
-        Address start = program.getMinAddress();
-        Address end = program.getMaxAddress();
+            Address start = program.getMinAddress();
+            Address end = program.getMaxAddress();
 
-        Address found = memory.findBytes(start, end, pattern, null, true, null);
-        while (found != null && results.size() < maxResults) {
-            results.add(found.toString());
-            try {
-                found = memory.findBytes(found.add(1), end, pattern, null, true, null);
-            } catch (Exception e) {
-                break;
+            Address found = memory.findBytes(start, end, pattern, null, true, null);
+            while (found != null && results.size() < maxResults) {
+                results.add(found.toString());
+                try {
+                    found = memory.findBytes(found.add(1), end, pattern, null, true, null);
+                } catch (Exception e) {
+                    break;
+                }
             }
-        }
 
-        return results;
+            return results;
+        });
     }
 }
