@@ -2,11 +2,14 @@ package eu.starsong.ghidra.util;
 
 import ghidra.program.model.listing.Program;
 import ghidra.util.Msg;
+import ghidra.util.Swing;
 
-import javax.swing.SwingUtilities;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class TransactionHelper {
+
+    private static final long EDT_TIMEOUT_SECONDS = Long.getLong("ghidra.mcp.write.timeout", 900);
 
     @FunctionalInterface
     public interface GhidraSupplier<T> {
@@ -33,7 +36,9 @@ public class TransactionHelper {
         AtomicReference<Long> abortedTxId = new AtomicReference<>();
 
         try {
-            SwingUtilities.invokeAndWait(() -> {
+            // Bounded so a wedged EDT can't block the calling worker thread forever.
+            // Swing.runNow runs inline when already on the EDT, so this is reentrant.
+            Swing.runNow(() -> {
                 int txId = -1;
                 boolean success = false;
                 try {
@@ -62,7 +67,7 @@ public class TransactionHelper {
                         }
                     }
                 }
-            });
+            }, EDT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
         } catch (Exception e) {
             throw new TransactionException("Swing thread execution failed", e);
         }

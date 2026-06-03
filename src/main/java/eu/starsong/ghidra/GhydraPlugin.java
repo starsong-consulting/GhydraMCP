@@ -91,7 +91,11 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
             System.out.println("[GhydraMCP] HTTP server started on port " + port);
 
         } catch (Exception e) {
-            Msg.error(this, "Failed to start HTTP server on port " + port, e);
+            // Deregister so clients don't discover a registered-but-dead instance,
+            // and so the port frees up for a later retry.
+            activeInstances.remove(port);
+            server = null;
+            Msg.error(this, "Failed to start HTTP server on port " + port + "; instance deregistered", e);
             System.err.println("[GhydraMCP] Failed to start HTTP server: " + e.getMessage());
         }
     }

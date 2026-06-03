@@ -73,9 +73,20 @@ public class GhydraServer {
 
         registerResources();
 
-        app.start(port);
-
-        Msg.info(this, "GhydraMCP HTTP server started on port " + port);
+        // Bind interface is configurable. Default keeps the historical all-interfaces
+        // behaviour so cross-host setups (e.g. bridge in WSL -> Ghidra on Windows) keep
+        // working; set -Dghidra.mcp.bind.host=127.0.0.1 (or GHYDRA_BIND_HOST) to lock down.
+        String bindHost = System.getProperty("ghidra.mcp.bind.host");
+        if (bindHost == null || bindHost.isEmpty()) {
+            bindHost = System.getenv("GHYDRA_BIND_HOST");
+        }
+        if (bindHost != null && !bindHost.isEmpty()) {
+            app.start(bindHost, port);
+            Msg.info(this, "GhydraMCP HTTP server started on " + bindHost + ":" + port);
+        } else {
+            app.start(port);
+            Msg.info(this, "GhydraMCP HTTP server started on port " + port);
+        }
     }
 
     /**
@@ -136,6 +147,13 @@ public class GhydraServer {
         app.exception(BadRequestException.class, (e, ctx) -> {
             ctx.status(HttpStatus.BAD_REQUEST);
             ctx.json(Response.error(ctx, port, e.errorCode(), e.getMessage()).build());
+        });
+
+        // Validation failures conventionally surface as IllegalArgumentException
+        // (bad address, malformed param, etc.); treat them as 400, not 500.
+        app.exception(IllegalArgumentException.class, (e, ctx) -> {
+            ctx.status(HttpStatus.BAD_REQUEST);
+            ctx.json(Response.error(ctx, port, "BAD_REQUEST", e.getMessage()).build());
         });
 
         app.exception(Exception.class, new ErrorHandler(port));
