@@ -410,7 +410,13 @@ def format_disassembly(response: dict, **kwargs) -> str:
         return format_error(response)
 
     result = response.get("result", {})
-    instructions = result.get("instructions", [])
+    # The javalin-port API returns the instruction list directly as `result`;
+    # the legacy API nests it under result["instructions"]. Handle both.
+    if isinstance(result, list):
+        instructions = result
+        result = {}
+    else:
+        instructions = result.get("instructions", [])
 
     # simplify_response converts instructions list to disassembly_text
     if not instructions and "disassembly_text" in result:
