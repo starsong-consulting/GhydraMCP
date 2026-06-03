@@ -6,6 +6,7 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.util.DataFlowUtil;
+import eu.starsong.ghidra.util.GhidraSwing;
 import ghidra.app.services.Analyzer;
 import ghidra.app.services.AnalyzerType;
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
@@ -174,8 +175,13 @@ public class AnalysisEndpoints extends AbstractEndpoint {
                 return;
             }
 
-            Map<String, Object> dataFlowResult =
-                DataFlowUtil.analyzeReferenceFlow(program, address, direction, maxSteps);
+            final Program flowProgram = program;
+            final Address flowAddress = address;
+            final String flowDirection = direction;
+            final int flowMaxSteps = maxSteps;
+            Map<String, Object> dataFlowResult = GhidraSwing.runRead(() -> {
+                return DataFlowUtil.analyzeReferenceFlow(flowProgram, flowAddress, flowDirection, flowMaxSteps);
+            });
 
             ResponseBuilder builder = new ResponseBuilder(exchange, port)
                 .success(true)

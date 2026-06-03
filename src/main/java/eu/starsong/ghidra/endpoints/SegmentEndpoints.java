@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
     import eu.starsong.ghidra.api.ResponseBuilder;
+    import eu.starsong.ghidra.util.GhidraSwing;
     import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.mem.MemoryBlock;
@@ -50,39 +51,43 @@ package eu.starsong.ghidra.endpoints;
                         return;
                     }
                     
-                    List<Map<String, Object>> segments = new ArrayList<>();
-                    for (MemoryBlock block : program.getMemory().getBlocks()) {
-                        // Apply name filter if present
-                        if (nameFilter != null && !block.getName().contains(nameFilter)) {
-                            continue;
+                    final List<Map<String, Object>> segments = new ArrayList<>();
+                    final Program segProgram = program;
+                    final String segNameFilter = nameFilter;
+                    GhidraSwing.runRead(() -> {
+                        for (MemoryBlock block : segProgram.getMemory().getBlocks()) {
+                            // Apply name filter if present
+                            if (segNameFilter != null && !block.getName().contains(segNameFilter)) {
+                                continue;
+                            }
+
+                            Map<String, Object> segment = new HashMap<>();
+                            segment.put("name", block.getName());
+                            segment.put("start", block.getStart().toString());
+                            segment.put("end", block.getEnd().toString());
+                            segment.put("size", block.getSize());
+
+                            // Add permissions
+                            segment.put("readable", block.isRead());
+                            segment.put("writable", block.isWrite());
+                            segment.put("executable", block.isExecute());
+                            segment.put("initialized", block.isInitialized());
+
+                            // Add HATEOAS links for this segment
+                            Map<String, Object> links = new HashMap<>();
+                            Map<String, String> selfLink = new HashMap<>();
+                            selfLink.put("href", "/segments/" + block.getName());
+                            links.put("self", selfLink);
+
+                            Map<String, String> memoryLink = new HashMap<>();
+                            memoryLink.put("href", "/memory/" + block.getStart());
+                            links.put("memory", memoryLink);
+
+                            segment.put("_links", links);
+
+                            segments.add(segment);
                         }
-                        
-                        Map<String, Object> segment = new HashMap<>();
-                        segment.put("name", block.getName());
-                        segment.put("start", block.getStart().toString());
-                        segment.put("end", block.getEnd().toString());
-                        segment.put("size", block.getSize());
-                        
-                        // Add permissions
-                        segment.put("readable", block.isRead());
-                        segment.put("writable", block.isWrite());
-                        segment.put("executable", block.isExecute());
-                        segment.put("initialized", block.isInitialized());
-                        
-                        // Add HATEOAS links for this segment
-                        Map<String, Object> links = new HashMap<>();
-                        Map<String, String> selfLink = new HashMap<>();
-                        selfLink.put("href", "/segments/" + block.getName());
-                        links.put("self", selfLink);
-                        
-                        Map<String, String> memoryLink = new HashMap<>();
-                        memoryLink.put("href", "/memory/" + block.getStart());
-                        links.put("memory", memoryLink);
-                        
-                        segment.put("_links", links);
-                        
-                        segments.add(segment);
-                    }
+                    });
                     
                     // Build response with HATEOAS links
                     ResponseBuilder builder = new ResponseBuilder(exchange, port)

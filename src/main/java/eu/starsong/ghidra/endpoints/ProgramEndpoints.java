@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
 import eu.starsong.ghidra.model.ProgramInfo;
 import eu.starsong.ghidra.util.DataFlowUtil;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.HttpUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
@@ -466,14 +467,16 @@ public class ProgramEndpoints extends AbstractEndpoint {
             FunctionEndpoints functionEndpoints = new FunctionEndpoints(program, port);
             
             // Find the function by name
-            ghidra.program.model.listing.Function function = null;
-            for (ghidra.program.model.listing.Function f : program.getFunctionManager().getFunctions(true)) {
-                if (f.getName().equals(functionName)) {
-                    function = f;
-                    break;
+            final Program prog = program;
+            ghidra.program.model.listing.Function function = GhidraSwing.runRead(() -> {
+                for (ghidra.program.model.listing.Function f : prog.getFunctionManager().getFunctions(true)) {
+                    if (f.getName().equals(functionName)) {
+                        return f;
+                    }
                 }
-            }
-            
+                return null;
+            });
+
             if (function == null) {
                 sendErrorResponse(exchange, 404, "Function not found by name: " + functionName, "FUNCTION_NOT_FOUND");
                 return;
@@ -1113,62 +1116,68 @@ public class ProgramEndpoints extends AbstractEndpoint {
             
             // Find references based on the provided parameters
             List<Map<String, Object>> xrefs = new ArrayList<>();
-            
-            // Get references to an address
-            if (toAddr != null) {
-                // Get references to this address
-                ghidra.program.model.symbol.ReferenceManager refManager = program.getReferenceManager();
-                ghidra.program.model.symbol.ReferenceIterator refsIterator = refManager.getReferencesTo(toAddr);
-                
-                while (refsIterator.hasNext()) {
-                    ghidra.program.model.symbol.Reference ref = refsIterator.next();
-                    
-                    // Skip if type filter is specified and doesn't match
-                    if (refType != null && !refTypeMatches(ref, refType)) {
-                        continue;
+            final Program prog = program;
+            final ghidra.program.model.address.Address toAddrFinal = toAddr;
+            final ghidra.program.model.address.Address fromAddrFinal = fromAddr;
+            final String refTypeFinal = refType;
+
+            GhidraSwing.runRead(() -> {
+                // Get references to an address
+                if (toAddrFinal != null) {
+                    // Get references to this address
+                    ghidra.program.model.symbol.ReferenceManager refManager = prog.getReferenceManager();
+                    ghidra.program.model.symbol.ReferenceIterator refsIterator = refManager.getReferencesTo(toAddrFinal);
+
+                    while (refsIterator.hasNext()) {
+                        ghidra.program.model.symbol.Reference ref = refsIterator.next();
+
+                        // Skip if type filter is specified and doesn't match
+                        if (refTypeFinal != null && !refTypeMatches(ref, refTypeFinal)) {
+                            continue;
+                        }
+
+                        // Get reference info
+                        Map<String, Object> refInfo = new HashMap<>();
+                        refInfo.put("from_addr", ref.getFromAddress().toString());
+                        refInfo.put("to_addr", ref.getToAddress().toString());
+                        refInfo.put("type", getReferenceTypeName(ref.getReferenceType()));
+
+                        // Get additional context if available
+                        refInfo.put("from_function", getFunctionName(prog, ref.getFromAddress()));
+                        refInfo.put("to_function", getFunctionName(prog, ref.getToAddress()));
+
+                        xrefs.add(refInfo);
                     }
-                    
-                    // Get reference info
-                    Map<String, Object> refInfo = new HashMap<>();
-                    refInfo.put("from_addr", ref.getFromAddress().toString());
-                    refInfo.put("to_addr", ref.getToAddress().toString());
-                    refInfo.put("type", getReferenceTypeName(ref.getReferenceType()));
-                    
-                    // Get additional context if available
-                    refInfo.put("from_function", getFunctionName(program, ref.getFromAddress()));
-                    refInfo.put("to_function", getFunctionName(program, ref.getToAddress()));
-                    
-                    xrefs.add(refInfo);
                 }
-            }
-            
-            // Get references from an address
-            if (fromAddr != null && (toAddr == null || xrefs.isEmpty())) {
-                // Get references from this address
-                ghidra.program.model.symbol.ReferenceManager refManager = program.getReferenceManager();
-                ghidra.program.model.symbol.Reference[] refs = refManager.getReferencesFrom(fromAddr);
-                
-                for (ghidra.program.model.symbol.Reference ref : refs) {
-                    
-                    // Skip if type filter is specified and doesn't match
-                    if (refType != null && !refTypeMatches(ref, refType)) {
-                        continue;
+
+                // Get references from an address
+                if (fromAddrFinal != null && (toAddrFinal == null || xrefs.isEmpty())) {
+                    // Get references from this address
+                    ghidra.program.model.symbol.ReferenceManager refManager = prog.getReferenceManager();
+                    ghidra.program.model.symbol.Reference[] refs = refManager.getReferencesFrom(fromAddrFinal);
+
+                    for (ghidra.program.model.symbol.Reference ref : refs) {
+
+                        // Skip if type filter is specified and doesn't match
+                        if (refTypeFinal != null && !refTypeMatches(ref, refTypeFinal)) {
+                            continue;
+                        }
+
+                        // Get reference info
+                        Map<String, Object> refInfo = new HashMap<>();
+                        refInfo.put("from_addr", ref.getFromAddress().toString());
+                        refInfo.put("to_addr", ref.getToAddress().toString());
+                        refInfo.put("type", getReferenceTypeName(ref.getReferenceType()));
+
+                        // Get additional context if available
+                        refInfo.put("from_function", getFunctionName(prog, ref.getFromAddress()));
+                        refInfo.put("to_function", getFunctionName(prog, ref.getToAddress()));
+
+                        xrefs.add(refInfo);
                     }
-                    
-                    // Get reference info
-                    Map<String, Object> refInfo = new HashMap<>();
-                    refInfo.put("from_addr", ref.getFromAddress().toString());
-                    refInfo.put("to_addr", ref.getToAddress().toString());
-                    refInfo.put("type", getReferenceTypeName(ref.getReferenceType()));
-                    
-                    // Get additional context if available
-                    refInfo.put("from_function", getFunctionName(program, ref.getFromAddress()));
-                    refInfo.put("to_function", getFunctionName(program, ref.getToAddress()));
-                    
-                    xrefs.add(refInfo);
                 }
-            }
-            
+            });
+
             // Apply pagination
             int endIndex = Math.min(xrefs.size(), offset + limit);
             List<Map<String, Object>> paginatedXrefs = offset < xrefs.size() 
@@ -1546,13 +1555,17 @@ public class ProgramEndpoints extends AbstractEndpoint {
             } 
             // Try to find function by name if address not provided or function not found
             else if (name != null) {
-                for (ghidra.program.model.listing.Function f : program.getFunctionManager().getFunctions(true)) {
-                    if (f.getName().equals(name)) {
-                        startFunction = f;
-                        break;
+                final Program progName = program;
+                final String nameFinal = name;
+                startFunction = GhidraSwing.runRead(() -> {
+                    for (ghidra.program.model.listing.Function f : progName.getFunctionManager().getFunctions(true)) {
+                        if (f.getName().equals(nameFinal)) {
+                            return f;
+                        }
                     }
-                }
-                
+                    return null;
+                });
+
                 if (startFunction == null) {
                     sendErrorResponse(exchange, 404, "Function not found by name: " + name, "FUNCTION_NOT_FOUND");
                     return;
@@ -1572,7 +1585,11 @@ public class ProgramEndpoints extends AbstractEndpoint {
             }
             
             // Build call graph (this is a simplified implementation)
-            Map<String, Object> graph = buildCallGraph(program, startFunction, maxDepth);
+            final Program progGraph = program;
+            final ghidra.program.model.listing.Function startFunctionFinal = startFunction;
+            final int maxDepthFinal = maxDepth;
+            Map<String, Object> graph = GhidraSwing.runRead(
+                () -> buildCallGraph(progGraph, startFunctionFinal, maxDepthFinal));
             
             // Build response
             ResponseBuilder builder = new ResponseBuilder(exchange, port)

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.mem.Memory;
@@ -404,41 +405,55 @@ private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr
                 return;
             }
 
-            ghidra.program.model.listing.Listing listing = program.getListing();
-            Memory mem = program.getMemory();
-            ghidra.program.model.listing.InstructionIterator instrIter =
-                listing.getInstructions(startAddr, true);
+            final Program prog = program;
+            final Address startAddrFinal = startAddr;
+            final int countFinal = count;
+            final int offsetFinal = offset;
+            final List<Map<String, Object>> allInstructions = new ArrayList<>();
+            final boolean[] anyInstructions = new boolean[1];
 
-            List<Map<String, Object>> allInstructions = new ArrayList<>();
-            int totalScanned = 0;
+            GhidraSwing.runRead(() -> {
+                ghidra.program.model.listing.Listing listing = prog.getListing();
+                Memory mem = prog.getMemory();
+                ghidra.program.model.listing.InstructionIterator instrIter =
+                    listing.getInstructions(startAddrFinal, true);
 
-            while (instrIter.hasNext() && totalScanned < offset + count) {
-                ghidra.program.model.listing.Instruction instr = instrIter.next();
-                totalScanned++;
+                int totalScanned = 0;
 
-                if (totalScanned <= offset) {
-                    continue;
-                }
+                while (instrIter.hasNext() && totalScanned < offsetFinal + countFinal) {
+                    ghidra.program.model.listing.Instruction instr = instrIter.next();
+                    totalScanned++;
 
-                Map<String, Object> instrMap = new HashMap<>();
-                instrMap.put("address", instr.getAddress().toString());
-
-                try {
-                    byte[] bytes = new byte[instr.getLength()];
-                    mem.getBytes(instr.getAddress(), bytes);
-                    StringBuilder hexBytes = new StringBuilder();
-                    for (byte b : bytes) {
-                        hexBytes.append(String.format("%02X", b & 0xFF));
+                    if (totalScanned <= offsetFinal) {
+                        continue;
                     }
-                    instrMap.put("bytes", hexBytes.toString());
-                } catch (MemoryAccessException e) {
-                    instrMap.put("bytes", "??");
+
+                    Map<String, Object> instrMap = new HashMap<>();
+                    instrMap.put("address", instr.getAddress().toString());
+
+                    try {
+                        byte[] bytes = new byte[instr.getLength()];
+                        mem.getBytes(instr.getAddress(), bytes);
+                        StringBuilder hexBytes = new StringBuilder();
+                        for (byte b : bytes) {
+                            hexBytes.append(String.format("%02X", b & 0xFF));
+                        }
+                        instrMap.put("bytes", hexBytes.toString());
+                    } catch (MemoryAccessException e) {
+                        instrMap.put("bytes", "??");
+                    }
+
+                    instrMap.put("mnemonic", instr.getMnemonicString());
+                    instrMap.put("operands", instr.toString().substring(instr.getMnemonicString().length()).trim());
+                    allInstructions.add(instrMap);
                 }
 
-                instrMap.put("mnemonic", instr.getMnemonicString());
-                instrMap.put("operands", instr.toString().substring(instr.getMnemonicString().length()).trim());
-                allInstructions.add(instrMap);
-            }
+                if (allInstructions.isEmpty()) {
+                    // Check if there is an instruction anywhere else in the program to see if analysis was run
+                    anyInstructions[0] = prog.getListing().getInstructions(true).hasNext();
+                }
+                return null;
+            });
 
             Map<String, Object> result = new HashMap<>();
             result.put("startAddress", addressStr);
@@ -446,11 +461,10 @@ private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr
             result.put("totalInstructions", allInstructions.size());
 
             if (allInstructions.isEmpty()) {
-                result.put("message", "No defined instructions found at or after " + addressStr + 
+                result.put("message", "No defined instructions found at or after " + addressStr +
                     ". You may need to run analysis or manually disassemble this area.");
-                
-                // Check if there is an instruction anywhere else in the program to see if analysis was run
-                if (!program.getListing().getInstructions(true).hasNext()) {
+
+                if (!anyInstructions[0]) {
                     result.put("warning", "It appears no instructions are defined in the entire program. " +
                         "Is analysis complete?");
                 }
@@ -498,21 +512,23 @@ private void handleDisassemblyAtAddress(HttpExchange exchange, String addressStr
                 builder.addLink("memory", "/memory");
                 
                 // Get memory blocks
-                Memory memory = program.getMemory();
-                List<Map<String, Object>> blocks = new ArrayList<>();
-                
-                for (MemoryBlock block : memory.getBlocks()) {
-                    Map<String, Object> blockInfo = new HashMap<>();
-                    blockInfo.put("name", block.getName());
-                    blockInfo.put("start", block.getStart().toString());
-                    blockInfo.put("end", block.getEnd().toString());
-                    blockInfo.put("size", block.getSize());
-                    blockInfo.put("permissions", getPermissionString(block));
-                    blockInfo.put("isInitialized", block.isInitialized());
-                    blockInfo.put("isLoaded", block.isLoaded());
-                    blockInfo.put("isMapped", block.isMapped());
-                    blocks.add(blockInfo);
-                }
+                final Memory memory = program.getMemory();
+                final List<Map<String, Object>> blocks = new ArrayList<>();
+
+                GhidraSwing.runRead(() -> {
+                    for (MemoryBlock block : memory.getBlocks()) {
+                        Map<String, Object> blockInfo = new HashMap<>();
+                        blockInfo.put("name", block.getName());
+                        blockInfo.put("start", block.getStart().toString());
+                        blockInfo.put("end", block.getEnd().toString());
+                        blockInfo.put("size", block.getSize());
+                        blockInfo.put("permissions", getPermissionString(block));
+                        blockInfo.put("isInitialized", block.isInitialized());
+                        blockInfo.put("isLoaded", block.isLoaded());
+                        blockInfo.put("isMapped", block.isMapped());
+                        blocks.add(blockInfo);
+                    }
+                });
                 
                 // Apply pagination and add it to result
                 List<Map<String, Object>> paginatedBlocks = 

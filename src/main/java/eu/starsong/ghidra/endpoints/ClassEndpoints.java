@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
     import eu.starsong.ghidra.api.ResponseBuilder;
+    import eu.starsong.ghidra.util.GhidraSwing;
     import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.listing.Program;
     import ghidra.program.model.symbol.Namespace;
@@ -52,14 +53,17 @@ package eu.starsong.ghidra.endpoints;
                     }
                     
                     // Get all class names
-                    Set<String> classNames = new HashSet<>();
-                    for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
-                        Namespace ns = symbol.getParentNamespace();
-                        // Check if namespace is not null, not global, and represents a class
-                        if (ns != null && !ns.isGlobal() && ns.getSymbol().getSymbolType().isNamespace()) {
-                            classNames.add(ns.getName(true)); // Get fully qualified name
+                    final Set<String> classNames = new HashSet<>();
+                    final Program classProgram = program;
+                    GhidraSwing.runRead(() -> {
+                        for (Symbol symbol : classProgram.getSymbolTable().getAllSymbols(true)) {
+                            Namespace ns = symbol.getParentNamespace();
+                            // Check if namespace is not null, not global, and represents a class
+                            if (ns != null && !ns.isGlobal() && ns.getSymbol().getSymbolType().isNamespace()) {
+                                classNames.add(ns.getName(true)); // Get fully qualified name
+                            }
                         }
-                    }
+                    });
                     
                     // Sort and paginate
                     List<String> sorted = new ArrayList<>(classNames);

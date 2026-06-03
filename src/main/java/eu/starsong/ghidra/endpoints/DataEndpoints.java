@@ -4,6 +4,7 @@ package eu.starsong.ghidra.endpoints;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
     import eu.starsong.ghidra.api.ResponseBuilder;
+    import eu.starsong.ghidra.util.GhidraSwing;
     import eu.starsong.ghidra.util.GhidraUtil;
     import eu.starsong.ghidra.util.HttpUtil;
     import eu.starsong.ghidra.util.TransactionHelper;
@@ -250,49 +251,62 @@ package eu.starsong.ghidra.endpoints;
                 } else if (nameFilter != null && !nameFilter.isEmpty() &&
                            (nameContainsFilter == null || nameContainsFilter.isEmpty())) {
                     // Fast path for exact-name lookups: resolve symbols by exact name instead of scanning all data.
-                    SymbolIterator symbolIterator = program.getSymbolTable().getSymbols(nameFilter);
-                    Set<String> seenAddresses = new HashSet<>();
+                    final Program nameLookupProgram = program;
+                    final Listing nameLookupListing = listing;
+                    final String exactNameFilter = nameFilter;
+                    final String exactTypeFilter = typeFilter;
+                    GhidraSwing.runRead(() -> {
+                        SymbolIterator symbolIterator = nameLookupProgram.getSymbolTable().getSymbols(exactNameFilter);
+                        Set<String> seenAddresses = new HashSet<>();
 
-                    while (symbolIterator.hasNext()) {
-                        Symbol symbol = symbolIterator.next();
-                        Address symbolAddress = symbol.getAddress();
-                        if (symbolAddress == null) {
-                            continue;
-                        }
-                        String addrKey = symbolAddress.toString();
-                        if (!seenAddresses.add(addrKey)) {
-                            continue;
-                        }
+                        while (symbolIterator.hasNext()) {
+                            Symbol symbol = symbolIterator.next();
+                            Address symbolAddress = symbol.getAddress();
+                            if (symbolAddress == null) {
+                                continue;
+                            }
+                            String addrKey = symbolAddress.toString();
+                            if (!seenAddresses.add(addrKey)) {
+                                continue;
+                            }
 
-                        Map<String, Object> item = null;
-                        Data data = listing.getDefinedDataAt(symbolAddress);
-                        if (data != null) {
-                            item = buildDefinedDataItem(program, data);
-                        } else {
-                            item = buildSymbolFallbackItem(program, symbolAddress, symbol);
-                        }
+                            Map<String, Object> item = null;
+                            Data data = nameLookupListing.getDefinedDataAt(symbolAddress);
+                            if (data != null) {
+                                item = buildDefinedDataItem(nameLookupProgram, data);
+                            } else {
+                                item = buildSymbolFallbackItem(nameLookupProgram, symbolAddress, symbol);
+                            }
 
-                        if (item != null && matchesDataListFilters(item, nameFilter, null, typeFilter)) {
-                            dataItems.add(item);
+                            if (item != null && matchesDataListFilters(item, exactNameFilter, null, exactTypeFilter)) {
+                                dataItems.add(item);
+                            }
                         }
-                    }
+                    });
                 } else {
-                    for (MemoryBlock block : program.getMemory().getBlocks()) {
-                        DataIterator it = listing.getDefinedData(block.getStart(), true);
-                        while (it.hasNext()) {
-                            Data data = it.next();
-                            if (!block.contains(data.getAddress())) {
-                                continue;
-                            }
+                    final Program scanProgram = program;
+                    final Listing scanListing = listing;
+                    final String scanNameFilter = nameFilter;
+                    final String scanNameContainsFilter = nameContainsFilter;
+                    final String scanTypeFilter = typeFilter;
+                    GhidraSwing.runRead(() -> {
+                        for (MemoryBlock block : scanProgram.getMemory().getBlocks()) {
+                            DataIterator it = scanListing.getDefinedData(block.getStart(), true);
+                            while (it.hasNext()) {
+                                Data data = it.next();
+                                if (!block.contains(data.getAddress())) {
+                                    continue;
+                                }
 
-                            Map<String, Object> item = buildDefinedDataItem(program, data);
-                            if (!matchesDataListFilters(item, nameFilter, nameContainsFilter, typeFilter)) {
-                                continue;
-                            }
+                                Map<String, Object> item = buildDefinedDataItem(scanProgram, data);
+                                if (!matchesDataListFilters(item, scanNameFilter, scanNameContainsFilter, scanTypeFilter)) {
+                                    continue;
+                                }
 
-                            dataItems.add(item);
+                                dataItems.add(item);
+                            }
                         }
-                    }
+                    });
                 }
 
                 // Build response with HATEOAS links
@@ -1016,57 +1030,61 @@ package eu.starsong.ghidra.endpoints;
                 
                 List<Map<String, Object>> strings = new ArrayList<>();
 
-                for (MemoryBlock block : program.getMemory().getBlocks()) {
-                    if (!block.isInitialized()) continue;
+                final Program stringsProgram = program;
+                final String stringsFilter = filter;
+                GhidraSwing.runRead(() -> {
+                    for (MemoryBlock block : stringsProgram.getMemory().getBlocks()) {
+                        if (!block.isInitialized()) continue;
 
-                    DataIterator it = program.getListing().getDefinedData(block.getStart(), true);
-                    while (it.hasNext()) {
-                        Data data = it.next();
-                        if (!block.contains(data.getAddress())) continue;
+                        DataIterator it = stringsProgram.getListing().getDefinedData(block.getStart(), true);
+                        while (it.hasNext()) {
+                            Data data = it.next();
+                            if (!block.contains(data.getAddress())) continue;
 
-                        // Check if the data type is a string type
-                        String dataTypeName = data.getDataType().getName().toLowerCase();
-                        boolean isString = dataTypeName.contains("string") ||
-                                          dataTypeName.contains("unicode") ||
-                                          (dataTypeName.contains("char") && data.getLength() > 1); // Array of chars
+                            // Check if the data type is a string type
+                            String dataTypeName = data.getDataType().getName().toLowerCase();
+                            boolean isString = dataTypeName.contains("string") ||
+                                              dataTypeName.contains("unicode") ||
+                                              (dataTypeName.contains("char") && data.getLength() > 1); // Array of chars
 
-                        if (isString) {
-                            String value = data.getDefaultValueRepresentation();
-                            if (value == null) value = "";
+                            if (isString) {
+                                String value = data.getDefaultValueRepresentation();
+                                if (value == null) value = "";
 
-                            if (filter != null && !filter.isEmpty() && !value.toLowerCase().contains(filter.toLowerCase())) {
-                                continue;
+                                if (stringsFilter != null && !stringsFilter.isEmpty() && !value.toLowerCase().contains(stringsFilter.toLowerCase())) {
+                                    continue;
+                                }
+
+                                Map<String, Object> stringInfo = new HashMap<>();
+                                stringInfo.put("address", data.getAddress().toString());
+                                stringInfo.put("value", value);
+                                stringInfo.put("length", data.getLength());
+                                stringInfo.put("type", data.getDataType().getName());
+
+                                String name = null;
+                                Symbol symbol = stringsProgram.getSymbolTable().getPrimarySymbol(data.getAddress());
+                                if (symbol != null) {
+                                    name = safeGetSymbolName(symbol, stringsProgram);
+                                }
+                                stringInfo.put("name", name != null ? name : "");
+
+                                // Add HATEOAS links
+                                Map<String, Object> links = new HashMap<>();
+                                Map<String, String> selfLink = new HashMap<>();
+                                selfLink.put("href", "/data/" + data.getAddress().toString());
+                                links.put("self", selfLink);
+
+                                Map<String, String> memoryLink = new HashMap<>();
+                                memoryLink.put("href", "/memory?address=" + data.getAddress().toString());
+                                links.put("memory", memoryLink);
+
+                                stringInfo.put("_links", links);
+
+                                strings.add(stringInfo);
                             }
-
-                            Map<String, Object> stringInfo = new HashMap<>();
-                            stringInfo.put("address", data.getAddress().toString());
-                            stringInfo.put("value", value);
-                            stringInfo.put("length", data.getLength());
-                            stringInfo.put("type", data.getDataType().getName());
-
-                            String name = null;
-                            Symbol symbol = program.getSymbolTable().getPrimarySymbol(data.getAddress());
-                            if (symbol != null) {
-                                name = safeGetSymbolName(symbol, program);
-                            }
-                            stringInfo.put("name", name != null ? name : "");
-
-                            // Add HATEOAS links
-                            Map<String, Object> links = new HashMap<>();
-                            Map<String, String> selfLink = new HashMap<>();
-                            selfLink.put("href", "/data/" + data.getAddress().toString());
-                            links.put("self", selfLink);
-
-                            Map<String, String> memoryLink = new HashMap<>();
-                            memoryLink.put("href", "/memory?address=" + data.getAddress().toString());
-                            links.put("memory", memoryLink);
-
-                            stringInfo.put("_links", links);
-
-                            strings.add(stringInfo);
                         }
                     }
-                }
+                });
                 
                 // Build response with HATEOAS links
                 eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)

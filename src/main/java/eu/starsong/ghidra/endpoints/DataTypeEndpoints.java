@@ -7,6 +7,7 @@ import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import ghidra.framework.plugintool.PluginTool;
@@ -73,55 +74,61 @@ public class DataTypeEndpoints extends AbstractEndpoint {
             DataTypeManager dtm = program.getDataTypeManager();
             List<Map<String, Object>> dataTypes = new ArrayList<>();
 
-            // Iterate through all data types
-            Iterator<DataType> iterator = dtm.getAllDataTypes();
-            while (iterator.hasNext()) {
-                DataType dt = iterator.next();
+            final String categoryFilter = category;
+            final String kindFilter = kind;
+            final String nameFilter = name;
 
-                // Apply filters
-                if (category != null && !dt.getCategoryPath().getPath().contains(category)) {
-                    continue;
-                }
+            // Iterate through all data types on the Swing thread to avoid locked-buffer races
+            GhidraSwing.runRead(() -> {
+                Iterator<DataType> iterator = dtm.getAllDataTypes();
+                while (iterator.hasNext()) {
+                    DataType dt = iterator.next();
 
-                if (name != null && !name.isEmpty()) {
-                    String normalizedFilter = name.toLowerCase();
-                    String dtName = dt.getName() != null ? dt.getName().toLowerCase() : "";
-                    String dtDisplayName = dt.getDisplayName() != null ? dt.getDisplayName().toLowerCase() : "";
-                    if (!dtName.contains(normalizedFilter) && !dtDisplayName.contains(normalizedFilter)) {
+                    // Apply filters
+                    if (categoryFilter != null && !dt.getCategoryPath().getPath().contains(categoryFilter)) {
                         continue;
                     }
+
+                    if (nameFilter != null && !nameFilter.isEmpty()) {
+                        String normalizedFilter = nameFilter.toLowerCase();
+                        String dtName = dt.getName() != null ? dt.getName().toLowerCase() : "";
+                        String dtDisplayName = dt.getDisplayName() != null ? dt.getDisplayName().toLowerCase() : "";
+                        if (!dtName.contains(normalizedFilter) && !dtDisplayName.contains(normalizedFilter)) {
+                            continue;
+                        }
+                    }
+
+                    if (kindFilter != null) {
+                        boolean match = false;
+                        if (kindFilter.equals("struct") && dt instanceof Structure) match = true;
+                        if (kindFilter.equals("enum") && dt instanceof ghidra.program.model.data.Enum) match = true;
+                        if (kindFilter.equals("union") && dt instanceof Union) match = true;
+                        if (!match) continue;
+                    }
+
+                    Map<String, Object> dtInfo = new HashMap<>();
+                    dtInfo.put("name", dt.getName());
+                    dtInfo.put("displayName", dt.getDisplayName());
+                    dtInfo.put("category", dt.getCategoryPath().getPath());
+                    dtInfo.put("length", dt.getLength());
+
+                    // Add type-specific information
+                    if (dt instanceof Structure) {
+                        dtInfo.put("kind", "struct");
+                        dtInfo.put("numComponents", ((Structure) dt).getNumComponents());
+                    } else if (dt instanceof ghidra.program.model.data.Enum) {
+                        dtInfo.put("kind", "enum");
+                        dtInfo.put("numValues", ((ghidra.program.model.data.Enum) dt).getCount());
+                    } else if (dt instanceof Union) {
+                        dtInfo.put("kind", "union");
+                        dtInfo.put("numComponents", ((Union) dt).getNumComponents());
+                    } else {
+                        dtInfo.put("kind", "other");
+                    }
+
+                    dataTypes.add(dtInfo);
                 }
-
-                if (kind != null) {
-                    boolean match = false;
-                    if (kind.equals("struct") && dt instanceof Structure) match = true;
-                    if (kind.equals("enum") && dt instanceof ghidra.program.model.data.Enum) match = true;
-                    if (kind.equals("union") && dt instanceof Union) match = true;
-                    if (!match) continue;
-                }
-
-                Map<String, Object> dtInfo = new HashMap<>();
-                dtInfo.put("name", dt.getName());
-                dtInfo.put("displayName", dt.getDisplayName());
-                dtInfo.put("category", dt.getCategoryPath().getPath());
-                dtInfo.put("length", dt.getLength());
-
-                // Add type-specific information
-                if (dt instanceof Structure) {
-                    dtInfo.put("kind", "struct");
-                    dtInfo.put("numComponents", ((Structure) dt).getNumComponents());
-                } else if (dt instanceof ghidra.program.model.data.Enum) {
-                    dtInfo.put("kind", "enum");
-                    dtInfo.put("numValues", ((ghidra.program.model.data.Enum) dt).getCount());
-                } else if (dt instanceof Union) {
-                    dtInfo.put("kind", "union");
-                    dtInfo.put("numComponents", ((Union) dt).getNumComponents());
-                } else {
-                    dtInfo.put("kind", "other");
-                }
-
-                dataTypes.add(dtInfo);
-            }
+            });
 
             // Build response
             ResponseBuilder builder = new ResponseBuilder(exchange, port)

@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.GhidraSwing;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.listing.Function;
@@ -124,55 +125,65 @@ public class XrefsEndpoints extends AbstractEndpoint {
                 List<Map<String, Object>> referencesList = new ArrayList<>();
                 Set<String> seenRefs = new HashSet<>();
 
+                final Program prog = program;
+                final ReferenceManager refMgr = refManager;
+                final String refTypeFilter = refTypeStr;
+
                 // Get references TO the target address/function
                 if (toAddr != null) {
-                    // If to_addr is a function entry point, collect refs to all
-                    // addresses in the function body (matches Ghidra UI behavior)
-                    Function toFunc = program.getFunctionManager().getFunctionAt(toAddr);
-                    Iterable<Address> targetAddresses;
-                    if (toFunc != null) {
-                        targetAddresses = toFunc.getBody().getAddresses(true);
-                    } else {
-                        targetAddresses = Collections.singletonList(toAddr);
-                    }
+                    final Address toAddrFinal = toAddr;
+                    GhidraSwing.runRead(() -> {
+                        // If to_addr is a function entry point, collect refs to all
+                        // addresses in the function body (matches Ghidra UI behavior)
+                        Function toFunc = prog.getFunctionManager().getFunctionAt(toAddrFinal);
+                        Iterable<Address> targetAddresses;
+                        if (toFunc != null) {
+                            targetAddresses = toFunc.getBody().getAddresses(true);
+                        } else {
+                            targetAddresses = Collections.singletonList(toAddrFinal);
+                        }
 
-                    for (Address target : targetAddresses) {
-                        for (Reference ref : collectReferences(refManager.getReferencesTo(target))) {
-                            if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
-                                continue;
-                            }
-                            // Deduplicate by from+to address pair
-                            String key = ref.getFromAddress() + "->" + ref.getToAddress();
-                            if (seenRefs.add(key)) {
-                                referencesList.add(createReferenceMap(program, ref, "to"));
+                        for (Address target : targetAddresses) {
+                            for (Reference ref : collectReferences(refMgr.getReferencesTo(target))) {
+                                if (refTypeFilter != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeFilter)) {
+                                    continue;
+                                }
+                                // Deduplicate by from+to address pair
+                                String key = ref.getFromAddress() + "->" + ref.getToAddress();
+                                if (seenRefs.add(key)) {
+                                    referencesList.add(createReferenceMap(prog, ref, "to"));
+                                }
                             }
                         }
-                    }
+                    });
                 }
 
                 // Get references FROM the source address/function
                 if (fromAddr != null) {
-                    // If from_addr is a function entry point, collect refs from all
-                    // addresses in the function body
-                    Function fromFunc = program.getFunctionManager().getFunctionAt(fromAddr);
-                    Iterable<Address> sourceAddresses;
-                    if (fromFunc != null) {
-                        sourceAddresses = fromFunc.getBody().getAddresses(true);
-                    } else {
-                        sourceAddresses = Collections.singletonList(fromAddr);
-                    }
+                    final Address fromAddrFinal = fromAddr;
+                    GhidraSwing.runRead(() -> {
+                        // If from_addr is a function entry point, collect refs from all
+                        // addresses in the function body
+                        Function fromFunc = prog.getFunctionManager().getFunctionAt(fromAddrFinal);
+                        Iterable<Address> sourceAddresses;
+                        if (fromFunc != null) {
+                            sourceAddresses = fromFunc.getBody().getAddresses(true);
+                        } else {
+                            sourceAddresses = Collections.singletonList(fromAddrFinal);
+                        }
 
-                    for (Address source : sourceAddresses) {
-                        for (Reference ref : collectReferences(refManager.getReferencesFrom(source))) {
-                            if (refTypeStr != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeStr)) {
-                                continue;
-                            }
-                            String key = ref.getFromAddress() + "->" + ref.getToAddress();
-                            if (seenRefs.add(key)) {
-                                referencesList.add(createReferenceMap(program, ref, "from"));
+                        for (Address source : sourceAddresses) {
+                            for (Reference ref : collectReferences(refMgr.getReferencesFrom(source))) {
+                                if (refTypeFilter != null && !ref.getReferenceType().getName().equalsIgnoreCase(refTypeFilter)) {
+                                    continue;
+                                }
+                                String key = ref.getFromAddress() + "->" + ref.getToAddress();
+                                if (seenRefs.add(key)) {
+                                    referencesList.add(createReferenceMap(prog, ref, "from"));
+                                }
                             }
                         }
-                    }
+                    });
                 }
                 
                 // Sort by type and address

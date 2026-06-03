@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import eu.starsong.ghidra.api.ResponseBuilder;
+import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import eu.starsong.ghidra.util.TransactionHelper;
 import eu.starsong.ghidra.util.TransactionHelper.TransactionException;
@@ -238,35 +239,37 @@ public class StructEndpoints extends AbstractEndpoint {
             List<Map<String, Object>> structList = new ArrayList<>();
 
             // Iterate through all data types and filter for structures
-            dtm.getAllDataTypes().forEachRemaining(dataType -> {
-                if (dataType instanceof Structure) {
-                    Structure struct = (Structure) dataType;
+            GhidraSwing.runRead(() -> {
+                dtm.getAllDataTypes().forEachRemaining(dataType -> {
+                    if (dataType instanceof Structure) {
+                        Structure struct = (Structure) dataType;
 
-                    // Apply category filter if specified
-                    if (categoryFilter != null && !categoryFilter.isEmpty()) {
-                        CategoryPath catPath = struct.getCategoryPath();
-                        if (!catPath.getPath().contains(categoryFilter)) {
-                            return;
+                        // Apply category filter if specified
+                        if (categoryFilter != null && !categoryFilter.isEmpty()) {
+                            CategoryPath catPath = struct.getCategoryPath();
+                            if (!catPath.getPath().contains(categoryFilter)) {
+                                return;
+                            }
                         }
+
+                        Map<String, Object> structInfo = new HashMap<>();
+                        structInfo.put("name", struct.getName());
+                        structInfo.put("path", struct.getPathName());
+                        structInfo.put("size", struct.getLength());
+                        structInfo.put("numFields", struct.getNumComponents());
+                        structInfo.put("category", struct.getCategoryPath().getPath());
+                        structInfo.put("description", struct.getDescription() != null ? struct.getDescription() : "");
+
+                        // Add HATEOAS links
+                        Map<String, Object> links = new HashMap<>();
+                        Map<String, String> selfLink = new HashMap<>();
+                        selfLink.put("href", "/structs?name=" + struct.getName());
+                        links.put("self", selfLink);
+                        structInfo.put("_links", links);
+
+                        structList.add(structInfo);
                     }
-
-                    Map<String, Object> structInfo = new HashMap<>();
-                    structInfo.put("name", struct.getName());
-                    structInfo.put("path", struct.getPathName());
-                    structInfo.put("size", struct.getLength());
-                    structInfo.put("numFields", struct.getNumComponents());
-                    structInfo.put("category", struct.getCategoryPath().getPath());
-                    structInfo.put("description", struct.getDescription() != null ? struct.getDescription() : "");
-
-                    // Add HATEOAS links
-                    Map<String, Object> links = new HashMap<>();
-                    Map<String, String> selfLink = new HashMap<>();
-                    selfLink.put("href", "/structs?name=" + struct.getName());
-                    links.put("self", selfLink);
-                    structInfo.put("_links", links);
-
-                    structList.add(structInfo);
-                }
+                });
             });
 
             // Sort by name for consistency
@@ -835,16 +838,18 @@ public class StructEndpoints extends AbstractEndpoint {
 
         // Add field details
         List<Map<String, Object>> fields = new ArrayList<>();
-        for (DataTypeComponent component : struct.getComponents()) {
-            Map<String, Object> fieldInfo = new HashMap<>();
-            fieldInfo.put("name", component.getFieldName() != null ? component.getFieldName() : "");
-            fieldInfo.put("offset", component.getOffset());
-            fieldInfo.put("length", component.getLength());
-            fieldInfo.put("type", component.getDataType().getName());
-            fieldInfo.put("typePath", component.getDataType().getPathName());
-            fieldInfo.put("comment", component.getComment() != null ? component.getComment() : "");
-            fields.add(fieldInfo);
-        }
+        GhidraSwing.runRead(() -> {
+            for (DataTypeComponent component : struct.getComponents()) {
+                Map<String, Object> fieldInfo = new HashMap<>();
+                fieldInfo.put("name", component.getFieldName() != null ? component.getFieldName() : "");
+                fieldInfo.put("offset", component.getOffset());
+                fieldInfo.put("length", component.getLength());
+                fieldInfo.put("type", component.getDataType().getName());
+                fieldInfo.put("typePath", component.getDataType().getPathName());
+                fieldInfo.put("comment", component.getComment() != null ? component.getComment() : "");
+                fields.add(fieldInfo);
+            }
+        });
         structInfo.put("fields", fields);
 
         return structInfo;
@@ -854,17 +859,19 @@ public class StructEndpoints extends AbstractEndpoint {
      * Find a struct by name, searching through all data types
      */
     private DataType findStructByName(DataTypeManager dtm, String structName) {
-        final DataType[] result = new DataType[1];
+        return GhidraSwing.runRead(() -> {
+            final DataType[] result = new DataType[1];
 
-        dtm.getAllDataTypes().forEachRemaining(dt -> {
-            if (dt instanceof Structure && dt.getName().equals(structName)) {
-                if (result[0] == null) {
-                    result[0] = dt;
+            dtm.getAllDataTypes().forEachRemaining(dt -> {
+                if (dt instanceof Structure && dt.getName().equals(structName)) {
+                    if (result[0] == null) {
+                        result[0] = dt;
+                    }
                 }
-            }
-        });
+            });
 
-        return result[0];
+            return result[0];
+        });
     }
 
     private int getValidatedReplacementLength(Structure struct, int componentOffset, DataTypeComponent component, DataType updatedType) throws Exception {

@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.util.GhidraSwing;
     import eu.starsong.ghidra.util.HttpUtil;
     import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.listing.Program;
@@ -55,28 +56,31 @@ package eu.starsong.ghidra.endpoints;
                         return;
                     }
                     
-                    List<Map<String, Object>> symbols = new ArrayList<>();
-                    SymbolTable symbolTable = program.getSymbolTable();
-                    SymbolIterator symbolIterator = symbolTable.getAllSymbols(true);
-                    
-                    while (symbolIterator.hasNext()) {
-                        Symbol symbol = symbolIterator.next();
-                        Map<String, Object> symbolInfo = new HashMap<>();
-                        symbolInfo.put("name", safeGetSymbolName(symbol, program));
-                        symbolInfo.put("address", symbol.getAddress().toString());
-                        symbolInfo.put("namespace", symbol.getParentNamespace().getName());
-                        symbolInfo.put("type", symbol.getSymbolType().toString());
-                        symbolInfo.put("isPrimary", symbol.isPrimary());
-                        
-                        // Add HATEOAS links
-                        Map<String, Object> links = new HashMap<>();
-                        Map<String, String> selfLink = new HashMap<>();
-                        selfLink.put("href", "/symbols/" + symbol.getAddress().toString());
-                        links.put("self", selfLink);
-                        symbolInfo.put("_links", links);
-                        
-                        symbols.add(symbolInfo);
-                    }
+                    final List<Map<String, Object>> symbols = new ArrayList<>();
+                    final Program prog = program;
+                    GhidraSwing.runRead(() -> {
+                        SymbolTable symbolTable = prog.getSymbolTable();
+                        SymbolIterator symbolIterator = symbolTable.getAllSymbols(true);
+
+                        while (symbolIterator.hasNext()) {
+                            Symbol symbol = symbolIterator.next();
+                            Map<String, Object> symbolInfo = new HashMap<>();
+                            symbolInfo.put("name", safeGetSymbolName(symbol, prog));
+                            symbolInfo.put("address", symbol.getAddress().toString());
+                            symbolInfo.put("namespace", symbol.getParentNamespace().getName());
+                            symbolInfo.put("type", symbol.getSymbolType().toString());
+                            symbolInfo.put("isPrimary", symbol.isPrimary());
+
+                            // Add HATEOAS links
+                            Map<String, Object> links = new HashMap<>();
+                            Map<String, String> selfLink = new HashMap<>();
+                            selfLink.put("href", "/symbols/" + symbol.getAddress().toString());
+                            links.put("self", selfLink);
+                            symbolInfo.put("_links", links);
+
+                            symbols.add(symbolInfo);
+                        }
+                    });
                     
                     // Build response with HATEOAS links
                     eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
@@ -114,21 +118,24 @@ package eu.starsong.ghidra.endpoints;
                         return;
                     }
                     
-                    List<Map<String, Object>> imports = new ArrayList<>();
-                    for (Symbol symbol : program.getSymbolTable().getExternalSymbols()) {
-                        Map<String, Object> imp = new HashMap<>();
-                        imp.put("name", safeGetSymbolName(symbol, program));
-                        imp.put("address", symbol.getAddress().toString());
-                        
-                        // Add HATEOAS links
-                        Map<String, Object> links = new HashMap<>();
-                        Map<String, String> selfLink = new HashMap<>();
-                        selfLink.put("href", "/symbols/imports/" + symbol.getAddress().toString());
-                        links.put("self", selfLink);
-                        imp.put("_links", links);
-                        
-                        imports.add(imp);
-                    }
+                    final List<Map<String, Object>> imports = new ArrayList<>();
+                    final Program prog = program;
+                    GhidraSwing.runRead(() -> {
+                        for (Symbol symbol : prog.getSymbolTable().getExternalSymbols()) {
+                            Map<String, Object> imp = new HashMap<>();
+                            imp.put("name", safeGetSymbolName(symbol, prog));
+                            imp.put("address", symbol.getAddress().toString());
+
+                            // Add HATEOAS links
+                            Map<String, Object> links = new HashMap<>();
+                            Map<String, String> selfLink = new HashMap<>();
+                            selfLink.put("href", "/symbols/imports/" + symbol.getAddress().toString());
+                            links.put("self", selfLink);
+                            imp.put("_links", links);
+
+                            imports.add(imp);
+                        }
+                    });
                     
                     // Build response with HATEOAS links
                     eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)
@@ -167,27 +174,30 @@ package eu.starsong.ghidra.endpoints;
                         return;
                     }
                     
-                    List<Map<String, Object>> exports = new ArrayList<>();
-                    SymbolTable table = program.getSymbolTable();
-                    SymbolIterator it = table.getAllSymbols(true);
-                    
-                    while (it.hasNext()) {
-                        Symbol s = it.next();
-                        if (s.isExternalEntryPoint()) {
-                            Map<String, Object> exp = new HashMap<>();
-                            exp.put("name", safeGetSymbolName(s, program));
-                            exp.put("address", s.getAddress().toString());
-                            
-                            // Add HATEOAS links
-                            Map<String, Object> links = new HashMap<>();
-                            Map<String, String> selfLink = new HashMap<>();
-                            selfLink.put("href", "/symbols/exports/" + s.getAddress().toString());
-                            links.put("self", selfLink);
-                            exp.put("_links", links);
-                            
-                            exports.add(exp);
+                    final List<Map<String, Object>> exports = new ArrayList<>();
+                    final Program prog = program;
+                    GhidraSwing.runRead(() -> {
+                        SymbolTable table = prog.getSymbolTable();
+                        SymbolIterator it = table.getAllSymbols(true);
+
+                        while (it.hasNext()) {
+                            Symbol s = it.next();
+                            if (s.isExternalEntryPoint()) {
+                                Map<String, Object> exp = new HashMap<>();
+                                exp.put("name", safeGetSymbolName(s, prog));
+                                exp.put("address", s.getAddress().toString());
+
+                                // Add HATEOAS links
+                                Map<String, Object> links = new HashMap<>();
+                                Map<String, String> selfLink = new HashMap<>();
+                                selfLink.put("href", "/symbols/exports/" + s.getAddress().toString());
+                                links.put("self", selfLink);
+                                exp.put("_links", links);
+
+                                exports.add(exp);
+                            }
                         }
-                    }
+                    });
                     
                     // Build response with HATEOAS links
                     eu.starsong.ghidra.api.ResponseBuilder builder = new eu.starsong.ghidra.api.ResponseBuilder(exchange, port)

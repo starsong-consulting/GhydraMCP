@@ -3,6 +3,7 @@ package eu.starsong.ghidra.endpoints;
     import com.google.gson.JsonObject;
     import com.sun.net.httpserver.HttpExchange;
     import com.sun.net.httpserver.HttpServer;
+    import eu.starsong.ghidra.util.GhidraSwing;
     import ghidra.framework.plugintool.PluginTool;
     import ghidra.program.model.address.GlobalNamespace;
     import ghidra.program.model.listing.Program;
@@ -49,13 +50,16 @@ package eu.starsong.ghidra.endpoints;
                         return;
                     }
                     
-                    Set<String> namespaces = new HashSet<>();
-                    for (Symbol symbol : program.getSymbolTable().getAllSymbols(true)) {
-                        Namespace ns = symbol.getParentNamespace();
-                        if (ns != null && !(ns instanceof GlobalNamespace)) {
-                            namespaces.add(ns.getName(true)); // Get fully qualified name
+                    final Set<String> namespaces = new HashSet<>();
+                    final Program nsProgram = program;
+                    GhidraSwing.runRead(() -> {
+                        for (Symbol symbol : nsProgram.getSymbolTable().getAllSymbols(true)) {
+                            Namespace ns = symbol.getParentNamespace();
+                            if (ns != null && !(ns instanceof GlobalNamespace)) {
+                                namespaces.add(ns.getName(true)); // Get fully qualified name
+                            }
                         }
-                    }
+                    });
                     
                     List<String> sorted = new ArrayList<>(namespaces);
                     Collections.sort(sorted);
