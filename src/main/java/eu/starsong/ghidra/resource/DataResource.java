@@ -31,10 +31,17 @@ public class DataResource implements Resource {
         app.get("/data", ctx -> list(contextFactory.apply(ctx)));
         app.get("/strings", ctx -> listStrings(contextFactory.apply(ctx)));
         app.get("/data/{address}", ctx -> getByAddress(contextFactory.apply(ctx)));
+        // Route semantics:
+        //   GET    /data/{addr}        -> read
+        //   POST   /data/{addr}        -> create data of a type (201)
+        //   PUT    /data/{addr}        -> set/replace the data type (idempotent)
+        //   PATCH  /data/{addr}        -> partial update (rename and/or retype)
+        //   PATCH  /data/{addr}/type   -> set the data type only (never renames)
+        //   DELETE /data/{addr}        -> clear
         app.put("/data/{address}", ctx -> setDataType(contextFactory.apply(ctx)));
         app.post("/data/{address}", ctx -> createAt(contextFactory.apply(ctx)));
         app.patch("/data/{address}", ctx -> update(contextFactory.apply(ctx)));
-        app.patch("/data/{address}/type", ctx -> update(contextFactory.apply(ctx)));
+        app.patch("/data/{address}/type", ctx -> setType(contextFactory.apply(ctx)));
         app.delete("/data/{address}", ctx -> clearAt(contextFactory.apply(ctx)));
 
         // Legacy POST routes (bridge compatibility)
@@ -151,6 +158,29 @@ public class DataResource implements Resource {
                 .build());
         } catch (Exception e) {
             throw new RuntimeException("Failed to update data: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Type-only update (PATCH /data/{address}/type). Forces name=null so this route can
+     * never rename, unlike the general PATCH /data/{address}. Same response shape as update().
+     */
+    private void setType(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        UpdateRequest req = ctx.bodyAsClass(UpdateRequest.class);
+        if (req.type == null || req.type.isEmpty()) {
+            throw new IllegalArgumentException("type field is required");
+        }
+        try {
+            DataService.UpdateResult result = dataService.update(program, address, null, req.type);
+            ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+                .self("/data/{}/type", address)
+                .link("data", "/data/{}", address)
+                .link("program", "/program")
+                .build());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set data type: " + e.getMessage(), e);
         }
     }
 

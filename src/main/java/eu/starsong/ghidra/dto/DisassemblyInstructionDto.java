@@ -21,9 +21,13 @@ public record DisassemblyInstructionDto(
             hex = "";
         }
         String mnemonic = instr.getMnemonicString();
-        String full = instr.toString();
-        String operands = full.length() > mnemonic.length()
-            ? full.substring(mnemonic.length()).trim() : "";
+        StringBuilder ops = new StringBuilder();
+        int n = instr.getNumOperands();
+        for (int i = 0; i < n; i++) {
+            if (i > 0) ops.append(", ");
+            ops.append(instr.getDefaultOperandRepresentation(i));
+        }
+        String operands = ops.toString();
         return new DisassemblyInstructionDto(
             instr.getAddress().toString(), hex, mnemonic, operands);
     }

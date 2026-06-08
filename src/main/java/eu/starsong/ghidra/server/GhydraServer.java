@@ -4,7 +4,6 @@ import eu.starsong.ghidra.api.ApiConstants;
 import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.middleware.CorsHandler;
 import eu.starsong.ghidra.middleware.ErrorHandler;
-import eu.starsong.ghidra.middleware.GhidraContextHandler;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.util.Msg;
 import io.javalin.Javalin;
@@ -126,8 +125,6 @@ public class GhydraServer {
 
     private void configureMiddleware() {
         app.before(new CorsHandler());
-
-        app.before(new GhidraContextHandler(tool, port, activeInstances));
 
         app.exception(GhidraContext.NoProgramException.class, (e, ctx) -> {
             ctx.status(HttpStatus.SERVICE_UNAVAILABLE);
