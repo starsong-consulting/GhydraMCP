@@ -6,7 +6,9 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.Function;
+import ghidra.program.model.listing.Parameter;
 import ghidra.program.model.listing.Program;
+import ghidra.program.model.listing.Variable;
 import ghidra.program.model.pcode.HighFunction;
 import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.symbol.Symbol;
@@ -40,38 +42,94 @@ public class VariableService {
 
     public record Page(List<VariableDto> results, boolean hasMore, int totalEstimate) {}
 
+    /** Backward-compatible entry point; defaults to the cheap "database" source. */
     public Page list(Program program, String search, boolean globalOnly, int offset, int limit) {
+        return list(program, search, globalOnly, "database", offset, limit);
+    }
+
+    /**
+     * List variables (program globals plus function-scoped locals/parameters).
+     *
+     * <p>source = "database" (default): reads committed variables straight from the program
+     * DB via {@code Function.getAllVariables()} — cheap (no decompilation), complete over
+     * stored variables, and exactly paginated with a real total. This is the "all locals" view.
+     *
+     * <p>source = "decompiler": runs the decompiler per function to surface inferred locals the
+     * DB may not hold yet — richer but expensive, bounded by {@code ghidra.mcp.localvar.scan}
+     * and approximately paginated.
+     */
+    public Page list(Program program, String search, boolean globalOnly, String source, int offset, int limit) {
         if (program == null) return new Page(List.of(), false, 0);
 
         String lowerSearch = (search != null && !search.isEmpty()) ? search.toLowerCase() : null;
         List<VariableDto> globals = collectGlobals(program, lowerSearch);
-        int globalCount = globals.size();
 
+        if (globalOnly) {
+            return paginate(globals, offset, limit);
+        }
+
+        if ("decompiler".equalsIgnoreCase(source)) {
+            return listWithDecompilerLocals(program, lowerSearch, globals, offset, limit);
+        }
+
+        // Default: database source — exact, cheap, complete over committed variables.
+        List<VariableDto> all = new ArrayList<>(globals);
+        all.addAll(collectLocalsFromDatabase(program, lowerSearch));
+        all.sort(Comparator.comparing(VariableDto::name));
+        return paginate(all, offset, limit);
+    }
+
+    /** Exact pagination over a fully-materialized list. */
+    private Page paginate(List<VariableDto> all, int offset, int limit) {
+        int total = all.size();
+        int from = Math.min(Math.max(0, offset), total);
+        int to = Math.min(from + limit, total);
+        List<VariableDto> page = new ArrayList<>(all.subList(from, to));
+        return new Page(page, to < total, total);
+    }
+
+    /**
+     * Cheap DB-backed enumeration of every function's committed variables (params + locals).
+     * One marshalled DB scan, no decompilation.
+     */
+    private List<VariableDto> collectLocalsFromDatabase(Program program, String lowerSearch) {
+        return GhidraSwing.runRead(() -> {
+            List<VariableDto> result = new ArrayList<>();
+            for (Function fn : program.getFunctionManager().getFunctions(true)) {
+                String fnName = fn.getName();
+                for (Variable v : fn.getAllVariables()) {
+                    String name = v.getName();
+                    if (lowerSearch != null && !name.toLowerCase().contains(lowerSearch)) continue;
+                    DataType dt = v.getDataType();
+                    result.add(VariableDto.local(
+                        name,
+                        v.getVariableStorage().toString(),
+                        dt != null ? dt.getName() : "unknown",
+                        fnName,
+                        v instanceof Parameter));
+                }
+            }
+            return result;
+        });
+    }
+
+    /** The decompiler-backed path: globals sliced, then budgeted decompiler locals appended. */
+    private Page listWithDecompilerLocals(Program program, String lowerSearch, List<VariableDto> globals,
+                                          int offset, int limit) {
+        int globalCount = globals.size();
         List<VariableDto> page = new ArrayList<>();
         int endIdx = offset + limit;
-
-        // Slice globals for this page.
         for (int i = offset; i < Math.min(endIdx, globalCount); i++) {
             page.add(globals.get(i));
         }
 
-        if (globalOnly) {
-            boolean hasMore = endIdx < globalCount;
-            return new Page(page, hasMore, globalCount);
-        }
-
-        // Estimate total: globals + rough local estimate. getFunctionCount() is O(1),
-        // avoiding a full function-table scan just for the estimate.
         int funcCount = program.getFunctionManager().getFunctionCount();
         int totalEstimate = globalCount + (lowerSearch != null ? funcCount / 5 : funcCount * 2);
 
-        int remainingSpace = endIdx - page.size() - offset;
-        if (remainingSpace <= 0 && page.size() >= limit) {
+        if (page.size() >= limit) {
             return new Page(page, true, totalEstimate);
         }
 
-        // How many locals to skip before adding? If we already sliced some globals, zero.
-        // Otherwise the offset eats into globals first, then into locals.
         int localsToSkip = Math.max(0, offset - globalCount);
         int localsNeeded = limit - page.size();
         LocalCollectResult local = collectLocals(program, lowerSearch, localsToSkip, localsNeeded, funcCount);

@@ -29,8 +29,10 @@ public class VariableResource implements Resource {
         var pagination = ctx.pagination();
         String search = ctx.queryParam("search");
         boolean globalOnly = Boolean.parseBoolean(ctx.queryParam("global_only", "false"));
+        // "database" (default): cheap, exact, all committed locals/params. "decompiler": inferred, budgeted.
+        String source = ctx.queryParam("source", "database");
 
-        VariableService.Page page = service.list(program, search, globalOnly, pagination.offset(), pagination.limit());
+        VariableService.Page page = service.list(program, search, globalOnly, source, pagination.offset(), pagination.limit());
 
         String basePath = "/variables";
         StringBuilder qs = new StringBuilder();
@@ -38,6 +40,10 @@ public class VariableResource implements Resource {
         if (globalOnly) {
             if (qs.length() > 0) qs.append("&");
             qs.append("global_only=true");
+        }
+        if (!"database".equals(source)) {
+            if (qs.length() > 0) qs.append("&");
+            qs.append("source=").append(source);
         }
         String prefix = qs.length() > 0 ? basePath + "?" + qs + "&" : basePath + "?";
 
