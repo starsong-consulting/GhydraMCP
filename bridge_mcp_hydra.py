@@ -3770,7 +3770,7 @@ def namespaces_list(offset: int = 0, limit: int = 100, port: int = None) -> dict
 @mcp.tool()
 @text_output
 def variables_list(offset: int = 0, limit: int = 100, search: str = None,
-                   global_only: bool = False, port: int = None) -> dict:
+                   global_only: bool = False, source: str = "database", port: int = None) -> dict:
     """List variables in the program
 
     Args:
@@ -3778,6 +3778,10 @@ def variables_list(offset: int = 0, limit: int = 100, search: str = None,
         limit: Maximum items to return (default: 100)
         search: Filter variables by name (optional)
         global_only: Only show global variables (default: False)
+        source: Local-variable source. "database" (default) reads committed locals/params
+            directly from the program DB - cheap, complete, exactly paginated (the "all
+            locals" view). "decompiler" runs the decompiler per function to surface inferred
+            locals - richer but slow and approximately paginated.
         port: Specific Ghidra instance port (optional)
 
     Returns:
@@ -3789,6 +3793,8 @@ def variables_list(offset: int = 0, limit: int = 100, search: str = None,
         params["search"] = search
     if global_only:
         params["global_only"] = "true"
+    if source and source != "database":
+        params["source"] = source
     response = safe_get(port, "variables", params)
     simplified = simplify_response(response)
     if isinstance(simplified, dict) and "error" not in simplified:
