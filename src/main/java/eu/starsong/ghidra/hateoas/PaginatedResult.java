@@ -99,7 +99,7 @@ public class PaginatedResult<T> {
         Response r = ctx != null
             ? Response.ok(ctx, port, resultItems)
             : Response.ok(resultItems);
-        return r.pagination(offset, limit, total, basePath);
+        return r.pagination(offset, limit, total, items.size(), basePath);
     }
 
     /**
@@ -116,28 +116,20 @@ public class PaginatedResult<T> {
 
     /**
      * Build pagination links map.
+     *
+     * <p>Delegates to the canonical pagination builder in {@link Response} so
+     * the self/next/prev rels, hrefs and the {@code offset + count < total}
+     * "next" rule have a single implementation, then returns just the links.
      */
+    @SuppressWarnings("unchecked")
     public Map<String, Object> links() {
-        Map<String, Object> links = new LinkedHashMap<>();
-
-        links.put("self", linkHref(basePath + "?offset=" + offset + "&limit=" + limit));
-
-        if (hasNext()) {
-            links.put("next", linkHref(basePath + "?offset=" + (offset + limit) + "&limit=" + limit));
-        }
-
-        if (hasPrev()) {
-            int prevOffset = Math.max(0, offset - limit);
-            links.put("prev", linkHref(basePath + "?offset=" + prevOffset + "&limit=" + limit));
-        }
-
-        return links;
-    }
-
-    private Map<String, Object> linkHref(String href) {
-        Map<String, Object> link = new LinkedHashMap<>();
-        link.put("href", href);
-        return link;
+        Map<String, Object> built = Response.ok()
+            .pagination(offset, limit, total, items.size(), basePath)
+            .build();
+        Object links = built.get("_links");
+        return links instanceof Map
+            ? (Map<String, Object>) links
+            : new LinkedHashMap<>();
     }
 
     @SuppressWarnings("unchecked")

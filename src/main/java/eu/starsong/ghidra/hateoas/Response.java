@@ -81,7 +81,7 @@ public class Response {
      * Add a self link.
      */
     public Response self(String href, Object... args) {
-        return link("self", format(href, args));
+        return link("self", LinkFormat.format(href, args));
     }
 
     /**
@@ -89,7 +89,7 @@ public class Response {
      */
     public Response link(String rel, String href, Object... args) {
         Map<String, Object> linkObj = new LinkedHashMap<>();
-        linkObj.put("href", format(href, args));
+        linkObj.put("href", LinkFormat.format(href, args));
         links.put(rel, linkObj);
         return this;
     }
@@ -115,15 +115,34 @@ public class Response {
 
     /**
      * Add pagination metadata and links.
+     *
+     * <p>Without an explicit page item count, the count is inferred from
+     * {@code offset}, {@code limit} and {@code total} so the "next" link is
+     * decided by the same {@code offset + pageCount < total} rule as
+     * {@link #pagination(int, int, int, int, String)}.
      */
     public Response pagination(int offset, int limit, int total, String basePath) {
+        int pageCount = Math.max(0, Math.min(limit, total - offset));
+        return pagination(offset, limit, total, pageCount, basePath);
+    }
+
+    /**
+     * Add pagination metadata and links. Single canonical implementation of the
+     * self/next/prev link and offset/limit/total metadata building, shared with
+     * {@link PaginatedResult}.
+     *
+     * @param pageCount the number of items actually on this page; the "next"
+     *                  link is emitted when {@code offset + pageCount < total},
+     *                  which is correct for a short final page.
+     */
+    Response pagination(int offset, int limit, int total, int pageCount, String basePath) {
         meta.put("offset", offset);
         meta.put("limit", limit);
         meta.put("total", total);
 
         self(basePath + "?offset=" + offset + "&limit=" + limit);
 
-        if (offset + limit < total) {
+        if (offset + pageCount < total) {
             link("next", basePath + "?offset=" + (offset + limit) + "&limit=" + limit);
         }
 
@@ -180,40 +199,5 @@ public class Response {
         meta.put("id", requestId);
         meta.put("instance", "http://localhost:" + port);
         meta.put("timestamp", System.currentTimeMillis());
-    }
-
-    private static String format(String template, Object... args) {
-        if (args == null || args.length == 0) {
-            return template;
-        }
-
-        StringBuilder result = new StringBuilder();
-        int argIndex = 0;
-        int i = 0;
-
-        while (i < template.length()) {
-            if (i < template.length() - 1 && template.charAt(i) == '{' && template.charAt(i + 1) == '}') {
-                if (argIndex < args.length) {
-                    result.append(args[argIndex++]);
-                } else {
-                    result.append("{}");
-                }
-                i += 2;
-            } else if (template.charAt(i) == '{') {
-                int end = template.indexOf('}', i);
-                if (end != -1 && argIndex < args.length) {
-                    result.append(args[argIndex++]);
-                    i = end + 1;
-                } else {
-                    result.append(template.charAt(i));
-                    i++;
-                }
-            } else {
-                result.append(template.charAt(i));
-                i++;
-            }
-        }
-
-        return result.toString();
     }
 }
