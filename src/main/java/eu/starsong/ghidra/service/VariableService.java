@@ -12,6 +12,7 @@ import ghidra.program.model.pcode.HighSymbol;
 import ghidra.program.model.symbol.Symbol;
 import ghidra.program.model.symbol.SymbolTable;
 import ghidra.program.model.symbol.SymbolType;
+import ghidra.util.Msg;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,7 +21,11 @@ import java.util.List;
 
 public class VariableService {
 
-    private static final int MAX_FUNCTIONS_PER_PAGE = 20;
+    // How many functions a single local-var page request will decompile-and-scan. The
+    // decompile cache makes re-scanning earlier functions on later pages cheap, so this
+    // can be generous; configurable for very large programs. Cross-program local-var
+    // enumeration is inherently bounded — a truncated scan is logged, not silent.
+    private static final int LOCAL_SCAN_BUDGET = Integer.getInteger("ghidra.mcp.localvar.scan", 100);
     private static final int DECOMPILE_TIMEOUT = 10;
 
     private final DecompilerService decompilerService;
@@ -112,7 +117,7 @@ public class VariableService {
         });
 
         for (Function function : allFunctions) {
-            if (functionsProcessed >= MAX_FUNCTIONS_PER_PAGE) break;
+            if (functionsProcessed >= LOCAL_SCAN_BUDGET) break;
             functionsProcessed++;
 
             HighFunction highFunc;
@@ -148,8 +153,12 @@ public class VariableService {
             }
             if (locals.size() >= needed) break;
         }
-        // More locals may exist only if functions remain unprocessed; filling the page
-        // does not by itself imply more (it previously over-reported a next page).
+        if (functionsProcessed >= LOCAL_SCAN_BUDGET && functionsProcessed < funcCount && locals.size() < needed) {
+            Msg.warn(this, "Local-variable scan stopped after " + LOCAL_SCAN_BUDGET + " functions (of "
+                + funcCount + "); page may be incomplete. Raise -Dghidra.mcp.localvar.scan to scan further.");
+        }
+        // More locals may exist if functions remain unprocessed (page filled early or scan
+        // budget hit); only false once every function has been scanned.
         boolean hasMore = functionsProcessed < funcCount;
         return new LocalCollectResult(locals, hasMore);
     }

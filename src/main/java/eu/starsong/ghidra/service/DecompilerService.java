@@ -2,13 +2,11 @@ package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.DecompileResultDto;
 import eu.starsong.ghidra.server.GhydraServer.NotFoundException;
-import ghidra.app.decompiler.DecompInterface;
+import eu.starsong.ghidra.util.DecompilerCache;
 import ghidra.app.decompiler.DecompileResults;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 import ghidra.program.model.pcode.HighFunction;
-import ghidra.util.Msg;
-import ghidra.util.task.ConsoleTaskMonitor;
 
 /**
  * Service for decompilation operations.
@@ -18,6 +16,7 @@ public class DecompilerService {
     private static final int DEFAULT_TIMEOUT = 60;
 
     private final FunctionService functionService;
+    private final DecompilerCache cache = new DecompilerCache();
 
     public DecompilerService(FunctionService functionService) {
         this.functionService = functionService;
@@ -72,42 +71,27 @@ public class DecompilerService {
         String functionName = function.getName();
         String functionAddress = function.getEntryPoint().toString();
 
-        DecompInterface decompiler = new DecompInterface();
-        try {
-            decompiler.openProgram(program);
+        DecompileResults results = cache.getDecompileResults(program, function, timeout);
 
-            DecompileResults results = decompiler.decompileFunction(
-                function,
-                timeout,
-                new ConsoleTaskMonitor()
-            );
-
-            if (!results.decompileCompleted()) {
-                String error = results.getErrorMessage();
-                if (error == null || error.isEmpty()) {
-                    error = "Decompilation did not complete";
-                }
-                return DecompileResultDto.failure(functionName, functionAddress, error);
+        if (results == null || !results.decompileCompleted()) {
+            String error = results != null ? results.getErrorMessage() : null;
+            if (error == null || error.isEmpty()) {
+                error = "Decompilation did not complete";
             }
-
-            HighFunction highFunction = results.getHighFunction();
-            if (highFunction == null) {
-                return DecompileResultDto.failure(functionName, functionAddress, "No high-level function available");
-            }
-
-            String decompilation = results.getDecompiledFunction().getC();
-            if (decompilation == null || decompilation.isEmpty()) {
-                return DecompileResultDto.failure(functionName, functionAddress, "Empty decompilation result");
-            }
-
-            return DecompileResultDto.success(functionName, functionAddress, decompilation);
-
-        } catch (Exception e) {
-            Msg.error(this, "Error decompiling function " + functionName, e);
-            return DecompileResultDto.failure(functionName, functionAddress, "Decompilation error: " + e.getMessage());
-        } finally {
-            decompiler.dispose();
+            return DecompileResultDto.failure(functionName, functionAddress, error);
         }
+
+        HighFunction highFunction = results.getHighFunction();
+        if (highFunction == null) {
+            return DecompileResultDto.failure(functionName, functionAddress, "No high-level function available");
+        }
+
+        String decompilation = results.getDecompiledFunction().getC();
+        if (decompilation == null || decompilation.isEmpty()) {
+            return DecompileResultDto.failure(functionName, functionAddress, "Empty decompilation result");
+        }
+
+        return DecompileResultDto.success(functionName, functionAddress, decompilation);
     }
 
     /**
@@ -115,27 +99,12 @@ public class DecompilerService {
      * This is useful for more advanced analysis.
      */
     public HighFunction getHighFunction(Program program, Function function, int timeout) {
-        DecompInterface decompiler = new DecompInterface();
-        try {
-            decompiler.openProgram(program);
+        DecompileResults results = cache.getDecompileResults(program, function, timeout);
+        return (results != null && results.decompileCompleted()) ? results.getHighFunction() : null;
+    }
 
-            DecompileResults results = decompiler.decompileFunction(
-                function,
-                timeout,
-                new ConsoleTaskMonitor()
-            );
-
-            if (!results.decompileCompleted()) {
-                return null;
-            }
-
-            return results.getHighFunction();
-
-        } catch (Exception e) {
-            Msg.error(this, "Error getting high function for " + function.getName(), e);
-            return null;
-        } finally {
-            decompiler.dispose();
-        }
+    /** Release the cached decompiler. Call on shutdown. */
+    public void dispose() {
+        cache.dispose();
     }
 }
