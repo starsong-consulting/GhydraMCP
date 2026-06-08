@@ -1,22 +1,16 @@
 package eu.starsong.ghidra.resource;
 
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
-import eu.starsong.ghidra.dto.XrefDto;
 import eu.starsong.ghidra.hateoas.Links;
 import eu.starsong.ghidra.hateoas.Paginator;
 import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.server.GhidraContext;
 import eu.starsong.ghidra.server.Resource;
-import eu.starsong.ghidra.service.DecompilerService;
-import eu.starsong.ghidra.service.FunctionService;
-import eu.starsong.ghidra.service.XrefService;
+import eu.starsong.ghidra.service.AnalysisService;
 import eu.starsong.ghidra.util.DataFlowUtil;
-import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.app.plugin.core.analysis.AutoAnalysisManager;
 import ghidra.program.model.address.Address;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Program;
 import ghidra.util.task.TaskMonitor;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -29,14 +23,14 @@ import java.util.*;
  */
 public class AnalysisResource implements Resource {
 
-    private final FunctionService functionService;
-    private final XrefService xrefService;
-    private final DecompilerService decompilerService;
+    private final AnalysisService analysisService;
 
     public AnalysisResource() {
-        this.functionService = new FunctionService();
-        this.xrefService = new XrefService();
-        this.decompilerService = new DecompilerService(functionService);
+        this.analysisService = new AnalysisService();
+    }
+
+    public AnalysisResource(AnalysisService analysisService) {
+        this.analysisService = analysisService;
     }
 
     @Override
@@ -110,9 +104,6 @@ public class AnalysisResource implements Resource {
         public Boolean background;
     }
 
-    private record CallGraphResult(Map<String, Object> data, String entryPoint) {
-    }
-
     /**
      * GET /analysis/callgraph - Get call graph for a function
      */
@@ -131,36 +122,7 @@ public class AnalysisResource implements Resource {
         final boolean byAddress = address != null && !address.isEmpty();
         final String lookup = byAddress ? address : name;
 
-        // The traversal dereferences live Function objects (FunctionSummaryDto.from,
-        // getEntryPoint, recursive xref walks). Run the whole read+build on the EDT.
-        CallGraphResult cg = GhidraSwing.runRead(() -> {
-            Function startFn = byAddress
-                ? functionService.requireFunctionByAddress(program, lookup)
-                : functionService.requireFunctionByName(program, lookup);
-
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("root", FunctionSummaryDto.from(startFn));
-            data.put("depth", depth);
-            data.put("direction", direction);
-
-            String entryPoint = startFn.getEntryPoint().toString();
-            Set<String> visited = new HashSet<>();
-            visited.add(entryPoint);
-
-            if ("callers".equals(direction) || "both".equals(direction)) {
-                List<Map<String, Object>> callers = buildCallTree(program, startFn, depth, true, visited);
-                data.put("callers", callers);
-            }
-
-            if ("callees".equals(direction) || "both".equals(direction)) {
-                visited.clear();
-                visited.add(entryPoint);
-                List<Map<String, Object>> callees = buildCallTree(program, startFn, depth, false, visited);
-                data.put("callees", callees);
-            }
-
-            return new CallGraphResult(data, entryPoint);
-        });
+        AnalysisService.CallGraphResult cg = analysisService.callGraph(program, byAddress, lookup, depth, direction);
 
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), cg.data())
             .self("/analysis/callgraph?address={}", cg.entryPoint())
@@ -177,25 +139,7 @@ public class AnalysisResource implements Resource {
         var program = ctx.requireProgram();
         String address = ctx.pathParam("address");
 
-        List<FunctionSummaryDto> callers = GhidraSwing.runRead(() -> {
-            functionService.requireFunctionByAddress(program, address);
-
-            List<XrefDto> callXrefs = xrefService.getCallsTo(program, address);
-
-            Set<String> seen = new HashSet<>();
-            List<FunctionSummaryDto> list = new ArrayList<>();
-
-            for (XrefDto xref : callXrefs) {
-                if (xref.fromFunctionAddress() != null && !seen.contains(xref.fromFunctionAddress())) {
-                    seen.add(xref.fromFunctionAddress());
-                    Function callerFn = functionService.findByAddress(program, xref.fromFunctionAddress());
-                    if (callerFn != null) {
-                        list.add(FunctionSummaryDto.from(callerFn));
-                    }
-                }
-            }
-            return list;
-        });
+        List<FunctionSummaryDto> callers = analysisService.callers(program, address);
 
         var result = Paginator.paginate(callers, ctx.pagination(), "/analysis/callers/" + address)
             .withItemLinks(f -> Links.builder()
@@ -217,25 +161,7 @@ public class AnalysisResource implements Resource {
         var program = ctx.requireProgram();
         String address = ctx.pathParam("address");
 
-        List<FunctionSummaryDto> callees = GhidraSwing.runRead(() -> {
-            functionService.requireFunctionByAddress(program, address);
-
-            List<XrefDto> callXrefs = xrefService.getCallsFrom(program, address);
-
-            Set<String> seen = new HashSet<>();
-            List<FunctionSummaryDto> list = new ArrayList<>();
-
-            for (XrefDto xref : callXrefs) {
-                if (xref.toFunctionAddress() != null && !seen.contains(xref.toFunctionAddress())) {
-                    seen.add(xref.toFunctionAddress());
-                    Function calleeFn = functionService.findByAddress(program, xref.toFunctionAddress());
-                    if (calleeFn != null) {
-                        list.add(FunctionSummaryDto.from(calleeFn));
-                    }
-                }
-            }
-            return list;
-        });
+        List<FunctionSummaryDto> callees = analysisService.callees(program, address);
 
         var result = Paginator.paginate(callees, ctx.pagination(), "/analysis/callees/" + address)
             .withItemLinks(f -> Links.builder()
@@ -248,46 +174,5 @@ public class AnalysisResource implements Resource {
             .link("function", "/functions/{}", address)
             .link("callgraph", "/analysis/callgraph?address={}", address)
             .build());
-    }
-
-    private List<Map<String, Object>> buildCallTree(Program program, Function fn, int depth, boolean callers, Set<String> visited) {
-        if (depth <= 0) {
-            return Collections.emptyList();
-        }
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        String addr = fn.getEntryPoint().toString();
-
-        List<XrefDto> xrefs = callers
-            ? xrefService.getCallsTo(program, addr)
-            : xrefService.getCallsFrom(program, addr);
-
-        for (XrefDto xref : xrefs) {
-            String targetAddr = callers ? xref.fromFunctionAddress() : xref.toFunctionAddress();
-            if (targetAddr == null || visited.contains(targetAddr)) {
-                continue;
-            }
-
-            Function targetFn = functionService.findByAddress(program, targetAddr);
-            if (targetFn == null) {
-                continue;
-            }
-
-            visited.add(targetAddr);
-
-            Map<String, Object> node = new LinkedHashMap<>();
-            node.put("function", FunctionSummaryDto.from(targetFn));
-
-            if (depth > 1) {
-                List<Map<String, Object>> children = buildCallTree(program, targetFn, depth - 1, callers, visited);
-                if (!children.isEmpty()) {
-                    node.put(callers ? "callers" : "callees", children);
-                }
-            }
-
-            result.add(node);
-        }
-
-        return result;
     }
 }
