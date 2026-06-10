@@ -37,22 +37,28 @@ def list_data(ctx, offset, limit, addr, name, name_contains, type):
     config = ctx.obj['config']
 
     try:
-        params = {
-            'offset': offset,
-            'limit': limit
-        }
-
         if addr:
-            params['addr'] = validate_address(addr)
-        if name:
-            params['name'] = name
-        if name_contains:
-            params['name_contains'] = name_contains
-        if type:
-            params['type'] = type
+            # Address lookup has its own route
+            response = client.get(f'data/{validate_address(addr)}')
+            result = response.get('result')
+            if isinstance(result, dict):
+                response['result'] = [result]
+            output = formatter.format_data_list(response)
+        else:
+            params = {
+                'offset': offset,
+                'limit': limit
+            }
+            # Server filters are label-based
+            if name:
+                params['label'] = name
+            if name_contains:
+                params['label_contains'] = name_contains
+            if type:
+                params['type'] = type
 
-        response = client.get('data', params=params)
-        output = formatter.format_data_list(response)
+            response = client.get('data', params=params)
+            output = formatter.format_data_list(response)
 
         if should_page(config, ctx.obj['output_json']):
             page_output(output, use_pager=config.page_output)
@@ -87,7 +93,7 @@ def search_data(ctx, name, type, offset, limit):
         params = {
             'offset': offset,
             'limit': limit,
-            'name_contains': name,
+            'label_contains': name,
         }
         if type:
             params['type'] = type
