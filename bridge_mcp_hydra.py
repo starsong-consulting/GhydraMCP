@@ -7,6 +7,7 @@
 # ///
 # GhydraMCP Bridge for Ghidra HATEOAS API - Optimized for MCP integration
 # Provides namespaced tools for interacting with Ghidra's reverse engineering capabilities
+import base64
 import functools
 import os
 import signal
@@ -183,9 +184,18 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
             timeout=request_timeout
         )
 
+        # Successful empty-body responses (204 No Content from DELETE) are real
+        # successes, not "non-JSON response" errors.
+        if response.ok and not response.text.strip():
+            return {
+                "success": True,
+                "status_code": response.status_code,
+                "timestamp": int(time.time() * 1000)
+            }
+
         try:
             parsed_json = response.json()
-            
+
             # Add timestamp if not present
             if isinstance(parsed_json, dict) and "timestamp" not in parsed_json:
                 parsed_json["timestamp"] = int(time.time() * 1000)
@@ -312,13 +322,25 @@ def format_error(response: dict) -> str:
     return "Error: Unknown error"
 
 
+def _list_total(response: dict, items: list) -> int:
+    """Total item count: the Javalin server nests it at meta.total; older builds
+    used top-level size. Fall back to the page length."""
+    meta = response.get("meta")
+    if isinstance(meta, dict):
+        if "total" in meta:
+            return meta["total"]
+        if "total_estimate" in meta:
+            return meta["total_estimate"]
+    return response.get("size", response.get("total_estimate", len(items)))
+
+
 def format_functions_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format function list as plain text table"""
     if not response.get("success", False):
         return format_error(response)
 
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Functions ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -376,11 +398,29 @@ def format_decompile(response: dict, **kwargs) -> str:
         return format_error(response)
 
     result = response.get("result", {})
-    code = result.get("ccode") or result.get("decompiled") or ""
+    # Javalin server sends "decompilation"; older builds used "ccode"/"decompiled".
+    code = result.get("decompilation") or result.get("ccode") or result.get("decompiled") or ""
+    # The DTO carries its own success flag for decompiler-level failures.
+    if not code and result.get("success") is False:
+        return f"Decompilation failed: {result.get('errorMessage', 'unknown error')}"
     message = result.get("message")
     suggested_timeout = result.get("suggested_timeout_seconds")
     retry_recommended = bool(result.get("retry_recommended"))
-    decompile_error = result.get("decompile_error")
+    decompile_error = result.get("decompile_error") or result.get("errorMessage")
+
+    # Line filtering happens client-side (the server returns the full function).
+    start_line = kwargs.get("start_line")
+    end_line = kwargs.get("end_line")
+    max_lines = kwargs.get("max_lines")
+    if code and (start_line or end_line or max_lines):
+        all_lines = code.splitlines()
+        total = len(all_lines)
+        s = max(1, start_line or 1)
+        e = min(end_line or total, total)
+        if max_lines:
+            e = min(e, s + max_lines - 1)
+        selected = all_lines[s - 1:e]
+        code = "\n".join([f"// lines {s}-{e} of {total}"] + selected)
 
     advisory_lines = []
     if retry_recommended:
@@ -459,7 +499,7 @@ def format_xrefs(response: dict, to_addr: str = None, from_addr: str = None, **k
     else:
         items = result if isinstance(result, list) else []
 
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
     target = to_addr or from_addr
 
     header = f"References"
@@ -472,19 +512,29 @@ def format_xrefs(response: dict, to_addr: str = None, from_addr: str = None, **k
 
     lines = [header]
     for xref in items:
-        from_a = xref.get("from_addr", "???")
+        # Server XrefDto uses fromAddress/toAddress/fromFunction; accept legacy names too.
+        from_a = xref.get("fromAddress") or xref.get("from_addr", "???")
+        to_a = xref.get("toAddress") or xref.get("to_addr", "")
         ref_type = xref.get("refType", "???")
-        from_func_obj = xref.get("from_function", {})
+        from_func_obj = xref.get("fromFunction") or xref.get("from_function") or ""
+        to_func_obj = xref.get("toFunction") or ""
 
-        # Extract function name if from_function is a dict
+        # Extract function name if it is a dict
         if isinstance(from_func_obj, dict):
             from_func = from_func_obj.get("name", "")
         else:
             from_func = from_func_obj or ""
+        to_func = to_func_obj.get("name", "") if isinstance(to_func_obj, dict) else (to_func_obj or "")
 
-        line = f"  {from_a}  {ref_type:<10}"
+        line = f"  {from_a}"
+        if from_addr and to_a:
+            # listing refs FROM an address: the target is the interesting part
+            line += f" -> {to_a}"
+        line += f"  {ref_type:<10}"
         if from_func:
             line += f"  from {from_func}"
+        if to_func and from_addr:
+            line += f"  to {to_func}"
         lines.append(line)
 
     return "\n".join(lines)
@@ -496,7 +546,7 @@ def format_strings(response: dict, offset: int = 0, **kwargs) -> str:
         return format_error(response)
 
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Strings ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -517,13 +567,13 @@ def format_data_list(response: dict, offset: int = 0, limit: int = 100, **kwargs
         return format_error(response)
 
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Data items ({offset+1}-{offset+len(items)} of {total}):", ""]
 
     for d in items:
         addr = d.get("address", "???")
-        label = d.get("name", "")
+        label = d.get("label") or d.get("name", "")  # DataDto field is 'label'
         dtype = d.get("dataType", "???")  # Java returns 'dataType' not 'type'
         value = d.get("value", "")
 
@@ -578,8 +628,6 @@ def format_instance_info(response: dict, **kwargs) -> str:
     project = response.get("project", "")
     lang = response.get("language", "")
     base = response.get("base_address", "")
-    analysis = "complete" if response.get("analysis_complete") else "incomplete"
-
     lines = [f"Instance :{port}"]
     if project:
         lines.append(f"Project:  {project}")
@@ -588,7 +636,13 @@ def format_instance_info(response: dict, **kwargs) -> str:
         lines.append(f"Language: {lang}")
     if base:
         lines.append(f"Base:     {base}")
-    lines.append(f"Analysis: {analysis}")
+    if response.get("function_count") is not None:
+        lines.append(f"Functions: {response['function_count']}")
+    if response.get("symbol_count") is not None:
+        lines.append(f"Symbols:  {response['symbol_count']}")
+    # /program does not report analysis state; only show it when actually present.
+    if "analysis_complete" in response:
+        lines.append(f"Analysis: {'complete' if response['analysis_complete'] else 'incomplete'}")
 
     return "\n".join(lines)
 
@@ -600,8 +654,10 @@ def format_memory(response: dict, **kwargs) -> str:
 
     result = response.get("result", response)
     addr = result.get("address", "???")
-    hex_bytes = result.get("hexBytes", "")
-    length = result.get("bytesRead", result.get("length", 0))
+    hex_bytes = result.get("hex") or result.get("hexBytes") or ""
+    if not hex_bytes and isinstance(result.get("bytes"), list):
+        hex_bytes = "".join(f"{b:02x}" for b in result["bytes"])
+    length = result.get("length", result.get("bytesRead", 0))
 
     lines = [f"Memory at {addr} ({length} bytes):"]
 
@@ -632,22 +688,37 @@ def format_variables(response: dict, **kwargs) -> str:
         return format_error(response)
 
     result = response.get("result", {})
-    fn_name = result.get("functionName", "???")
-    params = result.get("parameters", [])
-    locals_list = result.get("localVariables", [])
+
+    # Javalin server shape: {function: {name, address}, variables: [{name, type,
+    # isParameter, storage, source}]}. Older builds: functionName/parameters/localVariables.
+    fn = result.get("function")
+    if isinstance(fn, dict):
+        fn_name = fn.get("name", "???")
+        variables = result.get("variables", [])
+        params = [v for v in variables if v.get("isParameter")]
+        locals_list = [v for v in variables if not v.get("isParameter")]
+        type_key = "type"
+    else:
+        fn_name = result.get("functionName", "???")
+        params = result.get("parameters", [])
+        locals_list = result.get("localVariables", [])
+        type_key = "dataType"
 
     lines = [f"Variables for {fn_name}:"]
 
     if params:
         lines.append(f"\nParameters ({len(params)}):")
         for p in params:
-            lines.append(f"  {p.get('dataType', '?'):<20} {p.get('name', '?')}")
+            storage = p.get('storage', '')
+            lines.append(f"  {p.get(type_key, '?'):<20} {p.get('name', '?'):<20} {storage}")
 
     if locals_list:
         lines.append(f"\nLocal variables ({len(locals_list)}):")
         for v in locals_list:
             storage = v.get('storage', '')
-            lines.append(f"  {v.get('dataType', '?'):<20} {v.get('name', '?'):<20} {storage}")
+            source = v.get('source', '')
+            suffix = f"  [{source}]" if source == "decompiler" else ""
+            lines.append(f"  {v.get(type_key, '?'):<20} {v.get('name', '?'):<20} {storage}{suffix}")
 
     if not params and not locals_list:
         lines.append("  (no variables)")
@@ -661,64 +732,52 @@ def format_callgraph(response: dict, **kwargs) -> str:
         return format_error(response)
 
     result = response.get("result", {})
-    root_name = result.get("rootFunction") or result.get("root")
-    root_addr = result.get("rootAddress") or result.get("root_address")
-    nodes = result.get("nodes", [])
-    edges = result.get("edges", [])
-    if not isinstance(nodes, list):
-        nodes = []
-    if not isinstance(edges, list):
-        edges = []
 
-    id_to_name = {}
-    for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        node_id = node.get("id") or node.get("address")
-        node_name = node.get("name") or node_id
-        if node_id:
-            id_to_name[str(node_id)] = str(node_name)
+    # Server shape: {root: {name, address, ...}, depth, direction,
+    #                callers: [{function: {...}, callers: [...]}],
+    #                callees: [{function: {...}, callees: [...]}]}
+    root = result.get("root")
+    if not isinstance(root, dict):
+        return "No call graph data returned."
 
-    # Resolve root display and traversal ID across legacy/new schemas.
-    root_id = result.get("rootId") or root_addr or root_name
-    root_display = root_name or (id_to_name.get(str(root_id)) if root_id is not None else None) or str(root_id or "???")
-    if root_addr:
-        root_header = f"Call graph from {root_display} ({root_addr}):"
-    else:
-        root_header = f"Call graph from {root_display}:"
+    root_name = root.get("name", "???")
+    root_addr = root.get("address", "")
+    depth = result.get("depth", "?")
 
-    lines = [root_header, f"  {len(nodes)} functions, {len(edges)} calls", ""]
+    def render_tree(nodes, child_key, indent=1, budget=None):
+        if budget is None:
+            budget = [200]  # total line budget across the whole tree
+        out = []
+        if not isinstance(nodes, list):
+            return out
+        for node in nodes:
+            if budget[0] <= 0:
+                out.append(f"{'  ' * indent}...")
+                break
+            if not isinstance(node, dict):
+                continue
+            fn = node.get("function", {})
+            name = fn.get("name", "???")
+            addr = fn.get("address", "")
+            out.append(f"{'  ' * indent}{name}  {addr}")
+            budget[0] -= 1
+            out.extend(render_tree(node.get(child_key), child_key, indent + 1, budget))
+        return out
 
-    calls = {}
-    for edge in edges:
-        if not isinstance(edge, dict):
-            continue
-        caller = str(edge.get("from", ""))
-        callee = str(edge.get("to", ""))
-        if caller not in calls:
-            calls[caller] = []
-        calls[caller].append(callee)
+    lines = [f"Call graph for {root_name} ({root_addr}), depth {depth}:"]
 
-    def node_label(node_id: str) -> str:
-        return id_to_name.get(str(node_id), str(node_id))
+    callers = result.get("callers")
+    if callers is not None:
+        lines.append("")
+        lines.append(f"Callers ({len(callers)}):")
+        lines.extend(render_tree(callers, "callers") or ["  (none)"])
 
-    def show_calls(fn_id, indent=0, seen=None):
-        if seen is None:
-            seen = set()
-        fn_id = str(fn_id)
-        label = node_label(fn_id)
-        if fn_id in seen:
-            return [f"{'  ' * indent}{label} (recursive)"]
-        seen.add(fn_id)
-        result_lines = [f"{'  ' * indent}{label}"]
-        if fn_id in calls and indent < 3:
-            for callee in calls[fn_id][:10]:
-                result_lines.extend(show_calls(callee, indent + 1, seen.copy()))
-            if len(calls[fn_id]) > 10:
-                result_lines.append(f"{'  ' * (indent + 1)}... and {len(calls[fn_id]) - 10} more")
-        return result_lines
+    callees = result.get("callees")
+    if callees is not None:
+        lines.append("")
+        lines.append(f"Callees ({len(callees)}):")
+        lines.extend(render_tree(callees, "callees") or ["  (none)"])
 
-    lines.extend(show_calls(root_id if root_id is not None else "???"))
     return "\n".join(lines)
 
 
@@ -737,9 +796,13 @@ def format_dataflow(response: dict, **kwargs) -> str:
 
     for i, step in enumerate(steps, 1):
         addr = step.get("address", step.get("to", step.get("from", "???")))
-        type_str = step.get("type", step.get("refType", "???"))
-        desc = step.get("description", step.get("label", ""))
-        lines.append(f"  {i:>2}. {addr}  {type_str:<10}  {desc}")
+        # Server steps carry instruction text + containing function + reference list.
+        instr = step.get("instruction", step.get("description", step.get("label", "")))
+        fn = step.get("function", "")
+        fn_part = f"  [{fn}]" if fn else ""
+        lines.append(f"  {i:>2}. {addr}  {instr}{fn_part}")
+        for ref in step.get("references", [])[:8]:
+            lines.append(f"        {ref.get('type', '?'):<14} {ref.get('from', '?')} -> {ref.get('to', '?')}")
 
     return "\n".join(lines)
 
@@ -750,7 +813,7 @@ def format_structs_list(response: dict, offset: int = 0, **kwargs) -> str:
         return format_error(response)
 
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Structs ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -784,7 +847,7 @@ def format_struct_info(response: dict, **kwargs) -> str:
             foffset = f.get("offset", 0)
             fname = f.get("name", "???")
             ftype = f.get("type", "???")
-            fsize = f.get("size", "?")
+            fsize = f.get("length", f.get("size", "?"))  # StructFieldDto field is 'length'
             lines.append(f"  +{foffset:<4} {ftype:<20} {fname:<20} ({fsize} bytes)")
     else:
         lines.append("  (no fields)")
@@ -871,7 +934,7 @@ def format_generic_list(response: dict, **kwargs) -> str:
 def format_classes_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format classes list as text"""
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Classes ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -890,7 +953,7 @@ def format_classes_list(response: dict, offset: int = 0, limit: int = 100, **kwa
 def format_symbols_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format symbols list as text"""
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Symbols ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -909,7 +972,7 @@ def format_symbols_list(response: dict, offset: int = 0, limit: int = 100, **kwa
 def format_imports_exports(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format imports/exports list as text"""
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Entries ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -924,7 +987,7 @@ def format_imports_exports(response: dict, offset: int = 0, limit: int = 100, **
 def format_segments_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format segments list as text"""
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Segments ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -933,11 +996,12 @@ def format_segments_list(response: dict, offset: int = 0, limit: int = 100, **kw
         start = seg.get("start", "???")
         end = seg.get("end", "???")
         size = seg.get("size", 0)
+        # MemoryBlockDto serializes isRead/isWrite/isExecute/isInitialized.
         perms = ""
-        perms += "R" if seg.get("readable") else "-"
-        perms += "W" if seg.get("writable") else "-"
-        perms += "X" if seg.get("executable") else "-"
-        init = "init" if seg.get("initialized") else "uninit"
+        perms += "R" if seg.get("isRead", seg.get("readable")) else "-"
+        perms += "W" if seg.get("isWrite", seg.get("writable")) else "-"
+        perms += "X" if seg.get("isExecute", seg.get("executable")) else "-"
+        init = "init" if seg.get("isInitialized", seg.get("initialized")) else "uninit"
         lines.append(f"  {name:<16}  {start}-{end}  {size:>8} bytes  {perms}  {init}")
 
     return "\n".join(lines)
@@ -946,7 +1010,7 @@ def format_segments_list(response: dict, offset: int = 0, limit: int = 100, **kw
 def format_namespaces_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format namespaces list as text"""
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Namespaces ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -962,7 +1026,7 @@ def format_namespaces_list(response: dict, offset: int = 0, limit: int = 100, **
 def format_variables_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format variables list as text"""
     items = response.get("result", [])
-    total = response.get("size", response.get("total_estimate", len(items)))
+    total = _list_total(response, items)
 
     lines = [f"Variables ({offset+1}-{offset+len(items)} of ~{total}):", ""]
 
@@ -981,7 +1045,7 @@ def format_variables_list(response: dict, offset: int = 0, limit: int = 100, **k
 def format_datatypes_list(response: dict, offset: int = 0, limit: int = 100, **kwargs) -> str:
     """Format datatypes list as text"""
     items = response.get("result", [])
-    total = response.get("size", len(items))
+    total = _list_total(response, items)
 
     lines = [f"Data Types ({offset+1}-{offset+len(items)} of {total}):", ""]
 
@@ -1006,6 +1070,8 @@ FORMATTERS = {
     "functions_list": format_functions_list,
     "functions_get": format_function_info,
     "functions_get_containing": format_functions_list,
+    "functions_get_next": format_functions_list,
+    "functions_get_prev": format_functions_list,
     "functions_decompile": format_decompile,
     "functions_disassemble": format_disassembly,
     "functions_get_variables": format_variables,
@@ -1144,7 +1210,9 @@ def simplify_response(response: dict) -> dict:
                 result_copy.pop("instructions", None)
             
             # Special case for decompiled code - make sure it's directly accessible
-            if "ccode" in result_copy:
+            if "decompilation" in result_copy:
+                result_copy["decompiled_text"] = result_copy["decompilation"]
+            elif "ccode" in result_copy:
                 result_copy["decompiled_text"] = result_copy["ccode"]
             elif "decompiled" in result_copy:
                 result_copy["decompiled_text"] = result_copy["decompiled"]
@@ -1245,7 +1313,7 @@ def register_instance(port: int, url: str = None) -> str:
                                 # Get other metadata
                                 project_info["language_id"] = result.get("languageId", "")
                                 project_info["compiler_spec_id"] = result.get("compilerSpecId", "")
-                                project_info["image_base"] = result.get("image_base", "")
+                                project_info["image_base"] = result.get("imageBase", result.get("image_base", ""))
                                 
                                 # Store _links from result for HATEOAS navigation
                                 if "_links" in result:
@@ -1376,7 +1444,7 @@ def periodic_discovery():
                                             # Get other metadata
                                             info["language_id"] = result.get("languageId", "")
                                             info["compiler_spec_id"] = result.get("compilerSpecId", "")
-                                            info["image_base"] = result.get("image_base", "")
+                                            info["image_base"] = result.get("imageBase", result.get("image_base", ""))
                                 except Exception as e:
                                     print(f"Error parsing info endpoint during discovery: {e}", file=sys.stderr)
                         except Exception:
@@ -1430,6 +1498,7 @@ def ghidra_instance(port: int = None) -> dict:
             "timestamp": int(time.time() * 1000)
         }
     
+    stats = result.get("statistics") or {}
     instance_info = {
         "port": port,
         "url": get_instance_url(port),
@@ -1438,8 +1507,8 @@ def ghidra_instance(port: int = None) -> dict:
         "language": result.get("languageId", "unknown"),
         "compiler": result.get("compilerSpecId", "unknown"),
         "base_address": result.get("imageBase", "0x0"),
-        "memory_size": result.get("memorySize", 0),
-        "analysis_complete": result.get("analysisComplete", False)
+        "function_count": stats.get("functionCount"),
+        "symbol_count": stats.get("symbolCount")
     }
     
     # Add project information if available
@@ -1491,7 +1560,7 @@ def decompiled_function_by_address(port: int = None, address: str = None) -> str
     
     # Different endpoints may return the code in different fields, try all of them
     if isinstance(result, dict):
-        for key in ["decompiled_text", "ccode", "decompiled"]:
+        for key in ["decompiled_text", "decompilation", "ccode", "decompiled"]:
             if key in result:
                 return result[key]
     
@@ -1540,7 +1609,7 @@ def decompiled_function_by_name(port: int = None, name: str = None) -> str:
     
     # Different endpoints may return the code in different fields, try all of them
     if isinstance(result, dict):
-        for key in ["decompiled_text", "ccode", "decompiled"]:
+        for key in ["decompiled_text", "decompilation", "ccode", "decompiled"]:
             if key in result:
                 return result[key]
     
@@ -2612,40 +2681,46 @@ def memory_read(address: str, length: int = 16, format: str = "hex", segment: st
         }
 
     port = _get_instance_port(port)
-    
-    # Use query parameters instead of path parameters for more reliable handling
+
+    # GET /memory is the block list; the read endpoint is GET /memory/{address}.
     params = {
-        "address": address,
         "length": length,
         "format": format
     }
-    if segment:
-        params["segment"] = segment
+    if segment and ":" not in address:
+        address = f"{segment}:{address}"
 
-    response = safe_get(port, "memory", params)
+    response = safe_get(port, f"memory/{quote(address, safe=':')}", params)
     simplified = simplify_response(response)
-    
+
     # Ensure the result is simple and directly usable
     if "result" in simplified and isinstance(simplified["result"], dict):
         result = simplified["result"]
-        
-        # Pass through all representations of the bytes
+
         memory_info = {
-            "success": True, 
+            "success": True,
             "address": result.get("address", address),
-            "length": result.get("bytesRead", length),
+            "length": result.get("length", result.get("bytesRead", length)),
             "format": format,
             "timestamp": simplified.get("timestamp", int(time.time() * 1000))
         }
-        
-        # Include all the different byte representations
-        if "hexBytes" in result:
+
+        # Server sends "hex" (hex string) or "bytes" (int array); accept the
+        # legacy field names too for older plugin builds.
+        if "hex" in result:
+            memory_info["hexBytes"] = result["hex"]
+        elif "hexBytes" in result:
             memory_info["hexBytes"] = result["hexBytes"]
+        if "bytes" in result:
+            memory_info["bytes"] = result["bytes"]
         if "rawBytes" in result:
             memory_info["rawBytes"] = result["rawBytes"]
-            
+        if "block" in result:
+            memory_info["block"] = result["block"]
+            memory_info["permissions"] = result.get("permissions")
+
         return memory_info
-    
+
     return simplified
 
 @mcp.tool()
@@ -2683,12 +2758,35 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int =
         }
 
     port = _get_instance_port(port)
-    
+
+    # The server only understands hex (it strips non-hex chars from the payload,
+    # which would silently corrupt base64/string input). Convert client-side.
+    if format == "base64":
+        try:
+            bytes_data = base64.b64decode(bytes_data).hex()
+        except Exception as e:
+            return {
+                "success": False,
+                "error": {"code": "INVALID_BASE64", "message": f"Invalid base64 data: {e}"},
+                "timestamp": int(time.time() * 1000)
+            }
+    elif format == "string":
+        bytes_data = bytes_data.encode("utf-8").hex()
+    elif format == "hex":
+        cleaned = bytes_data.replace(" ", "")
+        if len(cleaned) % 2 != 0 or any(c not in "0123456789abcdefABCDEF" for c in cleaned):
+            return {
+                "success": False,
+                "error": {"code": "INVALID_HEX", "message": "bytes_data must be an even-length hex string"},
+                "timestamp": int(time.time() * 1000)
+            }
+        bytes_data = cleaned
+
     payload = {
         "bytes": bytes_data,
-        "format": format
+        "format": "hex"
     }
-    
+
     # Memory write is handled by ProgramEndpoints, not MemoryEndpoints
     response = safe_patch(port, f"programs/current/memory/{address}", payload)
     return simplify_response(response)
@@ -2803,16 +2901,26 @@ def data_list(offset: int = 0, limit: int = 100, addr: str = None,
     """
     port = _get_instance_port(port)
     
+    # Address lookup has its own route; the /data list filters are label-based.
+    if addr:
+        response = safe_get(port, f"data/{quote(addr)}", {})
+        simplified = simplify_response(response)
+        if isinstance(simplified, dict) and simplified.get("success") and "result" in simplified:
+            # normalize single item to a list so formatters keep working
+            if isinstance(simplified["result"], dict):
+                simplified["result"] = [simplified["result"]]
+            simplified.setdefault("size", len(simplified["result"]))
+        return simplified
+
     params = {
         "offset": offset,
         "limit": limit
     }
-    if addr:
-        params["addr"] = addr
+    # Server filters are label/label_contains; map the friendlier arg names.
     if name:
-        params["name"] = name
+        params["label"] = name
     if name_contains:
-        params["name_contains"] = name_contains
+        params["label_contains"] = name_contains
     if type:
         params["type"] = type
 
@@ -3245,15 +3353,24 @@ def analysis_get_callgraph(name: str = None, address: str = None, max_depth: int
     """
     port = _get_instance_port(port)
     
-    params = {"max_depth": max_depth}
-    
+    # Server reads "depth"; send both for compatibility with older builds.
+    params = {"depth": max_depth, "max_depth": max_depth}
+
     # Explicitly pass either name or address parameter based on what was provided
     if address:
         params["address"] = address
     elif name:
         params["name"] = name
-    # If neither is provided, the Java endpoint will use the entry point
-    
+    else:
+        return {
+            "success": False,
+            "error": {
+                "code": "MISSING_PARAMETER",
+                "message": "Either name or address parameter is required"
+            },
+            "timestamp": int(time.time() * 1000)
+        }
+
     response = safe_get(port, "analysis/callgraph", params)
     return simplify_response(response)
 
