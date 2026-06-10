@@ -40,14 +40,19 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
     private static final Object baseInstanceLock = new Object();
 
     private GhydraServer server;
+    private eu.starsong.ghidra.service.DecompilerService decompilerService;
     private int port;
     private boolean isBaseInstance = false;
 
     public GhydraPlugin(PluginTool tool) {
         super(tool);
 
-        this.port = GhydraServer.findAvailablePort(activeInstances);
-        activeInstances.put(port, this);
+        // Probe-and-claim atomically so two concurrently-constructed plugins
+        // can't both pick the same free port.
+        synchronized (activeInstances) {
+            this.port = GhydraServer.findAvailablePort(activeInstances);
+            activeInstances.put(port, this);
+        }
 
         synchronized (baseInstanceLock) {
             if (port == ApiConstants.DEFAULT_PORT || activeInstances.get(ApiConstants.DEFAULT_PORT) == null) {
@@ -66,9 +71,14 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
         try {
             server = new GhydraServer(tool, port, castActiveInstances(), isBaseInstance);
 
+            // One shared decompiler service per plugin instance: one native decompiler
+            // process + one program listener, disposed in dispose() below.
+            var functionService = new eu.starsong.ghidra.service.FunctionService();
+            decompilerService = new eu.starsong.ghidra.service.DecompilerService(functionService);
+
             server.register(
                 new RootResource(isBaseInstance),
-                new FunctionResource(),
+                new FunctionResource(functionService, decompilerService),
                 new SymbolResource(),
                 new DataResource(),
                 new MemoryResource(),
@@ -79,7 +89,7 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
                 new AnalysisResource(),
                 new StructResource(),
                 new DataTypeResource(),
-                new VariableResource(),
+                new VariableResource(new eu.starsong.ghidra.service.VariableService(decompilerService)),
                 new ClassResource(),
                 new NamespaceResource(),
                 new ProjectResource(),
@@ -107,11 +117,17 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
 
     @Override
     public void dispose() {
+        // Deregister first so /instances stops advertising a dying server.
+        activeInstances.remove(port);
         if (server != null) {
             server.stop();
             System.out.println("[GhydraMCP] HTTP server stopped on port " + port);
         }
-        activeInstances.remove(port);
+        if (decompilerService != null) {
+            // Kills the native decompiler process and removes the program listener.
+            decompilerService.dispose();
+            decompilerService = null;
+        }
         super.dispose();
     }
 

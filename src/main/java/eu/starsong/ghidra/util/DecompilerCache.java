@@ -54,17 +54,15 @@ public class DecompilerCache implements DomainObjectListener {
         if (function == null) {
             return null;
         }
-        ensureProgram(program);
-
-        Address entry = function.getEntryPoint();
-        DecompileResults cached = cache.get(entry);
-        if (cached != null) {
-            return cached;
-        }
-
+        // Everything (program check, cache lookup, decompile) runs under decompLock.
+        // A lock-free fast path raced program switches: thread A could read a cached
+        // result keyed by program A's address while thread B was mid-switch to program B,
+        // leaving the decompiler attached to a closed program (ClosedException in the field).
         decompLock.lock();
         try {
-            cached = cache.get(entry);
+            ensureProgram(program);
+            Address entry = function.getEntryPoint();
+            DecompileResults cached = cache.get(entry);
             if (cached != null) {
                 return cached;
             }
