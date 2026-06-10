@@ -43,11 +43,6 @@ public class DataResource implements Resource {
         app.patch("/data/{address}", ctx -> update(contextFactory.apply(ctx)));
         app.patch("/data/{address}/type", ctx -> setType(contextFactory.apply(ctx)));
         app.delete("/data/{address}", ctx -> clearAt(contextFactory.apply(ctx)));
-
-        // Legacy POST routes (bridge compatibility)
-        app.post("/data/update", ctx -> updateLegacy(contextFactory.apply(ctx)));
-        app.post("/data/type", ctx -> updateLegacy(contextFactory.apply(ctx)));
-        app.post("/data/delete", ctx -> clearAtLegacy(contextFactory.apply(ctx)));
     }
 
     private void list(GhidraContext ctx) {
@@ -77,8 +72,15 @@ public class DataResource implements Resource {
     private void listStrings(GhidraContext ctx) {
         var program = ctx.requireProgram();
         var pagination = ctx.pagination();
+        String filter = ctx.queryParam("filter");
 
         List<DataDto> strings = dataService.listStrings(program);
+        if (filter != null && !filter.isEmpty()) {
+            String lower = filter.toLowerCase();
+            strings = strings.stream()
+                .filter(d -> d.value() != null && d.value().toLowerCase().contains(lower))
+                .toList();
+        }
 
         var result = Paginator.paginate(strings, pagination, "/strings")
             .withItemLinks(d -> Links.builder()
@@ -120,6 +122,8 @@ public class DataResource implements Resource {
                 .self("/data/{}", address)
                 .link("data", "/data")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to set data type: " + e.getMessage(), e);
         }
@@ -139,6 +143,8 @@ public class DataResource implements Resource {
                 .self("/data/{}", address)
                 .link("data", "/data")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create data: " + e.getMessage(), e);
         }
@@ -156,6 +162,8 @@ public class DataResource implements Resource {
                 .link("data", "/data")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update data: " + e.getMessage(), e);
         }
@@ -179,27 +187,10 @@ public class DataResource implements Resource {
                 .link("data", "/data/{}", address)
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to set data type: " + e.getMessage(), e);
-        }
-    }
-
-    private void updateLegacy(GhidraContext ctx) {
-        var program = ctx.requireProgram();
-        UpdateRequest req = ctx.bodyAsClass(UpdateRequest.class);
-        if (req.address == null || req.address.isEmpty()) {
-            throw new IllegalArgumentException("address is required");
-        }
-        String newName = req.newName != null ? req.newName : req.name;
-        try {
-            DataService.UpdateResult result = dataService.update(program, req.address, newName, req.type);
-            ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
-                .self("/data/{}", req.address)
-                .link("data", "/data")
-                .link("program", "/program")
-                .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to update data: " + e.getMessage(), e);
         }
     }
 
@@ -212,23 +203,8 @@ public class DataResource implements Resource {
                 .link("data", "/data")
                 .link("program", "/program")
                 .build());
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to clear data: " + e.getMessage(), e);
-        }
-    }
-
-    private void clearAtLegacy(GhidraContext ctx) {
-        var program = ctx.requireProgram();
-        UpdateRequest req = ctx.bodyAsClass(UpdateRequest.class);
-        if (req.address == null || req.address.isEmpty()) {
-            throw new IllegalArgumentException("address is required");
-        }
-        try {
-            DataService.ClearResult result = dataService.clearAt(program, req.address);
-            ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
-                .link("data", "/data")
-                .link("program", "/program")
-                .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to clear data: " + e.getMessage(), e);
         }
@@ -240,7 +216,6 @@ public class DataResource implements Resource {
     }
 
     private static class UpdateRequest {
-        public String address;   // used by legacy POST routes
         public String name;      // RESTful name
         public String newName;   // legacy name
         public String type;      // optional new data type

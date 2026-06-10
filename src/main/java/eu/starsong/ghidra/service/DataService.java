@@ -181,6 +181,11 @@ public class DataService {
         if (dataType == null) {
             throw new IllegalArgumentException("Unknown data type: " + typeName);
         }
+        if (dataType.getLength() <= 0) {
+            // address.add(length - 1) below would wrap with a variable-length type
+            throw new IllegalArgumentException(
+                "Type '" + typeName + "' has no fixed length; cannot retype in place");
+        }
 
         return TransactionHelper.executeInTransaction(program, "Update data at " + addressStr, () -> {
             Listing listing = program.getListing();

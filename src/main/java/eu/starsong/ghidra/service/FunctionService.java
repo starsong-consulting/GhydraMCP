@@ -351,6 +351,8 @@ public class FunctionService {
         private String nameMatchesRegex;
         private Boolean isExternal;
         private Boolean isThunk;
+        private Long addrMin;
+        private Long addrMax;
 
         public FunctionFilter nameEquals(String name) {
             this.nameEquals = name;
@@ -385,7 +387,9 @@ public class FunctionService {
                 String nameContains,
                 String nameMatchesRegex,
                 String isExternal,
-                String isThunk) {
+                String isThunk,
+                String addrMin,
+                String addrMax) {
 
             FunctionFilter filter = new FunctionFilter();
 
@@ -404,8 +408,23 @@ public class FunctionService {
             if (isThunk != null && !isThunk.isEmpty()) {
                 filter.isThunk(Boolean.parseBoolean(isThunk));
             }
+            if (addrMin != null && !addrMin.isEmpty()) {
+                filter.addrMin = parseHexAddress(addrMin, "addr_min");
+            }
+            if (addrMax != null && !addrMax.isEmpty()) {
+                filter.addrMax = parseHexAddress(addrMax, "addr_max");
+            }
 
             return filter;
+        }
+
+        private static long parseHexAddress(String value, String paramName) {
+            String hex = value.startsWith("0x") || value.startsWith("0X") ? value.substring(2) : value;
+            try {
+                return Long.parseUnsignedLong(hex, 16);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid " + paramName + ": " + value);
+            }
         }
 
         Predicate<Function> toPredicate() {
@@ -427,6 +446,12 @@ public class FunctionService {
             }
             if (isThunk != null) {
                 predicates.add(fn -> fn.isThunk() == isThunk);
+            }
+            if (addrMin != null) {
+                predicates.add(fn -> Long.compareUnsigned(fn.getEntryPoint().getOffset(), addrMin) >= 0);
+            }
+            if (addrMax != null) {
+                predicates.add(fn -> Long.compareUnsigned(fn.getEntryPoint().getOffset(), addrMax) <= 0);
             }
 
             return predicates.stream().reduce(fn -> true, Predicate::and);

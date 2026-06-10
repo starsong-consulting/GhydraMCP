@@ -137,6 +137,9 @@ public class SymbolResource implements Resource {
         String address = ctx.pathParam("address");
 
         UpdateRequest request = ctx.bodyAsClass(UpdateRequest.class);
+        if (request.name == null || request.name.isEmpty()) {
+            throw new IllegalArgumentException("name is required");
+        }
 
         try {
             SymbolDto symbol = symbolService.rename(program, address, request.name);
@@ -145,6 +148,9 @@ public class SymbolResource implements Resource {
                 .self("/symbols/{}", address)
                 .link("symbols", "/symbols")
                 .build());
+
+        } catch (RuntimeException e) {
+            throw e;
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to update symbol: " + e.getMessage(), e);
@@ -161,6 +167,9 @@ public class SymbolResource implements Resource {
         try {
             symbolService.delete(program, address);
             ctx.status(204);
+
+        } catch (RuntimeException e) {
+            throw e;
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete symbol: " + e.getMessage(), e);
@@ -190,6 +199,9 @@ public class SymbolResource implements Resource {
                 .self("/symbols/{}", symbol.address())
                 .link("symbols", "/symbols")
                 .build());
+
+        } catch (RuntimeException e) {
+            throw e;
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to create symbol: " + e.getMessage(), e);

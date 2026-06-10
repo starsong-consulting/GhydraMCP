@@ -112,7 +112,8 @@ public class AnalysisResource implements Resource {
 
         String address = ctx.queryParam("address");
         String name = ctx.queryParam("name");
-        int depth = ctx.queryParamAsInt("depth", 2);
+        // `depth` is canonical; `max_depth` accepted for bridge/CLI compatibility.
+        int depth = ctx.queryParamAsInt("depth", ctx.queryParamAsInt("max_depth", 2));
         String direction = ctx.queryParam("direction", "both");
 
         if ((address == null || address.isEmpty()) && (name == null || name.isEmpty())) {

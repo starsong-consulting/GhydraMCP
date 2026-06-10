@@ -45,6 +45,8 @@ public class ProgramResource implements Resource {
                 .self("/programs/current/memory/{}", address)
                 .link("memory", "/memory/{}", address)
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to write memory: " + e.getMessage(), e);
         }

@@ -73,6 +73,11 @@ public class TransactionHelper {
         }
 
         if (exception.get() != null) {
+            // Keep user-input failures (bad type name, invalid body, ...) classified as 400
+            // instead of burying them in a checked TransactionException -> 500.
+            if (exception.get() instanceof IllegalArgumentException iae) {
+                throw iae;
+            }
             throw new TransactionException("Operation failed", exception.get());
         }
         return result.get();

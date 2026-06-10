@@ -42,8 +42,11 @@ public class MemoryResource implements Resource {
         var program = ctx.requireProgram();
         String address = ctx.pathParam("address");
         var pagination = ctx.pagination();
+        // long sum then clamp: offset has no upper bound, so int addition could overflow
+        // negative and turn into an unbounded instruction dump downstream.
+        int count = (int) Math.min((long) pagination.offset() + pagination.limit(), 100_000L);
         List<eu.starsong.ghidra.dto.DisassemblyInstructionDto> instructions =
-            memoryService.disassembleAt(program, address, pagination.offset() + pagination.limit());
+            memoryService.disassembleAt(program, address, count);
         var result = Paginator.paginate(instructions, pagination, "/memory/" + address + "/disassembly");
         ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("memory", "/memory/{}", address)
@@ -83,6 +86,8 @@ public class MemoryResource implements Resource {
                 .self("/memory/{}/comments/{}", address, type)
                 .link("memory", "/memory/{}", address)
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to set comment: " + e.getMessage(), e);
         }
@@ -120,6 +125,9 @@ public class MemoryResource implements Resource {
         int length = ctx.queryParamAsInt("length", 256);
         String format = ctx.queryParam("format", "hex");
 
+        if (length <= 0) {
+            throw new IllegalArgumentException("length must be positive");
+        }
         // Limit read size
         if (length > 4096) {
             length = 4096;
@@ -186,11 +194,21 @@ public class MemoryResource implements Resource {
 
     private byte[] hexStringToBytes(String hex) {
         hex = hex.replaceAll("\\s", "");
+        if (hex.isEmpty()) {
+            throw new IllegalArgumentException("pattern must not be empty");
+        }
+        if (hex.length() % 2 != 0) {
+            throw new IllegalArgumentException("pattern must have an even number of hex digits");
+        }
         int len = hex.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
-            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
-                + Character.digit(hex.charAt(i + 1), 16));
+            int hi = Character.digit(hex.charAt(i), 16);
+            int lo = Character.digit(hex.charAt(i + 1), 16);
+            if (hi < 0 || lo < 0) {
+                throw new IllegalArgumentException("pattern contains a non-hex character at position " + i);
+            }
+            data[i / 2] = (byte) ((hi << 4) + lo);
         }
         return data;
     }

@@ -42,15 +42,18 @@ public class XrefResource implements Resource {
         String toAddr = ctx.queryParam("to_addr");
         String fromAddr = ctx.queryParam("from_addr");
         String refType = ctx.queryParam("type");
-        int limit = ctx.queryParamAsInt("limit", 1000);
 
         if ((toAddr == null || toAddr.isEmpty()) && (fromAddr == null || fromAddr.isEmpty())) {
             throw new IllegalArgumentException("Either to_addr or from_addr query parameter is required");
         }
 
-        List<XrefDto> xrefs = xrefService.getReferences(program, toAddr, fromAddr, refType, limit);
+        // Collect enough refs to cover the requested page; collecting only `limit`
+        // made every offset >= limit return an empty page.
+        var pagination = ctx.pagination();
+        int budget = (int) Math.min((long) pagination.offset() + pagination.limit(), 100_000L);
+        List<XrefDto> xrefs = xrefService.getReferences(program, toAddr, fromAddr, refType, budget);
 
-        var result = Paginator.paginate(xrefs, ctx.pagination(), "/xrefs")
+        var result = Paginator.paginate(xrefs, pagination, "/xrefs")
             .withItemLinks(xref -> Links.builder()
                 .link("from", "/memory/{}", xref.fromAddress())
                 .link("to", "/memory/{}", xref.toAddress())

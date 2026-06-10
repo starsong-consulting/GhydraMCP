@@ -71,6 +71,8 @@ public class DataTypeResource implements Resource {
                 .link("datatypes", "/datatypes")
                 .link("struct", "/structs/{}", struct.name())
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create struct: " + e.getMessage(), e);
         }
@@ -87,6 +89,8 @@ public class DataTypeResource implements Resource {
                 .self("/datatypes/enum")
                 .link("datatypes", "/datatypes")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create enum: " + e.getMessage(), e);
         }
@@ -102,6 +106,8 @@ public class DataTypeResource implements Resource {
                 .self("/datatypes/union")
                 .link("datatypes", "/datatypes")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create union: " + e.getMessage(), e);
         }

@@ -153,6 +153,12 @@ public class GhydraServer {
             ctx.json(Response.error(ctx, port, "BAD_REQUEST", e.getMessage()).build());
         });
 
+        // Malformed request bodies (bodyAsClass) throw from Gson; that's client error, not 500.
+        app.exception(com.google.gson.JsonSyntaxException.class, (e, ctx) -> {
+            ctx.status(HttpStatus.BAD_REQUEST);
+            ctx.json(Response.error(ctx, port, "INVALID_JSON", "Malformed JSON body: " + e.getMessage()).build());
+        });
+
         app.exception(Exception.class, new ErrorHandler(port));
     }
 

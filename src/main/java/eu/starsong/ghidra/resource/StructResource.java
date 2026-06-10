@@ -100,6 +100,8 @@ public class StructResource implements Resource {
                 .link("structs", "/structs")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create struct: " + e.getMessage(), e);
         }
@@ -111,6 +113,8 @@ public class StructResource implements Resource {
         try {
             service.delete(program, name);
             ctx.status(204);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete struct: " + e.getMessage(), e);
         }
@@ -128,6 +132,8 @@ public class StructResource implements Resource {
                 .link("structs", "/structs")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete struct: " + e.getMessage(), e);
         }
@@ -147,6 +153,8 @@ public class StructResource implements Resource {
                 .link("structs", "/structs")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to add field: " + e.getMessage(), e);
         }
@@ -165,6 +173,8 @@ public class StructResource implements Resource {
                 .link("structs", "/structs")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to add field: " + e.getMessage(), e);
         }
@@ -196,6 +206,8 @@ public class StructResource implements Resource {
                 .link("structs", "/structs")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update field: " + e.getMessage(), e);
         }
@@ -227,6 +239,8 @@ public class StructResource implements Resource {
                 .link("structs", "/structs")
                 .link("program", "/program")
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update field: " + e.getMessage(), e);
         }
