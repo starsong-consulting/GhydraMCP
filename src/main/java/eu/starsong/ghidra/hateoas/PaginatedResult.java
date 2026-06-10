@@ -171,5 +171,9 @@ public class PaginatedResult<T> {
         }
     }
 
-    private static final Gson GSON = new Gson();
+    // LONG_OR_DOUBLE: without it, the fromJson(..., Map.class) round trip above
+    // turns every integral field into a Double ("size": 1024.0 in the output).
+    private static final Gson GSON = new com.google.gson.GsonBuilder()
+        .setObjectToNumberStrategy(com.google.gson.ToNumberPolicy.LONG_OR_DOUBLE)
+        .create();
 }

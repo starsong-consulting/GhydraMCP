@@ -112,9 +112,10 @@ public class AnalysisService {
      */
     public List<FunctionSummaryDto> callees(Program program, String address) {
         return GhidraSwing.runRead(() -> {
-            functionService.requireFunctionByAddress(program, address);
+            Function fn = functionService.requireFunctionByAddress(program, address);
 
-            List<XrefDto> callXrefs = xrefService.getCallsFrom(program, address);
+            // Calls are made from instructions inside the body, not the entry address.
+            List<XrefDto> callXrefs = xrefService.getCallsFromFunction(program, fn);
 
             Set<String> seen = new HashSet<>();
             List<FunctionSummaryDto> list = new ArrayList<>();
@@ -140,9 +141,11 @@ public class AnalysisService {
         List<Map<String, Object>> result = new ArrayList<>();
         String addr = fn.getEntryPoint().toString();
 
+        // Callers: refs TO the entry address. Callees: CALL refs from anywhere
+        // inside the body (the entry address itself almost never makes a call).
         List<XrefDto> xrefs = callers
             ? xrefService.getCallsTo(program, addr)
-            : xrefService.getCallsFrom(program, addr);
+            : xrefService.getCallsFromFunction(program, fn);
 
         for (XrefDto xref : xrefs) {
             String targetAddr = callers ? xref.fromFunctionAddress() : xref.toFunctionAddress();

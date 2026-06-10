@@ -111,4 +111,30 @@ public class XrefService {
             .filter(xref -> xref.refType().contains("CALL"))
             .toList();
     }
+
+    /**
+     * Get CALL references made anywhere inside a function's body.
+     *
+     * <p>{@link #getCallsFrom} only inspects a single address — almost never the
+     * instruction that makes the call — so callee discovery must scan the body.
+     */
+    public List<XrefDto> getCallsFromFunction(Program program, ghidra.program.model.listing.Function function) {
+        if (function == null) {
+            return List.of();
+        }
+        ReferenceManager refMgr = program.getReferenceManager();
+        return GhidraSwing.runRead(() -> {
+            List<XrefDto> calls = new ArrayList<>();
+            var sources = refMgr.getReferenceSourceIterator(function.getBody(), true);
+            while (sources.hasNext()) {
+                Address from = sources.next();
+                for (Reference ref : refMgr.getReferencesFrom(from)) {
+                    if (ref.getReferenceType().isCall()) {
+                        calls.add(XrefDto.from(ref, program));
+                    }
+                }
+            }
+            return calls;
+        });
+    }
 }
