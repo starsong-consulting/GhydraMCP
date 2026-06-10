@@ -244,29 +244,33 @@ public class GhidraUtil {
      * decompiler-generated locals (merged, de-duped by name).
      */
     public static List<Map<String, Object>> getFunctionVariables(Function function) {
-        List<Map<String, Object>> variables = new ArrayList<>();
-        if (function == null) return variables;
+        if (function == null) return new ArrayList<>();
 
-        for (Parameter param : function.getParameters()) {
-            Map<String, Object> varInfo = new HashMap<>();
-            varInfo.put("name", param.getName());
-            varInfo.put("type", param.getDataType().getName());
-            varInfo.put("isParameter", true);
-            varInfo.put("storage", param.getVariableStorage().toString());
-            varInfo.put("source", "database");
-            variables.add(varInfo);
-        }
-
-        for (Variable var : function.getAllVariables()) {
-            if (var instanceof Parameter) continue;
-            Map<String, Object> varInfo = new HashMap<>();
-            varInfo.put("name", var.getName());
-            varInfo.put("type", var.getDataType().getName());
-            varInfo.put("isParameter", false);
-            varInfo.put("storage", var.getVariableStorage().toString());
-            varInfo.put("source", "database");
-            variables.add(varInfo);
-        }
+        // DB-backed reads (parameters, stored locals) walk live DB records: marshal onto
+        // the EDT. The decompiler half below must stay OFF the EDT, hence the split.
+        List<Map<String, Object>> variables = GhidraSwing.runRead(() -> {
+            List<Map<String, Object>> dbVars = new ArrayList<>();
+            for (Parameter param : function.getParameters()) {
+                Map<String, Object> varInfo = new HashMap<>();
+                varInfo.put("name", param.getName());
+                varInfo.put("type", param.getDataType().getName());
+                varInfo.put("isParameter", true);
+                varInfo.put("storage", param.getVariableStorage().toString());
+                varInfo.put("source", "database");
+                dbVars.add(varInfo);
+            }
+            for (Variable var : function.getAllVariables()) {
+                if (var instanceof Parameter) continue;
+                Map<String, Object> varInfo = new HashMap<>();
+                varInfo.put("name", var.getName());
+                varInfo.put("type", var.getDataType().getName());
+                varInfo.put("isParameter", false);
+                varInfo.put("storage", var.getVariableStorage().toString());
+                varInfo.put("source", "database");
+                dbVars.add(varInfo);
+            }
+            return dbVars;
+        });
 
         DecompInterface decompiler = new DecompInterface();
         try {

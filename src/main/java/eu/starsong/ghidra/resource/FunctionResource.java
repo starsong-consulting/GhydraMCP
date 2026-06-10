@@ -78,8 +78,12 @@ public class FunctionResource implements Resource {
             } else {
                 fn = functionService.findPrev(program, beforeAddr);
             }
-            List<FunctionSummaryDto> single = fn != null
-                ? List.of(FunctionSummaryDto.from(fn)) : List.of();
+            // Building the DTO reads the stored signature/return type; keep it on the EDT.
+            final Function found = fn;
+            List<FunctionSummaryDto> single = found != null
+                ? List.of(GhidraSwing.runRead(() -> {
+                    return FunctionSummaryDto.from(found);
+                })) : List.of();
             var single_result = Paginator.paginate(single, pagination, "/functions")
                 .withItemLinks(s -> Links.builder()
                     .self("/functions/{}", s.address()).build());
@@ -92,7 +96,9 @@ public class FunctionResource implements Resource {
             ctx.queryParam("name_contains"),
             ctx.queryParam("name_matches_regex"),
             ctx.queryParam("is_external"),
-            ctx.queryParam("is_thunk")
+            ctx.queryParam("is_thunk"),
+            ctx.queryParam("addr_min"),
+            ctx.queryParam("addr_max")
         );
 
         List<FunctionSummaryDto> functions = functionService.list(program, filter);
@@ -198,7 +204,8 @@ public class FunctionResource implements Resource {
     }
 
     private void respondVariables(GhidraContext ctx, Function fn, String selfPath) {
-        // getFunctionVariables runs the decompiler internally — must NOT go on the EDT.
+        // getFunctionVariables splits internally: DB reads on the EDT, decompiler off it.
+        // Do NOT wrap this call in runRead (it would drag the decompiler onto the EDT).
         List<Map<String, Object>> vars = GhidraUtil.getFunctionVariables(fn);
         FunctionRef ref = GhidraSwing.runRead(() -> {
             return new FunctionRef(fn.getName(), fn.getEntryPoint().toString());
@@ -256,6 +263,8 @@ public class FunctionResource implements Resource {
         try {
             FunctionDto fn = applyUpdate(program, address, req);
             ctx.json(functionResponse(ctx, fn, address).build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update function: " + e.getMessage(), e);
         }
@@ -273,6 +282,8 @@ public class FunctionResource implements Resource {
                 .self("/functions/by-name/{}", updated.name())
                 .link("by_address", "/functions/{}", updated.address())
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to update function: " + e.getMessage(), e);
         }
@@ -298,6 +309,8 @@ public class FunctionResource implements Resource {
         try {
             functionService.delete(program, address);
             ctx.status(204);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete function: " + e.getMessage(), e);
         }
@@ -310,6 +323,8 @@ public class FunctionResource implements Resource {
         try {
             functionService.delete(program, fn.getEntryPoint().toString());
             ctx.status(204);
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to delete function: " + e.getMessage(), e);
         }
@@ -331,6 +346,8 @@ public class FunctionResource implements Resource {
                 .link("program", "/program")
                 .link("decompile", "/functions/{}/decompile", fn.address())
                 .build());
+        } catch (RuntimeException e) {
+            throw e;
         } catch (Exception e) {
             throw new RuntimeException("Failed to create function: " + e.getMessage(), e);
         }

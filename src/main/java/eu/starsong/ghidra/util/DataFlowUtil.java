@@ -25,6 +25,17 @@ public final class DataFlowUtil {
             Address startAddress,
             String direction,
             int maxSteps) {
+        // The traversal drains live ReferenceIterators; keep the whole bounded walk on the EDT.
+        return GhidraSwing.runRead(() -> {
+            return doAnalyzeReferenceFlow(program, startAddress, direction, maxSteps);
+        });
+    }
+
+    private static Map<String, Object> doAnalyzeReferenceFlow(
+            Program program,
+            Address startAddress,
+            String direction,
+            int maxSteps) {
 
         boolean forward = "forward".equals(direction);
         ReferenceManager referenceManager = program.getReferenceManager();
