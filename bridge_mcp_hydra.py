@@ -973,10 +973,8 @@ def format_symbols_list(response: dict, offset: int = 0, limit: int = 100, **kwa
         addr = s.get("address", "???")
         name = s.get("name", "???")
         stype = s.get("type", "")
-        namespace = s.get("namespace", "")
         primary = " *" if s.get("isPrimary") else ""
-        ns_str = f"  [{namespace}]" if namespace and namespace != "Global" else ""
-        lines.append(f"  {addr}  {stype:<12}  {name}{primary}{ns_str}")
+        lines.append(f"  {addr}  {stype:<12}  {name}{primary}")
 
     return "\n".join(lines)
 
@@ -1881,7 +1879,7 @@ def analyze_function_prompt(name: str | None = None, address: str | None = None,
     """A prompt to guide the LLM through analyzing a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with address)
         port: Specific Ghidra instance port (optional)
     """
@@ -1937,7 +1935,7 @@ def identify_vulnerabilities_prompt(name: str | None = None, address: str | None
     """A prompt to help identify potential vulnerabilities in a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with address)
         port: Specific Ghidra instance port (optional)
     """
@@ -2279,7 +2277,7 @@ def functions_get(name: str | None = None, address: str | None = None, port: int
     """Get detailed information about a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
         
@@ -2371,7 +2369,7 @@ def functions_decompile(name: str | None = None, address: str | None = None,
     """Get decompiled code for a function with optional line filtering and configurable options
 
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
         syntax_tree: Include syntax tree (default: False)
         style: Decompiler style (default: "normalize")
@@ -2439,7 +2437,7 @@ def functions_disassemble(name: str | None = None, address: str | None = None, o
     """Get disassembly for a function
 
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
         offset: Number of instructions to skip (default 0)
         limit: Maximum number of instructions per page (default 100, server max 1000).
@@ -2513,9 +2511,9 @@ def functions_rename(old_name: str | None = None, address: str | None = None, ne
     """Rename a function
     
     Args:
-        old_name: Current function name (mutually exclusive with address)
+        old_name: Current fully-qualified function name (e.g. "FOM::Read"; bare = global only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
-        new_name: New function name
+        new_name: New fully-qualified name; "A::B::foo" moves into namespace A::B (created if absent), a leading "::" or "Global::" moves to the global namespace, a bare name keeps the current namespace
         port: Specific Ghidra instance port (optional)
         
     Returns:
@@ -2551,7 +2549,7 @@ def functions_set_signature(name: str | None = None, address: str | None = None,
     """Set function signature/prototype
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
         signature: New function signature (e.g., "int func(char *data, int size)")
         port: Specific Ghidra instance port (optional)
@@ -2589,7 +2587,7 @@ def functions_delete(name: str | None = None, address: str | None = None, port: 
     """Delete a function
 
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
 
@@ -2671,7 +2669,7 @@ def functions_get_variables(name: str | None = None, address: str | None = None,
     """Get variables for a function
     
     Args:
-        name: Function name (mutually exclusive with address)
+        name: Function fully-qualified name (e.g. "FOM::Read"; a bare name matches the global namespace only), mutually exclusive with address
         address: Function address in hex format (mutually exclusive with name)
         port: Specific Ghidra instance port (optional)
         
@@ -3432,7 +3430,7 @@ def analysis_get_callgraph(name: str | None = None, address: str | None = None, 
     """Get function call graph visualization data
 
     Args:
-        name: Starting function name (mutually exclusive with address)
+        name: Starting function fully-qualified name (e.g. "FOM::Read"; bare = global only), mutually exclusive with address
         address: Starting function address (mutually exclusive with name)
         max_depth: Maximum call depth to analyze (default: 3). Increase for deeper call chains (e.g., 10-15 for complex functions)
         port: Specific Ghidra instance port (optional)
