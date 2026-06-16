@@ -95,6 +95,7 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
                 new NamespaceResource(),
                 new ProjectResource(),
                 new UiResource(),
+                new ScriptResource(),
                 new DevResource(port)
             );
 

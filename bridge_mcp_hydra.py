@@ -3821,6 +3821,62 @@ def programs_save(all: bool = False, port: int = None) -> dict:
     return simplify_response(response)
 
 
+# Script tools
+@mcp.tool()
+def scripts_list(port: int = None) -> dict:
+    """List Ghidra scripts available to run
+
+    Requires the server started with script execution enabled
+    (-Dghydra.dev.allowScripts=true or GHYDRA_ALLOW_SCRIPTS=1); otherwise returns 403.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: List of scripts with name, path, category
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_get(port, "scripts"))
+
+
+@mcp.tool()
+def scripts_run(name: str = None, source: str = None, args: list = None, port: int = None) -> dict:
+    """Run a Ghidra script: an existing one by name, or ad-hoc GhidraScript source
+
+    Use this for multi-stage or batch operations that would otherwise need many tool calls
+    (e.g. mass rename, signature transfer). Provide EITHER name OR source.
+
+    WARNING: this is arbitrary code execution. It requires the server started with
+    -Dghydra.dev.allowScripts=true (or GHYDRA_ALLOW_SCRIPTS=1); otherwise returns 403.
+
+    Args:
+        name: Name of an existing script (e.g. "MyScript.java")
+        source: Ad-hoc source: a full 'public class <Name> extends GhidraScript { public void
+            run() {...} }'. Use println(...) for output; currentProgram is the open program.
+        args: Optional list of string arguments (available via getScriptArgs()).
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: result with script, output (captured println text), success, error
+    """
+    if not name and not source:
+        return {
+            "success": False,
+            "error": {"code": "MISSING_PARAMETER", "message": "Either name or source is required"},
+            "timestamp": int(time.time() * 1000)
+        }
+
+    port = _get_instance_port(port)
+    payload = {}
+    if name:
+        payload["name"] = name
+    if source:
+        payload["source"] = source
+    if args:
+        payload["args"] = args
+    return simplify_response(safe_post(port, "scripts/run", payload))
+
+
 # ================= Analysis =================
 
 @mcp.tool()

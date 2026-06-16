@@ -768,6 +768,29 @@ Provides access to Ghidra's analysis results.
   }
   ```
 
+### 11. Scripts (gated)
+
+Run Ghidra scripts via the API, for multi-stage or batch operations (mass rename, signature transfer, etc.).
+
+**Disabled by default** because running a script is arbitrary code execution. Enable on the server with `-Dghydra.dev.allowScripts=true` or env `GHYDRA_ALLOW_SCRIPTS=1`; otherwise these return `403 SCRIPTS_DISABLED`. Only enable in a trusted/dev environment.
+
+- **`GET /scripts`**: List runnable scripts (name, path, category) from the enabled source directories.
+- **`POST /scripts/run`**: Run a script and return its captured output.
+  - Body (provide one of):
+    - `{ "name": "MyScript.java" }`: run an existing script by file name.
+    - `{ "source": "import ghidra.app.script.GhidraScript; public class X extends GhidraScript { public void run() throws Exception { println(\"hi\"); } }" }`: compile and run ad-hoc GhidraScript source (the class name must match; the file is written to the user script dir and removed after).
+    - `"args": ["a", "b"]` (optional): passed to the script (`getScriptArgs()`).
+  - Runs with the current program as `currentProgram`; use `println(...)` for output.
+  ```json
+  // Example Response
+  "result": {
+    "script": "X.java",
+    "output": "hi\n",
+    "success": true,
+    "error": null
+  }
+  ```
+
 ## Design Considerations for AI Usage
 
 - **Structured responses**: JSON format ensures predictable parsing by AI agents.
