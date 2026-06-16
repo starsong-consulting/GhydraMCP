@@ -96,7 +96,7 @@ public class VariableService {
         return GhidraSwing.runRead(() -> {
             List<VariableDto> result = new ArrayList<>();
             for (Function fn : program.getFunctionManager().getFunctions(true)) {
-                String fnName = fn.getName();
+                String fnName = fn.getName(true);
                 for (Variable v : fn.getAllVariables()) {
                     String name = v.getName();
                     if (lowerSearch != null && !name.toLowerCase().contains(lowerSearch)) continue;
@@ -147,9 +147,9 @@ public class VariableService {
             for (Symbol symbol : symbolTable.getDefinedSymbols()) {
                 if (!symbol.isGlobal() || symbol.isExternal()) continue;
                 if (symbol.getSymbolType() == SymbolType.FUNCTION || symbol.getSymbolType() == SymbolType.LABEL) continue;
-                if (lowerSearch != null && !symbol.getName().toLowerCase().contains(lowerSearch)) continue;
+                if (lowerSearch != null && !symbol.getName(true).toLowerCase().contains(lowerSearch)) continue;
                 result.add(VariableDto.global(
-                    symbol.getName(),
+                    symbol.getName(true),
                     symbol.getAddress().toString(),
                     getDataTypeName(program, symbol.getAddress())));
             }
@@ -206,7 +206,7 @@ public class VariableService {
                     sym.getName(),
                     pcAddr != null ? pcAddr.toString() : "N/A",
                     dt != null ? dt.getName() : "unknown",
-                    function.getName(),
+                    function.getName(true),
                     sym.isParameter()));
             }
             if (locals.size() >= needed) break;
