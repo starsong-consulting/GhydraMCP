@@ -31,13 +31,13 @@ public record XrefDto(
         if (program != null) {
             Function f = program.getFunctionManager().getFunctionContaining(ref.getFromAddress());
             if (f != null) {
-                fromFunc = f.getName();
+                fromFunc = f.getName(true);
                 fromFuncAddr = f.getEntryPoint().toString();
             }
 
             f = program.getFunctionManager().getFunctionContaining(ref.getToAddress());
             if (f != null) {
-                toFunc = f.getName();
+                toFunc = f.getName(true);
                 toFuncAddr = f.getEntryPoint().toString();
             }
         }
