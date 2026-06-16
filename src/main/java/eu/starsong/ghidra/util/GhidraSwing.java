@@ -42,15 +42,20 @@ public final class GhidraSwing {
     public static <T> T runRead(ReadOperation<T> operation) {
         AtomicReference<T> result = new AtomicReference<>();
         AtomicReference<RuntimeException> runtimeError = new AtomicReference<>();
-        AtomicReference<Exception> checkedError = new AtomicReference<>();
+        AtomicReference<Throwable> otherError = new AtomicReference<>();
 
         Runnable task = () -> {
             try {
                 result.set(operation.get());
             } catch (RuntimeException e) {
                 runtimeError.set(e);
-            } catch (Exception e) {
-                checkedError.set(e);
+            } catch (Throwable t) {
+                // Checked exceptions AND Errors. Notably StackOverflowError: Ghidra's own
+                // pointer-label resolution recurses without bound on a self-referential
+                // pointer (getLabelString -> getDynamicName -> getDefaultLabelPrefix -> ...).
+                // Capturing it here fails the request cleanly instead of letting the Error
+                // escape onto the EDT and into Ghidra's uncaught-exception handler.
+                otherError.set(t);
             }
         };
 
@@ -64,8 +69,10 @@ public final class GhidraSwing {
         if (runtimeError.get() != null) {
             throw runtimeError.get();
         }
-        if (checkedError.get() != null) {
-            throw new ReadException(checkedError.get().getMessage(), checkedError.get());
+        if (otherError.get() != null) {
+            Throwable t = otherError.get();
+            String msg = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+            throw new ReadException(msg, t);
         }
         return result.get();
     }

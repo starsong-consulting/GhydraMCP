@@ -11,24 +11,23 @@
     <includeBaseDirectory>false</includeBaseDirectory>
     
     <fileSets>
-        <!-- Copy extension files to GhydraMCP/ directory -->
+        <!-- Copy extension files to Ghydra/ directory -->
         <fileSet>
             <directory>src/main/resources</directory>
             <includes>
                 <include>extension.properties</include>
                 <include>Module.manifest</include>
             </includes>
-            <outputDirectory>GhydraMCP</outputDirectory>
+            <outputDirectory>Ghydra</outputDirectory>
         </fileSet>
     </fileSets>
     
-    <dependencySets>
-        <!-- Include the main project JAR as GhydraMCP.jar -->
-        <dependencySet>
-            <useProjectArtifact>true</useProjectArtifact>
-            <outputDirectory>GhydraMCP/lib</outputDirectory>
-            <outputFileNameMapping>GhydraMCP.jar</outputFileNameMapping>
-            <unpack>false</unpack>
-        </dependencySet>
-    </dependencySets>
+    <!-- The main jar is already shaded (includes Javalin/Jetty/Kotlin/SLF4J),
+         so lib/ only needs the single artifact. -->
+    <files>
+        <file>
+            <source>${project.build.directory}/Ghydra.jar</source>
+            <outputDirectory>Ghydra/lib</outputDirectory>
+        </file>
+    </files>
 </assembly>

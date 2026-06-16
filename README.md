@@ -122,7 +122,8 @@ GhydraMCP version 2.2.0 provides a comprehensive set of reverse engineering capa
 # Installation
 
 ## Prerequisites
-- Install [Ghidra](https://ghidra-sre.org)
+- [Ghidra](https://ghidra-sre.org) 12.x (built and tested against 12.1.2; the extension's `ghidraVersion` must match your Ghidra version exactly)
+- Java 21 (Temurin 21 recommended) for building the plugin
 - Python3
 - MCP [SDK](https://github.com/modelcontextprotocol/python-sdk)
 
@@ -132,14 +133,14 @@ First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/rel
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
 3. Click the `+` button
-4. Select the `GhydraMCP-[version].zip` file from the downloaded release
+4. Select the `Ghydra-[version].zip` file from the downloaded release
 5. Restart Ghidra
-6. Make sure the GhydraMCPPlugin is enabled in `File` -> `Configure` -> `Developer`
+6. Make sure the Ghydra plugin is enabled in `File` -> `Configure` -> `Developer`
 
 > **Note:** By default, the first CodeBrowser opened in Ghidra gets port 8192, the second gets 8193, and so on. You can check which ports are being used by looking at the Console in the Ghidra main (project) window - click the computer icon in the bottom right to "Open Console". Look for log entries like:
 > ```
-> (HydraMCPPlugin) Plugin loaded on port 8193
-> (HydraMCPPlugin) HydraMCP HTTP server started on port 8193
+> (GhydraPlugin) GhydraMCP loaded on port 8193
+> (GhydraServer) GhydraMCP HTTP server started on port 8193
 > ```
 >
 > GhydraMCP now includes auto-discovery of running Ghidra instances, so manually registering each instance is typically not necessary. The MCP bridge will automatically discover and register instances on startup and periodically check for new ones.
@@ -688,7 +689,14 @@ Tests the MCP bridge functionality:
 
 # Building from Source
 
-You can build different artifacts with Maven:
+You can build different artifacts with Maven. The build needs the Ghidra module
+jars: either set `GHIDRA_HOME` to your Ghidra install (recommended), or place the
+jars in `lib/`.
+
+```
+# Build against a specific Ghidra install (recommended)
+GHIDRA_HOME=/path/to/ghidra_12.1.2_PUBLIC mvn clean package
+```
 
 ## Build Everything (Default)
 Build both the Ghidra plugin and the complete package:
@@ -698,8 +706,12 @@ mvn clean package
 ```
 
 This creates:
-- `target/GhydraMCP-[version].zip` - The Ghidra plugin only
-- `target/GhydraMCP-Complete-[version].zip` - Complete package with plugin and bridge script
+- `target/Ghydra-[version].zip` - The Ghidra plugin only
+- `target/Ghydra-Complete-[version].zip` - Complete package with plugin and bridge script
+
+Install the plugin zip via Ghidra's `File` -> `Install Extensions` (first time);
+for later updates you can swap `lib/Ghydra.jar` in the installed extension and
+restart Ghidra.
 
 ## Build Ghidra Plugin Only
 If you only need the Ghidra plugin:
@@ -716,6 +728,6 @@ mvn clean package -P complete-only
 ```
 
 The Ghidra plugin includes these files required for Ghidra to recognize the extension:
-- lib/GhydraMCP.jar
+- lib/Ghydra.jar
 - extension.properties
 - Module.manifest

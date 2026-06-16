@@ -17,13 +17,14 @@ import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * LRU cache for DecompileResults keyed by function entry-point Address.
- * Keeps a single long-lived DecompInterface and reuses it across requests.
+ * LRU cache of {@link DecompileResults} keyed by function entry-point address, backed by a
+ * single long-lived {@link DecompInterface} that is reused across requests (re-opening the
+ * program per call is the expensive part of decompilation).
  *
- * Thread safety:
- * - Cache lookups are lock-free (synchronizedMap).
- * - Decompilation is serialized via decompLock (only one decompile at a time).
- * - Implements DomainObjectListener to invalidate on any program change.
+ * <p>Decompilation runs OFF the Swing/EDT thread — the decompiler manages its own threading,
+ * so callers must NOT wrap these calls in {@code GhidraSwing.runRead}. Concurrent decompiles
+ * are serialised via {@code decompLock}. The cache invalidates itself on any program change
+ * (so results are never stale after a rename/retype) and resets when the program switches.
  */
 public class DecompilerCache implements DomainObjectListener {
 
@@ -47,30 +48,24 @@ public class DecompilerCache implements DomainObjectListener {
     }
 
     /**
-     * Get cached DecompileResults for a function, decompiling on cache miss.
+     * Cached decompile of a function, decompiling on a miss.
      */
-    public DecompileResults getDecompileResults(Function function, int timeout) {
+    public DecompileResults getDecompileResults(Program program, Function function, int timeout) {
         if (function == null) {
             return null;
         }
-
-        Program program = function.getProgram();
-        ensureProgram(program);
-
-        Address entry = function.getEntryPoint();
-        DecompileResults cached = cache.get(entry);
-        if (cached != null) {
-            return cached;
-        }
-
+        // Everything (program check, cache lookup, decompile) runs under decompLock.
+        // A lock-free fast path raced program switches: thread A could read a cached
+        // result keyed by program A's address while thread B was mid-switch to program B,
+        // leaving the decompiler attached to a closed program (ClosedException in the field).
         decompLock.lock();
         try {
-            // Double-check after acquiring lock
-            cached = cache.get(entry);
+            ensureProgram(program);
+            Address entry = function.getEntryPoint();
+            DecompileResults cached = cache.get(entry);
             if (cached != null) {
                 return cached;
             }
-
             ensureDecompiler(program);
             DecompileResults results = decompiler.decompileFunction(function, timeout, TaskMonitor.DUMMY);
             if (results != null) {
@@ -85,37 +80,12 @@ public class DecompilerCache implements DomainObjectListener {
         }
     }
 
-    /**
-     * Convenience: get decompiled C code for a function.
-     */
-    public String getDecompiledCode(Function function, int timeout) {
-        DecompileResults results = getDecompileResults(function, timeout);
-        if (results != null && results.decompileCompleted()) {
-            return results.getDecompiledFunction().getC();
-        }
-        if (results != null) {
-            Msg.warn(this, "Decompilation did not complete for " + function.getName());
-        }
-        return null;
-    }
-
-    /**
-     * Invalidate a single function's cached results (e.g. after a variable rename).
-     */
+    /** Drop a single function's cached results. */
     public void invalidate(Address functionAddress) {
         cache.remove(functionAddress);
     }
 
-    /**
-     * Clear the entire cache.
-     */
-    public void clear() {
-        cache.clear();
-    }
-
-    /**
-     * Dispose the decompiler and unregister listener. Call on plugin shutdown.
-     */
+    /** Dispose the decompiler and unregister the listener. Call on shutdown. */
     public void dispose() {
         decompLock.lock();
         try {
@@ -130,26 +100,21 @@ public class DecompilerCache implements DomainObjectListener {
         }
     }
 
-    // --- DomainObjectListener ---
-
     @Override
     public void domainObjectChanged(DomainObjectChangedEvent ev) {
+        // Any program change can invalidate decompiled output; clear conservatively.
         cache.clear();
     }
-
-    // --- Internal ---
 
     private void ensureProgram(Program program) {
         if (program == currentProgram) {
             return;
         }
-
         decompLock.lock();
         try {
             if (program == currentProgram) {
                 return;
             }
-            // Program switched — tear down old state
             cache.clear();
             disposeDecompiler();
             if (currentProgram != null) {
@@ -170,7 +135,6 @@ public class DecompilerCache implements DomainObjectListener {
         }
         decompiler = new DecompInterface();
         DecompileOptions options = new DecompileOptions();
-        options.setEliminateUnreachable(true);
         options.grabFromProgram(program);
         decompiler.setOptions(options);
         decompiler.openProgram(program);
