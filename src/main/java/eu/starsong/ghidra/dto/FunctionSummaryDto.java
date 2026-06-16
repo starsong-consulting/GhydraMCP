@@ -22,7 +22,7 @@ public record FunctionSummaryDto(
         if (fn == null) return null;
 
         return new FunctionSummaryDto(
-            fn.getName(),
+            fn.getName(true),
             fn.getEntryPoint().toString(),
             fn.getSignature().getPrototypeString(),
             fn.getReturnType() != null ? fn.getReturnType().getName() : "undefined",

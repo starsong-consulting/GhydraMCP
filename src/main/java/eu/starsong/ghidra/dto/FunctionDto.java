@@ -16,7 +16,6 @@ public record FunctionDto(
     String signature,
     String returnType,
     String callingConvention,
-    String namespace,
     boolean isExternal,
     boolean isThunk,
     List<ParameterDto> parameters,
@@ -33,12 +32,11 @@ public record FunctionDto(
             .toList();
 
         return new FunctionDto(
-            fn.getName(),
+            fn.getName(true),
             fn.getEntryPoint().toString(),
             fn.getSignature().getPrototypeString(),
             fn.getReturnType() != null ? fn.getReturnType().getName() : "undefined",
             fn.getCallingConventionName(),
-            fn.getParentNamespace() != null ? fn.getParentNamespace().getName(true) : null,
             fn.isExternal(),
             fn.isThunk(),
             params,

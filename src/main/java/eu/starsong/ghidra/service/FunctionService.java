@@ -112,15 +112,7 @@ public class FunctionService {
      * Get the raw Ghidra Function by name.
      */
     public Function findByName(Program program, String name) {
-        return GhidraSwing.runRead(() -> {
-            FunctionIterator functions = program.getFunctionManager().getFunctions(true);
-            for (Function fn : functions) {
-                if (fn.getName().equals(name)) {
-                    return fn;
-                }
-            }
-            return null;
-        });
+        return GhidraSwing.runRead(() -> GhidraUtil.findFunctionByName(program, name));
     }
 
     /**
@@ -128,7 +120,9 @@ public class FunctionService {
      */
     public FunctionDto requireByName(Program program, String name) {
         return getByName(program, name)
-            .orElseThrow(() -> new NotFoundException("Function not found with name: " + name, "FUNCTION_NOT_FOUND"));
+            .orElseThrow(() -> new NotFoundException("Function not found by name: " + name
+                + " (a bare name matches the global namespace only; use the fully-qualified name, e.g. NS::"
+                + name + ", or filter with name_contains)", "FUNCTION_NOT_FOUND"));
     }
 
     /**
@@ -137,7 +131,9 @@ public class FunctionService {
     public Function requireFunctionByName(Program program, String name) {
         Function fn = findByName(program, name);
         if (fn == null) {
-            throw new NotFoundException("Function not found with name: " + name, "FUNCTION_NOT_FOUND");
+            throw new NotFoundException("Function not found by name: " + name
+                + " (a bare name matches the global namespace only; use the fully-qualified name, e.g. NS::"
+                + name + ", or filter with name_contains)", "FUNCTION_NOT_FOUND");
         }
         return fn;
     }
@@ -149,7 +145,7 @@ public class FunctionService {
         Function fn = requireFunctionByAddress(program, addressStr);
 
         TransactionHelper.executeInTransaction(program, "Rename Function", () -> {
-            fn.setName(newName, SourceType.USER_DEFINED);
+            GhidraUtil.applyQualifiedName(program, fn.getSymbol(), newName, SourceType.USER_DEFINED);
             return null;
         });
 
@@ -300,6 +296,10 @@ public class FunctionService {
      */
     public boolean updateLocalVariable(Program program, Function function, String variableName,
                                        String newName, String newDataTypeName) throws Exception {
+        if (newName != null && newName.contains("::")) {
+            throw new IllegalArgumentException(
+                "Local variable names cannot contain '::' (local variables are not namespaced)");
+        }
         DecompileResults decompResults;
         DecompInterface decomp = new DecompInterface();
         try {
@@ -431,15 +431,15 @@ public class FunctionService {
             List<Predicate<Function>> predicates = new ArrayList<>();
 
             if (nameEquals != null) {
-                predicates.add(fn -> fn.getName().equals(nameEquals));
+                predicates.add(fn -> fn.getName(true).equals(nameEquals));
             }
             if (nameContains != null) {
                 String lower = nameContains.toLowerCase();
-                predicates.add(fn -> fn.getName().toLowerCase().contains(lower));
+                predicates.add(fn -> fn.getName(true).toLowerCase().contains(lower));
             }
             if (nameMatchesRegex != null) {
                 Pattern pattern = Pattern.compile(nameMatchesRegex);
-                predicates.add(fn -> pattern.matcher(fn.getName()).matches());
+                predicates.add(fn -> pattern.matcher(fn.getName(true)).matches());
             }
             if (isExternal != null) {
                 predicates.add(fn -> fn.isExternal() == isExternal);
