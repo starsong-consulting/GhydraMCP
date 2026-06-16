@@ -39,9 +39,12 @@ public class Links {
     }
 
     /**
-     * Add a named link with HTTP method.
+     * Add a named link with an HTTP method (for non-GET actions like POST/DELETE).
+     * Distinct name from link() on purpose: a String method arg used to win overload
+     * resolution over link(rel, href, Object...), so link("fields", "/s/{}/f", name)
+     * left "{}" literal and put the name in "method".
      */
-    public Links link(String rel, String href, String method, Object... args) {
+    public Links linkWithMethod(String rel, String href, String method, Object... args) {
         Map<String, Object> linkObj = new LinkedHashMap<>();
         linkObj.put("href", LinkFormat.format(href, args));
         linkObj.put("method", method);

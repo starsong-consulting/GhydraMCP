@@ -67,7 +67,7 @@ public class SymbolResource implements Resource {
             .link("program", "/program")
             .link("imports", "/symbols/imports")
             .link("exports", "/symbols/exports")
-            .link("create", "/symbols", "POST")
+            .linkWithMethod("create", "/symbols", "POST")
             .build());
     }
 

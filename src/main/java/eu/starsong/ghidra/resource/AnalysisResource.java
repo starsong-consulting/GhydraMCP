@@ -51,7 +51,7 @@ public class AnalysisResource implements Resource {
         result.put("isAnalyzing", am.isAnalyzing());
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
             .self("/analysis/status")
-            .link("run", "/analysis/run", "POST")
+            .linkWithMethod("run", "/analysis/run", "POST")
             .link("program", "/program")
             .build());
     }

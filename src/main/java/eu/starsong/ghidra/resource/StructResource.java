@@ -64,13 +64,13 @@ public class StructResource implements Resource {
         var result = Paginator.paginate(structs, pagination, "/structs")
             .withItemLinks(s -> Links.builder()
                 .self("/structs/{}", s.name())
-                .link("delete", "/structs/{}", "DELETE", s.name())
+                .linkWithMethod("delete", "/structs/{}", "DELETE", s.name())
                 .link("fields", "/structs/{}/fields", s.name())
                 .build());
 
         ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
-            .link("create", "/structs", "POST")
+            .linkWithMethod("create", "/structs", "POST")
             .build());
     }
 
@@ -82,8 +82,8 @@ public class StructResource implements Resource {
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), struct)
             .self("/structs/{}", name)
             .link("structs", "/structs")
-            .link("delete", "/structs/{}", "DELETE", name)
-            .link("add_field", "/structs/{}/fields", "POST", name)
+            .linkWithMethod("delete", "/structs/{}", "DELETE", name)
+            .linkWithMethod("add_field", "/structs/{}/fields", "POST", name)
             .link("program", "/program")
             .build());
     }

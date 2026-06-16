@@ -95,11 +95,16 @@ public class Response {
     }
 
     /**
-     * Add a named link with HTTP method.
+     * Add a named link with an HTTP method (for non-GET actions like POST/DELETE).
+     * Distinct name from link() on purpose: link(rel, href, String) used to win
+     * overload resolution over link(rel, href, Object...) for a single String arg,
+     * so templated links like link("fn", "/functions/{}", addr) emitted a literal
+     * "{}" href with the address dumped into "method". The href is templated here too,
+     * so action links such as "/structs/{}" substitute correctly.
      */
-    public Response link(String rel, String href, String method) {
+    public Response linkWithMethod(String rel, String href, String method, Object... args) {
         Map<String, Object> linkObj = new LinkedHashMap<>();
-        linkObj.put("href", href);
+        linkObj.put("href", LinkFormat.format(href, args));
         linkObj.put("method", method);
         links.put(rel, linkObj);
         return this;

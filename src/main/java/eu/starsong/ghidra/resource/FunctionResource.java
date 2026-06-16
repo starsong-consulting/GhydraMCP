@@ -110,7 +110,7 @@ public class FunctionResource implements Resource {
 
         ctx.json(result.toResponse(ctx.ctx(), ctx.port())
             .link("program", "/program")
-            .link("create", "/functions", "POST")
+            .linkWithMethod("create", "/functions", "POST")
             .build());
     }
 
