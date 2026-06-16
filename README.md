@@ -122,18 +122,18 @@ GhydraMCP version 2.2.0 provides a comprehensive set of reverse engineering capa
 # Installation
 
 ## Prerequisites
-- [Ghidra](https://ghidra-sre.org) 12.x (built and tested against 12.1.2; the extension's `ghidraVersion` must match your Ghidra version exactly)
+- [Ghidra](https://ghidra-sre.org) 11.x or 12.x. Releases ship a separate build per Ghidra version; the extension's `ghidraVersion` must match your Ghidra version exactly.
 - Java 21 (Temurin 21 recommended) for building the plugin
 - Python3
 - MCP [SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## Ghidra
-First, download the latest [release](https://github.com/teal-bauer/GhydraMCP/releases) from this repository. The "Complete" artifact contains the zipped Ghidra plugin and the Python MCP bridge. Unpack the outer archive, then, add the plugin to Ghidra:
+First, download the latest [release](https://github.com/starsong-consulting/GhydraMCP/releases) from this repository. The "Complete" artifact contains the zipped Ghidra plugin and the Python MCP bridge. Unpack the outer archive, then, add the plugin to Ghidra:
 
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
 3. Click the `+` button
-4. Select the `Ghydra-[version].zip` file from the downloaded release
+4. Select the `Ghydra-*-ghidra<version>.zip` that matches your Ghidra version (e.g. `...-ghidra12.1.2.zip` for Ghidra 12.1.2)
 5. Restart Ghidra
 6. Make sure the Ghydra plugin is enabled in `File` -> `Configure` -> `Developer`
 
@@ -694,9 +694,13 @@ jars: either set `GHIDRA_HOME` to your Ghidra install (recommended), or place th
 jars in `lib/`.
 
 ```
-# Build against a specific Ghidra install (recommended)
-GHIDRA_HOME=/path/to/ghidra_12.1.2_PUBLIC mvn clean package
+# Build against a specific Ghidra install (recommended). Works for 11.x or 12.x.
+# -Dghidra.version stamps the extension's ghidraVersion (must match the install).
+GHIDRA_HOME=/path/to/ghidra_12.1.2_PUBLIC mvn clean package -Dghidra.version=12.1.2
 ```
+
+CI builds a matrix over the latest Ghidra 11.x and 12.x and attaches a per-version
+plugin zip to each release.
 
 ## Build Everything (Default)
 Build both the Ghidra plugin and the complete package:
