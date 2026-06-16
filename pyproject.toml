@@ -1,6 +1,6 @@
 [project]
 name = "ghydramcp"
-version = "2.2.0"
+version = "3.0.0-beta"
 description = "Multi-instance Ghidra plugin with HATEOAS REST API and MCP bridge for AI-assisted reverse engineering, binary analysis, and decompilation"
 readme = "README.md"
 requires-python = ">=3.11"
