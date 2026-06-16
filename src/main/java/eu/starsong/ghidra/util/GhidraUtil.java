@@ -2,6 +2,8 @@ package eu.starsong.ghidra.util;
 
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileResults;
+import ghidra.app.util.NamespaceUtils;
+import ghidra.app.util.SymbolPath;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressFactory;
 import ghidra.program.model.address.AddressSpace;
@@ -15,7 +17,11 @@ import ghidra.program.model.listing.Variable;
 import ghidra.program.model.mem.Memory;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.pcode.HighFunction;
+import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.SourceType;
+import ghidra.program.model.symbol.Symbol;
+import ghidra.program.model.symbol.SymbolTable;
+import ghidra.program.model.symbol.SymbolType;
 import ghidra.util.Msg;
 import ghidra.util.task.TaskMonitor;
 
@@ -30,6 +36,90 @@ import java.util.regex.Pattern;
 public class GhidraUtil {
 
     static final Pattern ARRAY_TYPE_PATTERN = Pattern.compile("^(.*)\\[(\\d+)\\]$");
+
+    /**
+     * Find a function by bare-or-fully-qualified name. A bare name (no "::")
+     * resolves against the GLOBAL namespace only (Ghidra's SymbolPath semantics);
+     * a qualified name (e.g. "FOM::Read") resolves within that namespace. Returns
+     * the first matching FUNCTION symbol, or null. Wrap calls in GhidraSwing.runRead.
+     */
+    public static Function findFunctionByName(Program program, String name) {
+        if (program == null || name == null || name.isEmpty()) {
+            return null;
+        }
+        List<Symbol> symbols = NamespaceUtils.getSymbols(new SymbolPath(name), program, false);
+        for (Symbol s : symbols) {
+            if (s.getSymbolType() == SymbolType.FUNCTION) {
+                return (Function) s.getObject();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Apply a bare-or-qualified name to an existing symbol. Call inside a transaction.
+     *   "foo"          -> rename leaf, keep current namespace
+     *   "A::B::foo"    -> create A::B under global if absent, then move + rename (atomic)
+     *   "::foo"        -> move to global (leading "::" = global root)
+     *   "Global::foo"  -> same as "::foo" (detected here; SymbolPath would otherwise collapse it)
+     *   "::A::foo"     -> strip the leading "::", then behaves like "A::foo"
+     */
+    public static void applyQualifiedName(Program program, Symbol symbol, String newName, SourceType src)
+            throws Exception {
+        String raw = newName == null ? "" : newName.trim();
+        boolean forceGlobal = false;
+        if (raw.startsWith("::")) {
+            forceGlobal = true;
+            raw = raw.substring(2).trim();
+        } else if (raw.regionMatches(true, 0, "Global::", 0, 8)) {
+            forceGlobal = true;
+            raw = raw.substring(8).trim();
+        }
+        if (raw.isEmpty()) {
+            throw new IllegalArgumentException("Empty symbol name");
+        }
+
+        SymbolPath path = new SymbolPath(raw);
+        String parent = path.getParentPath();
+        Namespace root = program.getGlobalNamespace();
+
+        if (parent != null) {
+            Namespace ns = NamespaceUtils.createNamespaceHierarchy(parent, root, program, src);
+            symbol.setNameAndNamespace(path.getName(), ns, src);
+        } else if (forceGlobal) {
+            symbol.setNameAndNamespace(path.getName(), root, src);
+        } else {
+            symbol.setName(path.getName(), src);
+        }
+    }
+
+    /**
+     * Create a label honoring a bare-or-qualified name. Call inside a transaction.
+     * A bare name creates the label in the global namespace (a brand-new label has
+     * no "current" namespace); a qualified name creates the namespace hierarchy and
+     * places the label there. A leading "::"/"Global::" is stripped (equivalent to bare).
+     */
+    public static Symbol createLabelWithName(Program program, Address address, String newName, SourceType src)
+            throws Exception {
+        String raw = newName == null ? "" : newName.trim();
+        if (raw.startsWith("::")) {
+            raw = raw.substring(2).trim();
+        } else if (raw.regionMatches(true, 0, "Global::", 0, 8)) {
+            raw = raw.substring(8).trim();
+        }
+        if (raw.isEmpty()) {
+            throw new IllegalArgumentException("Empty symbol name");
+        }
+
+        SymbolPath path = new SymbolPath(raw);
+        String parent = path.getParentPath();
+        SymbolTable st = program.getSymbolTable();
+        if (parent == null) {
+            return st.createLabel(address, path.getName(), src);
+        }
+        Namespace ns = NamespaceUtils.createNamespaceHierarchy(parent, program.getGlobalNamespace(), program, src);
+        return st.createLabel(address, path.getName(), ns, src);
+    }
 
     /**
      * Resolve an address string. Accepts direct parse, implicit hex prefix for bare hex-looking
