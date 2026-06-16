@@ -173,15 +173,20 @@ class TableFormatter(BaseFormatter):
         """Format memory as hex dump."""
         result = data.get("result", {})
         addr = result.get("address", "???")
-        hex_bytes = result.get("hexBytes", "")
+        # Javalin server sends "hex" (continuous string); older builds sent
+        # "hexBytes" (space-separated pairs).
+        hex_bytes = result.get("hex") or result.get("hexBytes") or ""
 
         if not hex_bytes:
             return self._capture("[red]No memory data available[/red]")
 
         lines = [f"[cyan]Memory at 0x{addr}:[/cyan]\n"]
 
-        # hexBytes comes as space-separated pairs: "48 83 EC 28..."
-        byte_pairs = hex_bytes.split()
+        if " " in hex_bytes.strip():
+            byte_pairs = hex_bytes.split()
+        else:
+            cleaned = hex_bytes.strip()
+            byte_pairs = [cleaned[i:i+2] for i in range(0, len(cleaned), 2)]
 
         for i in range(0, len(byte_pairs), 16):
             chunk = byte_pairs[i:i+16]
@@ -220,12 +225,13 @@ class TableFormatter(BaseFormatter):
         table.add_column("From Function", style="dim")
 
         for xref in references:
-            from_func = ""
-            if isinstance(xref.get("from_function"), dict):
+            # XrefDto uses fromAddress/toAddress/fromFunction; accept legacy names.
+            from_func = xref.get("fromFunction") or ""
+            if not from_func and isinstance(xref.get("from_function"), dict):
                 from_func = xref["from_function"].get("name", "")
             table.add_row(
-                xref.get("from_addr", "?"),
-                xref.get("to_addr", "?"),
+                xref.get("fromAddress") or xref.get("from_addr", "?"),
+                xref.get("toAddress") or xref.get("to_addr", "?"),
                 xref.get("refType", "?"),
                 from_func
             )
@@ -252,7 +258,7 @@ class TableFormatter(BaseFormatter):
 
             table.add_row(
                 item.get("address", "?"),
-                item.get("name", ""),
+                item.get("label") or item.get("name", ""),  # DataDto field is 'label'
                 item.get("dataType", "?"),
                 str(value)
             )
@@ -443,11 +449,12 @@ class TableFormatter(BaseFormatter):
         table.add_column("Init", style="dim")
 
         for seg in result:
+            # MemoryBlockDto serializes isRead/isWrite/isExecute/isInitialized.
             perms = ""
-            perms += "R" if seg.get("readable") else "-"
-            perms += "W" if seg.get("writable") else "-"
-            perms += "X" if seg.get("executable") else "-"
-            init = "init" if seg.get("initialized") else "uninit"
+            perms += "R" if seg.get("isRead", seg.get("readable")) else "-"
+            perms += "W" if seg.get("isWrite", seg.get("writable")) else "-"
+            perms += "X" if seg.get("isExecute", seg.get("executable")) else "-"
+            init = "init" if seg.get("isInitialized", seg.get("initialized")) else "uninit"
             table.add_row(
                 seg.get("name", "?"),
                 seg.get("start", "?"),
@@ -524,108 +531,60 @@ class TableFormatter(BaseFormatter):
         return self._capture(table)
 
     def format_callgraph(self, data: Dict[str, Any]) -> str:
-        """Format analysis callgraph as a readable tree with summary."""
+        """Format analysis callgraph as a readable tree with summary.
+
+        Server shape: {root: {name, address, ...}, depth, direction,
+                       callers: [{function: {...}, callers: [...]}],
+                       callees: [{function: {...}, callees: [...]}]}
+        """
         result = data.get("result", {})
-        if not isinstance(result, dict):
+        if not isinstance(result, dict) or not isinstance(result.get("root"), dict):
             return self._capture("[yellow]No call graph data available[/yellow]")
 
-        nodes = result.get("nodes", [])
-        edges = result.get("edges", [])
-        if not isinstance(nodes, list):
-            nodes = []
-        if not isinstance(edges, list):
-            edges = []
-
-        root_name = result.get("rootFunction") or result.get("root") or "?"
-        root_addr = result.get("rootAddress") or result.get("root_address")
-        max_depth = result.get("max_depth")
-
-        id_to_name = {}
-        id_to_addr = {}
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            node_id = str(node.get("id") or node.get("address") or "")
-            if node_id:
-                id_to_name[node_id] = node.get("name") or node_id
-                id_to_addr[node_id] = str(node.get("address") or node_id)
-
-        children = {}
-        for edge in edges:
-            if not isinstance(edge, dict):
-                continue
-            src = str(edge.get("from", ""))
-            dst = str(edge.get("to", ""))
-            if not src or not dst:
-                continue
-            children.setdefault(src, []).append(dst)
-
-        root_id = str(result.get("rootId") or root_addr or "")
-        if not root_id and root_name:
-            for node_id, node_name in id_to_name.items():
-                if node_name == root_name:
-                    root_id = node_id
-                    break
-
-        root_label = root_name
-        if root_addr:
-            root_label = f"{root_name} ({root_addr})"
-
-        tree = Tree(f"[cyan]{root_label}[/cyan]")
-
-        def add_children(parent_node, node_id, depth=0, seen=None):
-            if seen is None:
-                seen = set()
-            if node_id in seen:
-                parent_node.add(f"[dim]{id_to_name.get(node_id, node_id)} (recursive)[/dim]")
-                return
-
-            seen = set(seen)
-            seen.add(node_id)
-
-            for child_id in children.get(node_id, [])[:20]:
-                child_name = id_to_name.get(child_id, child_id)
-                child_addr = id_to_addr.get(child_id, child_id)
-                child_label = f"{child_name} ({child_addr})"
-                child_node = parent_node.add(f"[green]{child_label}[/green]")
-                if depth < 4:
-                    add_children(child_node, child_id, depth + 1, seen)
-            if len(children.get(node_id, [])) > 20:
-                parent_node.add(f"[dim]... and {len(children[node_id]) - 20} more[/dim]")
-
-        if root_id:
-            add_children(tree, root_id)
+        root = result["root"]
+        root_name = root.get("name", "?")
+        root_addr = root.get("address", "")
+        depth = result.get("depth")
 
         summary = self._capture(
-            f"[cyan]Call Graph[/cyan] "
-            f"nodes={len(nodes)} edges={len(edges)}"
-            + (f" max_depth={max_depth}" if max_depth is not None else "")
+            f"[cyan]Call Graph[/cyan] for {root_name} ({root_addr})"
+            + (f" depth={depth}" if depth is not None else "")
         )
 
-        edge_table = Table(title="Calls", show_lines=False)
-        edge_table.add_column("From", style="cyan")
-        edge_table.add_column("To", style="green")
-        edge_table.add_column("Site", style="yellow")
-        edge_table.add_column("Type", style="dim")
+        def build_tree(title: str, nodes, child_key: str) -> str:
+            tree = Tree(f"[cyan]{title}[/cyan]")
 
-        for edge in edges:
-            if not isinstance(edge, dict):
-                continue
-            src_id = str(edge.get("from", ""))
-            dst_id = str(edge.get("to", ""))
-            src_name = id_to_name.get(src_id, src_id)
-            dst_name = id_to_name.get(dst_id, dst_id)
-            src_addr = id_to_addr.get(src_id, src_id)
-            dst_addr = id_to_addr.get(dst_id, dst_id)
-            edge_table.add_row(
-                f"{src_name} ({src_addr})",
-                f"{dst_name} ({dst_addr})",
-                str(edge.get("call_site", edge.get("site", ""))),
-                str(edge.get("type", "")),
-            )
+            def add_nodes(parent, items, level=0, budget=None):
+                if budget is None:
+                    budget = [200]
+                if not isinstance(items, list):
+                    return
+                for node in items:
+                    if budget[0] <= 0:
+                        parent.add("[dim]...[/dim]")
+                        return
+                    if not isinstance(node, dict):
+                        continue
+                    fn = node.get("function", {})
+                    label = f"{fn.get('name', '?')} ({fn.get('address', '?')})"
+                    child = parent.add(f"[green]{label}[/green]")
+                    budget[0] -= 1
+                    add_nodes(child, node.get(child_key), level + 1, budget)
 
-        edge_text = self._capture(edge_table) if edge_table.rows else self._capture("[yellow]No calls[/yellow]")
-        return f"{summary}\n{self._capture(tree)}\n{edge_text}"
+            add_nodes(tree, nodes)
+            return self._capture(tree)
+
+        parts = [summary]
+        callers = result.get("callers")
+        if callers is not None:
+            parts.append(build_tree(f"Callers ({len(callers)})", callers, "callers")
+                         if callers else self._capture("[yellow]No callers[/yellow]"))
+        callees = result.get("callees")
+        if callees is not None:
+            parts.append(build_tree(f"Callees ({len(callees)})", callees, "callees")
+                         if callees else self._capture("[yellow]No callees[/yellow]"))
+
+        return "\n".join(parts)
 
     def format_dataflow(self, data: Dict[str, Any]) -> str:
         """Format analysis dataflow output."""
@@ -640,17 +599,20 @@ class TableFormatter(BaseFormatter):
         table = Table(title="Data Flow", show_lines=False)
         table.add_column("Step", style="cyan", justify="right")
         table.add_column("Address", style="green", no_wrap=True)
-        table.add_column("Type", style="yellow")
-        table.add_column("Description", style="white", overflow="fold")
+        table.add_column("Instruction", style="white", overflow="fold")
+        table.add_column("Function", style="dim")
+        table.add_column("Refs", style="yellow", justify="right")
 
         for i, step in enumerate(steps, start=1):
             if not isinstance(step, dict):
                 continue
+            # Server steps carry instruction text + containing function + references.
             table.add_row(
                 str(i),
                 str(step.get("address", step.get("to", step.get("from", "?")))),
-                str(step.get("type", step.get("refType", "?"))),
-                str(step.get("description", step.get("label", "")))
+                str(step.get("instruction", step.get("description", step.get("label", "")))),
+                str(step.get("function", "")),
+                str(step.get("reference_count", len(step.get("references", []))))
             )
 
         header = []

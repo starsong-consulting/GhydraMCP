@@ -36,15 +36,16 @@ def read_memory(ctx, address, length, format, segment):
     config = ctx.obj['config']
 
     try:
+        # GET /memory is the block list; reads go to /memory/{address}.
+        addr = validate_address(address)
+        if segment and ':' not in addr:
+            addr = f'{segment}:{addr}'
         params = {
-            'address': validate_address(address),
             'length': length,
             'format': format
         }
-        if segment:
-            params['segment'] = segment
 
-        response = client.get('memory', params=params)
+        response = client.get(f'memory/{addr}', params=params)
         output = formatter.format_memory(response)
 
         if should_page(config, ctx.obj['output_json']):

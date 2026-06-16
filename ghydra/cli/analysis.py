@@ -66,20 +66,25 @@ def run_analysis(ctx, analysis_options, background):
 def get_callgraph(ctx, name, address, max_depth):
     """Get function call graph visualization data.
 
-    If neither --name nor --address is provided, uses entry point.
+    One of --name or --address is required.
 
     \b
     Examples:
         ghydra analysis get-callgraph --name main
         ghydra analysis get-callgraph --address 0x401000 --max-depth 5
-        ghydra analysis get-callgraph  # Uses entry point
     """
     client = ctx.obj['client']
     formatter = ctx.obj['formatter']
     config = ctx.obj['config']
 
+    if not address and not name:
+        rich_echo("Error: one of --name or --address is required", err=True)
+        ctx.exit(1)
+
     try:
+        # Server reads "depth"; send both for older builds.
         params = {
+            'depth': max_depth,
             'max_depth': max_depth
         }
 
@@ -123,12 +128,14 @@ def get_dataflow(ctx, address, direction, max_steps):
     config = ctx.obj['config']
 
     try:
+        # The server takes the address as a query param, not a path segment.
         params = {
+            'address': validate_address(address),
             'direction': direction,
             'max_steps': max_steps
         }
 
-        response = client.get(f'analysis/dataflow/{validate_address(address)}', params=params)
+        response = client.get('analysis/dataflow', params=params)
         if hasattr(formatter, "format_dataflow"):
             output = formatter.format_dataflow(response)
         else:
