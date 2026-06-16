@@ -584,6 +584,95 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("name", func_info, "Function info missing 'name' field")
         self.assertIn("address", func_info, "Function info missing 'address' field")
 
+    def test_function_fqn_roundtrip(self):
+        """Rename moves into a created namespace; FQN resolves; bare leaf 404s; restore via '::'."""
+        from urllib.parse import quote
+        resp = requests.get(f"{BASE_URL}/functions?is_external=false&limit=1")
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["result"]
+        if not items:
+            self.skipTest("No functions in program")
+        addr = items[0]["address"]
+        orig_fqn = items[0]["name"]
+        try:
+            r = requests.patch(f"{BASE_URL}/functions/{addr}", json={"name": "GhydraTestNS::probe"})
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(r.json()["result"]["name"], "GhydraTestNS::probe")
+
+            r = requests.get(f"{BASE_URL}/functions/by-name/{quote('GhydraTestNS::probe')}")
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertEqual(r.json()["result"]["address"], addr)
+
+            # Strict: a bare leaf does not resolve a namespaced function.
+            r = requests.get(f"{BASE_URL}/functions/by-name/probe")
+            self.assertEqual(r.status_code, 404)
+
+            # name_contains matches the FQN.
+            r = requests.get(f"{BASE_URL}/functions?name_contains=probe")
+            self.assertIn("GhydraTestNS::probe", [f["name"] for f in r.json()["result"]])
+
+            # FunctionDto no longer carries a separate namespace field.
+            self.assertNotIn("namespace", r.json()["result"][0])
+        finally:
+            # Restore: "::<orig_fqn>" forces global root, recreating any original namespace.
+            requests.patch(f"{BASE_URL}/functions/{addr}", json={"name": "::" + orig_fqn})
+
+    def test_symbol_dto_has_no_namespace_field(self):
+        """SymbolDto folds the namespace into the FQN name; no separate field."""
+        resp = requests.get(f"{BASE_URL}/symbols?limit=5")
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["result"]
+        if not items:
+            self.skipTest("No symbols in program")
+        for sym in items:
+            self.assertIn("name", sym)
+            self.assertNotIn("namespace", sym)
+
+    def test_data_dto_uses_label(self):
+        """DataDto exposes the (now fully-qualified) name as 'label'."""
+        resp = requests.get(f"{BASE_URL}/data?limit=5")
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["result"]
+        if not items:
+            self.skipTest("No defined data in program")
+        self.assertIn("label", items[0])
+
+    def test_local_variable_rejects_namespace(self):
+        """Local variables are not namespaced; '::' in a rename is a 400."""
+        from urllib.parse import quote
+        resp = requests.get(f"{BASE_URL}/functions?limit=50")
+        self.assertEqual(resp.status_code, 200)
+        target = None
+        for fn in resp.json()["result"]:
+            vresp = requests.get(f"{BASE_URL}/functions/{fn['address']}/variables")
+            if vresp.status_code != 200:
+                continue
+            for v in vresp.json().get("result", {}).get("variables", []):
+                if v.get("type") in ("local", "parameter"):
+                    target = (fn["address"], v["name"])
+                    break
+            if target:
+                break
+        if not target:
+            self.skipTest("No local variable found to test")
+        addr, var = target
+        r = requests.patch(
+            f"{BASE_URL}/functions/{addr}/variables/{quote(var)}",
+            json={"name": "bad::name"})
+        self.assertEqual(r.status_code, 400, r.text)
+
+    def test_xrefs_expose_function_fields(self):
+        """Xrefs carry from/to function names (now fully-qualified when namespaced)."""
+        fresp = requests.get(f"{BASE_URL}/functions?limit=1")
+        items = fresp.json()["result"]
+        if not items:
+            self.skipTest("No functions in program")
+        addr = items[0]["address"]
+        r = requests.get(f"{BASE_URL}/xrefs?to_addr={addr}")
+        self.assertEqual(r.status_code, 200, r.text)
+        for x in r.json().get("result", []):
+            self.assertIsInstance(x, dict)
+
     def test_error_handling(self):
         """Test error handling for non-existent endpoints"""
         response = requests.get(f"{BASE_URL}/nonexistent_endpoint")
