@@ -3,6 +3,7 @@ package eu.starsong.ghidra.resource;
 import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.server.GhidraContext;
 import eu.starsong.ghidra.server.Resource;
+import eu.starsong.ghidra.service.SaveService;
 import ghidra.app.services.ProgramManager;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.program.model.listing.Program;
@@ -19,8 +20,10 @@ import java.util.function.Function;
  * automated (no manual cmd.exe step). DISABLED by default.
  *
  * <p>Enable with {@code -Dghydra.dev.allowShutdown=true} (or env {@code GHYDRA_DEV_SHUTDOWN=1}).
- * When disabled, POST /dev/shutdown returns 403 and does nothing. An unsaved-changes guard
- * refuses unless {@code ?force=true} so an accidental call cannot silently lose analysis.
+ * When disabled, POST /dev/shutdown returns 403 and does nothing. With unsaved changes the call
+ * refuses (409) unless {@code ?save=true} (save all changed programs, then exit) or
+ * {@code ?force=true} (discard and exit) is given, so an accidental call cannot silently lose
+ * analysis.
  *
  * <p>Note: the gate is the opt-in flag, not the request origin. The server already binds all
  * interfaces by default and exposes equally-destructive write endpoints (rename, memory write,
@@ -61,21 +64,38 @@ public class DevResource implements Resource {
         }
 
         boolean force = "true".equalsIgnoreCase(ctx.queryParam("force"));
-        String unsaved = unsavedSummary(ctx);
-        if (unsaved != null && !force) {
-            ctx.status(409);
-            ctx.json(Response.error(ctx.ctx(), port, "UNSAVED_CHANGES",
-                "Refusing to shut down: " + unsaved + ". Save first, or retry with ?force=true "
-                    + "to discard.").build());
-            return;
+        boolean save = "true".equalsIgnoreCase(ctx.queryParam("save"));
+
+        int savedCount = 0;
+        if (save) {
+            try {
+                savedCount = new SaveService().saveAllChanged(ctx.tool()).size();
+                Msg.info(this, "dev shutdown: saved " + savedCount + " changed program(s) before exit");
+            } catch (Exception e) {
+                // Saving failed: do NOT exit, or the unsaved work would be lost anyway.
+                ctx.status(500);
+                ctx.json(Response.error(ctx.ctx(), port, "SAVE_FAILED",
+                    "Save before shutdown failed (not shutting down): " + e.getMessage()).build());
+                return;
+            }
+        } else {
+            String unsaved = unsavedSummary(ctx);
+            if (unsaved != null && !force) {
+                ctx.status(409);
+                ctx.json(Response.error(ctx.ctx(), port, "UNSAVED_CHANGES",
+                    "Refusing to shut down: " + unsaved + ". Save first (?save=true), or retry with "
+                        + "?force=true to discard.").build());
+                return;
+            }
         }
 
         Msg.warn(this, "GhydraMCP dev shutdown requested on port " + port
-            + " (force=" + force + "); exiting JVM shortly.");
+            + " (force=" + force + ", save=" + save + "); exiting JVM shortly.");
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("status", "shutting down");
         result.put("force", force);
+        result.put("saved", savedCount);
         ctx.json(Response.ok(ctx.ctx(), port, result).build());
 
         // Exit after the response flushes so the caller gets a clean 200. Non-daemon so the

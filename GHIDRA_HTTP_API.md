@@ -240,6 +240,8 @@ Represents the current binary loaded in Ghidra.
   }
   ```
 
+- **`POST /program/save`**: Persist the current program to the project (Ghidra's "Save"). Add `?all=true` to save every open program that has unsaved changes. A program with no changes returns `{ "saved": false, "detail": "no unsaved changes" }`.
+
 ### 3. Current Location
 
 Provides information about the current cursor position and function in Ghidra's CodeBrowser.

@@ -4,6 +4,7 @@ import eu.starsong.ghidra.hateoas.Response;
 import eu.starsong.ghidra.server.GhidraContext;
 import eu.starsong.ghidra.server.Resource;
 import eu.starsong.ghidra.service.MemoryService;
+import eu.starsong.ghidra.service.SaveService;
 import eu.starsong.ghidra.util.GhidraSwing;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.model.DomainFolder;
@@ -24,6 +25,7 @@ import java.util.function.Function;
 public class ProgramResource implements Resource {
 
     private final MemoryService memoryService = new MemoryService();
+    private final SaveService saveService = new SaveService();
 
     @Override
     public void register(Javalin app, Function<Context, GhidraContext> contextFactory) {
@@ -31,6 +33,26 @@ public class ProgramResource implements Resource {
         app.get("/programs", ctx -> listPrograms(contextFactory.apply(ctx)));
         app.get("/programs/current", ctx -> getCurrentProgram(contextFactory.apply(ctx)));
         app.patch("/programs/current/memory/{address}", ctx -> writeMemory(contextFactory.apply(ctx)));
+        // Persist analysis. ?all=true saves every open program with unsaved changes.
+        app.post("/program/save", ctx -> saveProgram(contextFactory.apply(ctx)));
+        app.post("/programs/save", ctx -> saveProgram(contextFactory.apply(ctx)));
+    }
+
+    private void saveProgram(GhidraContext ctx) {
+        boolean all = "true".equalsIgnoreCase(ctx.queryParam("all"));
+        try {
+            Object result = all
+                ? saveService.saveAllChanged(ctx.tool())
+                : saveService.save(ctx.requireProgram());
+            ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+                .self("/program/save")
+                .link("program", "/program")
+                .build());
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to save program: " + e.getMessage(), e);
+        }
     }
 
     private void writeMemory(GhidraContext ctx) {
