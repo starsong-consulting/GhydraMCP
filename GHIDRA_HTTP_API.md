@@ -367,7 +367,12 @@ Represents named locations (functions, data, labels).
 
 Represents defined data items in memory.
 
-- **`GET /data`**: List data items. Supports searching (by name/address/regex) and pagination. Can filter by type (`?type=string`, `?type=dword`, etc.). For `?addr=...` lookups, the endpoint returns defined data first and falls back to label symbols when no defined data exists at that address.
+- **`GET /data`**: List data items, with pagination and filters:
+  - `?label=[string]`: exact label (name) match.
+  - `?label_contains=[string]`: label substring match (case-insensitive).
+  - `?type=[string]`: filter by data type (`string`, `dword`, etc.).
+  - `?addr=[hex]`: look up a single address; returns defined data first, falling back to a label symbol when no defined data exists there.
+  - (The `data_list` bridge tool and `ghydra data list` expose `label`/`label_contains` as `name`/`name_contains`.)
 - **`POST /data`**: Define a new data item. Requires `address`, `type`, and optionally `size` or `length` in the payload.
 - **`GET /data/{address}`**: Get details of the data item at the specified address (type, size, value representation).
 - **`PATCH /data/{address}`**: Modify a data item (e.g., change `name`, `type`, `comment`). Payload specifies changes.
