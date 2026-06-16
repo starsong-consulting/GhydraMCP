@@ -14,7 +14,6 @@ import ghidra.program.model.data.DataTypeManager;
 import ghidra.program.model.data.Structure;
 import ghidra.program.model.data.StructureDataType;
 import ghidra.program.model.listing.Program;
-import ghidra.util.exception.DuplicateNameException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -147,11 +146,15 @@ public class StructService {
                 }
             } else {
                 if (hasNewName && !Objects.equals(updatedName, originalName)) {
-                    try {
-                        component.setFieldName(updatedName);
-                    } catch (DuplicateNameException e) {
-                        throw new IllegalArgumentException("Field name already exists: " + updatedName, e);
+                    // 12.1's setFieldName no longer declares DuplicateNameException; guard
+                    // explicitly so a clash still surfaces as a 400 rather than whatever
+                    // the API does internally.
+                    for (DataTypeComponent c : struct.getComponents()) {
+                        if (c != component && updatedName.equals(c.getFieldName())) {
+                            throw new IllegalArgumentException("Field name already exists: " + updatedName);
+                        }
                     }
+                    component.setFieldName(updatedName);
                 }
                 if (hasNewComment) {
                     component.setComment(updatedComment);
@@ -168,7 +171,7 @@ public class StructService {
             if (struct == null) {
                 throw new NotFoundException("Struct not found: " + name, "STRUCT_NOT_FOUND");
             }
-            program.getDataTypeManager().remove(struct, null);
+            program.getDataTypeManager().remove(struct);
             return null;
         });
     }
@@ -178,7 +181,6 @@ public class StructService {
         DataType dt;
         if (name.startsWith("/")) {
             dt = dtm.getDataType(name);
-            if (dt == null) dt = dtm.findDataType(name);
         } else {
             dt = findStructByName(dtm, name);
         }

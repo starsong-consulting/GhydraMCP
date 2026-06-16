@@ -164,7 +164,6 @@ public class GhidraUtil {
     private static DataType resolveBaseDataType(Program program, String dataTypeName) {
         DataTypeManager dtm = program.getDataTypeManager();
         DataType dataType = dtm.getDataType("/" + dataTypeName);
-        if (dataType == null) dataType = dtm.findDataType("/" + dataTypeName);
         if (dataType == null) {
             List<DataType> namedMatches = new ArrayList<>();
             dtm.findDataTypes(dataTypeName, namedMatches);
