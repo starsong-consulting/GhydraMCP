@@ -13,6 +13,9 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <!-- Ghidra version this build targets; filtered into extension.properties.
+         CI's build matrix overrides it per leg with -Dghidra.version=<11.x|12.x>. -->
+    <ghidra.version>12.1.2</ghidra.version>
     <!-- Default paths to local lib - will be overridden if GHIDRA_HOME is set -->
     <ghidra.generic.jar>${project.basedir}/lib/Generic.jar</ghidra.generic.jar>
     <ghidra.softwaremodeling.jar>${project.basedir}/lib/SoftwareModeling.jar</ghidra.softwaremodeling.jar>

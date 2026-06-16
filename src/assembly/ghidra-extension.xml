@@ -19,6 +19,8 @@
                 <include>Module.manifest</include>
             </includes>
             <outputDirectory>Ghydra</outputDirectory>
+            <!-- Filter so ${ghidra.version} in extension.properties is substituted. -->
+            <filtered>true</filtered>
         </fileSet>
     </fileSets>
     
