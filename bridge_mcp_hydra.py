@@ -80,7 +80,7 @@ ghidra_host = (
 )
 
 # Helper function to get the current instance or validate a specific port
-def _get_instance_port(port=None):
+def _get_instance_port(port: int | None = None) -> int:
     """Internal helper to get the current instance port or validate a specific port"""
     port = port or current_instance_port
     # Validate that the instance exists and is active
@@ -124,7 +124,7 @@ def validate_origin(headers: dict) -> bool:
     return origin_base in ALLOWED_ORIGINS
 
 
-def _extract_requested_decompile_timeout(params: dict = None) -> int:
+def _extract_requested_decompile_timeout(params: dict | None = None) -> int:
     """Get requested decompile timeout from params with safe defaults."""
     requested_timeout = None
     if isinstance(params, dict):
@@ -134,9 +134,9 @@ def _extract_requested_decompile_timeout(params: dict = None) -> int:
     except (TypeError, ValueError):
         return DEFAULT_DECOMPILATION_TIMEOUT
 
-def _make_request(method: str, port: int, endpoint: str, params: dict = None, 
-                 json_data: dict = None, data: str = None, 
-                 headers: dict = None) -> dict:
+def _make_request(method: str, port: int, endpoint: str, params: dict | None = None, 
+                 json_data: dict | None = None, data: str | None = None, 
+                 headers: dict | None = None) -> dict:
     """Internal helper to make HTTP requests and handle common errors."""
     url = f"{get_instance_url(port)}/{endpoint}"
     
@@ -277,7 +277,7 @@ def _make_request(method: str, port: int, endpoint: str, params: dict = None,
             "timestamp": int(time.time() * 1000)
         }
 
-def safe_get(port: int, endpoint: str, params: dict = None) -> dict:
+def safe_get(port: int, endpoint: str, params: dict | None = None) -> dict:
     """Make GET request to Ghidra instance"""
     return _make_request("GET", port, endpoint, params=params)
 
@@ -499,7 +499,7 @@ def format_disassembly(response: dict, **kwargs) -> str:
     return "\n".join(lines)
 
 
-def format_xrefs(response: dict, to_addr: str = None, from_addr: str = None, **kwargs) -> str:
+def format_xrefs(response: dict, to_addr: str | None = None, from_addr: str | None = None, **kwargs) -> str:
     """Format cross-references as plain text"""
     if not response.get("success", False):
         return format_error(response)
@@ -1290,7 +1290,7 @@ def simplify_response(response: dict) -> dict:
     
     return result
 
-def register_instance(port: int, url: str = None) -> str:
+def register_instance(port: int, url: str | None = None) -> str:
     """Register a new Ghidra instance
     
     Args:
@@ -1520,7 +1520,7 @@ def handle_sigint(signum, frame):
 # They focus on data and minimize metadata
 
 @mcp.resource(uri="/instance/{port}")
-def ghidra_instance(port: int = None) -> dict:
+def ghidra_instance(port: int | None = None) -> dict:
     """Get detailed information about a Ghidra instance and the loaded program
     
     Args:
@@ -1568,7 +1568,7 @@ def ghidra_instance(port: int = None) -> dict:
     return instance_info
 
 @mcp.resource(uri="/instance/{port}/function/decompile/address/{address}")
-def decompiled_function_by_address(port: int = None, address: str = None) -> str:
+def decompiled_function_by_address(port: int | None = None, address: str | None = None) -> str:
     """Get decompiled C code for a function by address
     
     Args:
@@ -1617,7 +1617,7 @@ def decompiled_function_by_address(port: int = None, address: str = None) -> str
     return "Error: Could not extract decompiled code from response"
 
 @mcp.resource(uri="/instance/{port}/function/decompile/name/{name}")
-def decompiled_function_by_name(port: int = None, name: str = None) -> str:
+def decompiled_function_by_name(port: int | None = None, name: str | None = None) -> str:
     """Get decompiled C code for a function by name
     
     Args:
@@ -1666,7 +1666,7 @@ def decompiled_function_by_name(port: int = None, name: str = None) -> str:
     return "Error: Could not extract decompiled code from response"
 
 @mcp.resource(uri="/instance/{port}/function/info/address/{address}")
-def function_info_by_address(port: int = None, address: str = None) -> dict:
+def function_info_by_address(port: int | None = None, address: str | None = None) -> dict:
     """Get detailed information about a function by address
     
     Args:
@@ -1710,7 +1710,7 @@ def function_info_by_address(port: int = None, address: str = None) -> dict:
     return simplified["result"]
 
 @mcp.resource(uri="/instance/{port}/function/info/name/{name}")
-def function_info_by_name(port: int = None, name: str = None) -> dict:
+def function_info_by_name(port: int | None = None, name: str | None = None) -> dict:
     """Get detailed information about a function by name
     
     Args:
@@ -1754,7 +1754,7 @@ def function_info_by_name(port: int = None, name: str = None) -> dict:
     return simplified["result"]
 
 @mcp.resource(uri="/instance/{port}/function/disassembly/address/{address}")
-def disassembly_by_address(port: int = None, address: str = None) -> str:
+def disassembly_by_address(port: int | None = None, address: str | None = None) -> str:
     """Get disassembled instructions for a function by address
     
     Args:
@@ -1814,7 +1814,7 @@ def disassembly_by_address(port: int = None, address: str = None) -> str:
     return "Error: Could not extract disassembly from response"
 
 @mcp.resource(uri="/instance/{port}/function/disassembly/name/{name}")
-def disassembly_by_name(port: int = None, name: str = None) -> str:
+def disassembly_by_name(port: int | None = None, name: str | None = None) -> str:
     """Get disassembled instructions for a function by name
     
     Args:
@@ -1877,7 +1877,7 @@ def disassembly_by_name(port: int = None, name: str = None) -> str:
 # Prompts define reusable templates for LLM interactions
 
 @mcp.prompt("analyze_function")
-def analyze_function_prompt(name: str = None, address: str = None, port: int = None):
+def analyze_function_prompt(name: str | None = None, address: str | None = None, port: int | None = None):
     """A prompt to guide the LLM through analyzing a function
     
     Args:
@@ -1933,7 +1933,7 @@ def analyze_function_prompt(name: str = None, address: str = None, port: int = N
     }
 
 @mcp.prompt("identify_vulnerabilities")
-def identify_vulnerabilities_prompt(name: str = None, address: str = None, port: int = None):
+def identify_vulnerabilities_prompt(name: str | None = None, address: str | None = None, port: int | None = None):
     """A prompt to help identify potential vulnerabilities in a function
     
     Args:
@@ -1995,7 +1995,7 @@ def identify_vulnerabilities_prompt(name: str = None, address: str = None, port:
     }
 
 @mcp.prompt("reverse_engineer_binary")
-def reverse_engineer_binary_prompt(port: int = None):
+def reverse_engineer_binary_prompt(port: int | None = None):
     """A comprehensive prompt to guide the process of reverse engineering an entire binary
     
     Args:
@@ -2120,7 +2120,7 @@ def instances_list() -> dict:
 
 @mcp.tool()
 @text_output
-def instances_discover(host: str = None) -> dict:
+def instances_discover(host: str | None = None) -> dict:
     """Scan a specific host for Ghidra instances (RARELY NEEDED)
 
     Use this ONLY when scanning a different host than the default.
@@ -2153,7 +2153,7 @@ def instances_discover(host: str = None) -> dict:
 
 @mcp.tool()
 @text_output
-def instances_register(port: int, url: str = None) -> str:
+def instances_register(port: int, url: str | None = None) -> str:
     """Register a new Ghidra instance
     
     Args:
@@ -2229,11 +2229,11 @@ def instances_current() -> dict:
 @mcp.tool()
 @text_output
 def functions_list(offset: int = 0, limit: int = 100,
-                  name_contains: str = None,
-                  name_matches_regex: str = None,
-                  addr_min: str = None,
-                  addr_max: str = None,
-                  port: int = None) -> dict:
+                  name_contains: str | None = None,
+                  name_matches_regex: str | None = None,
+                  addr_min: str | None = None,
+                  addr_max: str | None = None,
+                  port: int | None = None) -> dict:
     """List functions with filtering and pagination
 
     Args:
@@ -2275,7 +2275,7 @@ def functions_list(offset: int = 0, limit: int = 100,
 
 @mcp.tool()
 @text_output
-def functions_get(name: str = None, address: str = None, port: int = None) -> dict:
+def functions_get(name: str | None = None, address: str | None = None, port: int | None = None) -> dict:
     """Get detailed information about a function
     
     Args:
@@ -2308,7 +2308,7 @@ def functions_get(name: str = None, address: str = None, port: int = None) -> di
 
 @mcp.tool()
 @text_output
-def functions_get_containing(address: str, port: int = None) -> dict:
+def functions_get_containing(address: str, port: int | None = None) -> dict:
     """Find the function containing the specified address
 
     Args:
@@ -2329,7 +2329,7 @@ def functions_get_containing(address: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def functions_get_next(address: str, port: int = None) -> dict:
+def functions_get_next(address: str, port: int | None = None) -> dict:
     """Get the next function after the given address (by memory order)
 
     Args:
@@ -2346,7 +2346,7 @@ def functions_get_next(address: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def functions_get_prev(address: str, port: int = None) -> dict:
+def functions_get_prev(address: str, port: int | None = None) -> dict:
     """Get the previous function before the given address (by memory order)
 
     Args:
@@ -2363,11 +2363,11 @@ def functions_get_prev(address: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def functions_decompile(name: str = None, address: str = None,
+def functions_decompile(name: str | None = None, address: str | None = None,
                         syntax_tree: bool = False, style: str = "normalize",
                         show_constants: bool = True, timeout: int = DEFAULT_DECOMPILATION_TIMEOUT,
-                        start_line: int = None, end_line: int = None, max_lines: int = None,
-                        port: int = None) -> dict:
+                        start_line: int | None = None, end_line: int | None = None, max_lines: int | None = None,
+                        port: int | None = None) -> dict:
     """Get decompiled code for a function with optional line filtering and configurable options
 
     Args:
@@ -2435,7 +2435,7 @@ def functions_decompile(name: str = None, address: str = None,
 
 @mcp.tool()
 @text_output
-def functions_disassemble(name: str = None, address: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def functions_disassemble(name: str | None = None, address: str | None = None, offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """Get disassembly for a function
 
     Args:
@@ -2478,7 +2478,7 @@ def functions_disassemble(name: str = None, address: str = None, offset: int = 0
 
 @mcp.tool()
 @text_output
-def functions_create(address: str, port: int = None) -> dict:
+def functions_create(address: str, port: int | None = None) -> dict:
     """Create a new function at the specified address
     
     Args:
@@ -2509,7 +2509,7 @@ def functions_create(address: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def functions_rename(old_name: str = None, address: str = None, new_name: str = "", port: int = None) -> dict:
+def functions_rename(old_name: str | None = None, address: str | None = None, new_name: str = "", port: int | None = None) -> dict:
     """Rename a function
     
     Args:
@@ -2547,7 +2547,7 @@ def functions_rename(old_name: str = None, address: str = None, new_name: str = 
 
 @mcp.tool()
 @text_output
-def functions_set_signature(name: str = None, address: str = None, signature: str = "", port: int = None) -> dict:
+def functions_set_signature(name: str | None = None, address: str | None = None, signature: str = "", port: int | None = None) -> dict:
     """Set function signature/prototype
     
     Args:
@@ -2585,7 +2585,7 @@ def functions_set_signature(name: str = None, address: str = None, signature: st
 
 @mcp.tool()
 @text_output
-def functions_delete(name: str = None, address: str = None, port: int = None) -> dict:
+def functions_delete(name: str | None = None, address: str | None = None, port: int | None = None) -> dict:
     """Delete a function
 
     Args:
@@ -2619,8 +2619,8 @@ def functions_delete(name: str = None, address: str = None, port: int = None) ->
 @mcp.tool()
 @text_output
 def functions_update_variable(address: str, variable_name: str,
-                              new_name: str = None, new_data_type: str = None,
-                              port: int = None) -> dict:
+                              new_name: str | None = None, new_data_type: str | None = None,
+                              port: int | None = None) -> dict:
     """Update a local variable in a function
 
     Args:
@@ -2667,7 +2667,7 @@ def functions_update_variable(address: str, variable_name: str,
 
 @mcp.tool()
 @text_output
-def functions_get_variables(name: str = None, address: str = None, port: int = None) -> dict:
+def functions_get_variables(name: str | None = None, address: str | None = None, port: int | None = None) -> dict:
     """Get variables for a function
     
     Args:
@@ -2701,8 +2701,8 @@ def functions_get_variables(name: str = None, address: str = None, port: int = N
 # Memory tools
 @mcp.tool()
 @text_output
-def memory_read(address: str, length: int = 16, format: str = "hex", segment: str = None,
-                port: int = None) -> dict:
+def memory_read(address: str, length: int = 16, format: str = "hex", segment: str | None = None,
+                port: int | None = None) -> dict:
     """Read bytes from memory
 
     Args:
@@ -2777,7 +2777,7 @@ def memory_read(address: str, length: int = 16, format: str = "hex", segment: st
 
 @mcp.tool()
 @text_output
-def memory_write(address: str, bytes_data: str, format: str = "hex", port: int = None) -> dict:
+def memory_write(address: str, bytes_data: str, format: str = "hex", port: int | None = None) -> dict:
     """Write bytes to memory (use with caution)
     
     Args:
@@ -2845,7 +2845,7 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int =
 
 @mcp.tool()
 @text_output
-def memory_disassemble(address: str, limit: int = 50, offset: int = 0, port: int = None) -> dict:
+def memory_disassemble(address: str, limit: int = 50, offset: int = 0, port: int | None = None) -> dict:
     """Disassemble instructions at an arbitrary address (not tied to a function)
 
     Args:
@@ -2879,8 +2879,8 @@ def memory_disassemble(address: str, limit: int = 50, offset: int = 0, port: int
 # Xrefs tools
 @mcp.tool()
 @text_output
-def xrefs_list(to_addr: str = None, from_addr: str = None, type: str = None,
-              offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def xrefs_list(to_addr: str | None = None, from_addr: str | None = None, type: str | None = None,
+              offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List cross-references with filtering and pagination
     
     Args:
@@ -2932,9 +2932,9 @@ def xrefs_list(to_addr: str = None, from_addr: str = None, type: str = None,
 # Data tools
 @mcp.tool()
 @text_output
-def data_list(offset: int = 0, limit: int = 100, addr: str = None,
-            name: str = None, name_contains: str = None, type: str = None,
-            port: int = None) -> dict:
+def data_list(offset: int = 0, limit: int = 100, addr: str | None = None,
+            name: str | None = None, name_contains: str | None = None, type: str | None = None,
+            port: int | None = None) -> dict:
     """List data items with filtering and pagination
     
     Args:
@@ -2989,7 +2989,7 @@ def data_list(offset: int = 0, limit: int = 100, addr: str = None,
 
 @mcp.tool()
 @text_output
-def data_create(address: str, data_type: str, size: int = None, port: int = None) -> dict:
+def data_create(address: str, data_type: str, size: int | None = None, port: int | None = None) -> dict:
     """Define a new data item at the specified address
     
     Args:
@@ -3022,7 +3022,7 @@ def data_create(address: str, data_type: str, size: int = None, port: int = None
 
 @mcp.tool()
 @text_output
-def data_list_strings(offset: int = 0, limit: int = 2000, filter: str = None, port: int = None) -> dict:
+def data_list_strings(offset: int = 0, limit: int = 2000, filter: str | None = None, port: int | None = None) -> dict:
     """List all defined strings in the binary with their memory addresses
     
     Args:
@@ -3049,7 +3049,7 @@ def data_list_strings(offset: int = 0, limit: int = 2000, filter: str = None, po
 
 @mcp.tool()
 @text_output
-def data_rename(address: str, name: str, port: int = None) -> dict:
+def data_rename(address: str, name: str, port: int | None = None) -> dict:
     """Rename a data item
     
     Args:
@@ -3077,7 +3077,7 @@ def data_rename(address: str, name: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def data_delete(address: str, port: int = None) -> dict:
+def data_delete(address: str, port: int | None = None) -> dict:
     """Delete data at the specified address
     
     Args:
@@ -3104,7 +3104,7 @@ def data_delete(address: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def data_set_type(address: str, data_type: str, port: int = None) -> dict:
+def data_set_type(address: str, data_type: str, port: int | None = None) -> dict:
     """Set the data type of a data item
     
     Args:
@@ -3133,8 +3133,8 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
 # Scalar tools
 @mcp.tool()
 @text_output
-def scalars_search(value: str, in_function: str = None, to_function: str = None,
-                   offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def scalars_search(value: str, in_function: str | None = None, to_function: str | None = None,
+                   offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """Search for occurrences of a specific scalar (constant) value in instructions
 
     Finds where a constant appears as an instruction operand, like Ghidra's "Search For
@@ -3170,7 +3170,7 @@ def scalars_search(value: str, in_function: str = None, to_function: str = None,
 # Struct tools
 @mcp.tool()
 @text_output
-def structs_list(offset: int = 0, limit: int = 100, category: str = None, port: int = None) -> dict:
+def structs_list(offset: int = 0, limit: int = 100, category: str | None = None, port: int | None = None) -> dict:
     """List all struct data types in the program
 
     Args:
@@ -3204,7 +3204,7 @@ def structs_list(offset: int = 0, limit: int = 100, category: str = None, port: 
 
 @mcp.tool()
 @text_output
-def structs_get(name: str, port: int = None) -> dict:
+def structs_get(name: str, port: int | None = None) -> dict:
     """Get detailed information about a specific struct including all fields
 
     Args:
@@ -3231,8 +3231,8 @@ def structs_get(name: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def structs_create(name: str, category: str = None, size: int = None,
-                   description: str = None, port: int = None) -> dict:
+def structs_create(name: str, category: str | None = None, size: int | None = None,
+                   description: str | None = None, port: int | None = None) -> dict:
     """Create a new struct data type
 
     Args:
@@ -3271,7 +3271,7 @@ def structs_create(name: str, category: str = None, size: int = None,
 @mcp.tool()
 @text_output
 def structs_add_field(struct_name: str, field_name: str, field_type: str,
-                     offset: int = None, comment: str = None, port: int = None) -> dict:
+                     offset: int | None = None, comment: str | None = None, port: int | None = None) -> dict:
     """Add a field to an existing struct
 
     Args:
@@ -3311,9 +3311,9 @@ def structs_add_field(struct_name: str, field_name: str, field_type: str,
 
 @mcp.tool()
 @text_output
-def structs_update_field(struct_name: str, field_name: str = None, field_offset: int = None,
-                        new_name: str = None, new_type: str = None, new_comment: str = None,
-                        port: int = None) -> dict:
+def structs_update_field(struct_name: str, field_name: str | None = None, field_offset: int | None = None,
+                        new_name: str | None = None, new_type: str | None = None, new_comment: str | None = None,
+                        port: int | None = None) -> dict:
     """Update an existing field in a struct (change name, type, or comment)
 
     Args:
@@ -3376,7 +3376,7 @@ def structs_update_field(struct_name: str, field_name: str = None, field_offset:
 
 @mcp.tool()
 @text_output
-def structs_delete(name: str, port: int = None) -> dict:
+def structs_delete(name: str, port: int | None = None) -> dict:
     """Delete a struct data type
 
     Args:
@@ -3404,7 +3404,7 @@ def structs_delete(name: str, port: int = None) -> dict:
 # Analysis tools
 @mcp.tool()
 @text_output
-def analysis_run(port: int = None, analysis_options: dict = None, background: bool = None) -> dict:
+def analysis_run(port: int | None = None, analysis_options: dict | None = None, background: bool | None = None) -> dict:
     """Run analysis on the current program
     
     Args:
@@ -3428,7 +3428,7 @@ def analysis_run(port: int = None, analysis_options: dict = None, background: bo
 
 @mcp.tool()
 @text_output
-def analysis_get_callgraph(name: str = None, address: str = None, max_depth: int = 3, port: int = None) -> dict:
+def analysis_get_callgraph(name: str | None = None, address: str | None = None, max_depth: int = 3, port: int | None = None) -> dict:
     """Get function call graph visualization data
 
     Args:
@@ -3465,7 +3465,7 @@ def analysis_get_callgraph(name: str = None, address: str = None, max_depth: int
 
 @mcp.tool()
 @text_output
-def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: int = 50, port: int = None) -> dict:
+def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: int = 50, port: int | None = None) -> dict:
     """Perform data flow analysis from an address
     
     Args:
@@ -3500,7 +3500,7 @@ def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: i
 
 @mcp.tool()
 @text_output
-def ui_get_current_address(port: int = None) -> dict:
+def ui_get_current_address(port: int | None = None) -> dict:
     """Get the address currently selected in Ghidra's UI
 
     Args:
@@ -3515,7 +3515,7 @@ def ui_get_current_address(port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def ui_get_current_function(port: int = None) -> dict:
+def ui_get_current_function(port: int | None = None) -> dict:
     """Get the function currently selected in Ghidra's UI
 
     Args:
@@ -3530,7 +3530,7 @@ def ui_get_current_function(port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def comments_set(address: str, comment: str = "", comment_type: str = "plate", port: int = None) -> dict:
+def comments_set(address: str, comment: str = "", comment_type: str = "plate", port: int | None = None) -> dict:
     """Set a comment at the specified address
 
     Args:
@@ -3562,7 +3562,7 @@ def comments_set(address: str, comment: str = "", comment_type: str = "plate", p
 
 @mcp.tool()
 @text_output
-def comments_get(address: str, comment_type: str = "plate", port: int = None) -> dict:
+def comments_get(address: str, comment_type: str = "plate", port: int | None = None) -> dict:
     """Get a comment at the specified address
 
     Args:
@@ -3589,7 +3589,7 @@ def comments_get(address: str, comment_type: str = "plate", port: int = None) ->
 
 @mcp.tool()
 @text_output
-def functions_set_comment(address: str, comment: str = "", port: int = None) -> dict:
+def functions_set_comment(address: str, comment: str = "", port: int | None = None) -> dict:
     """Set a decompiler-friendly comment (tries function comment, falls back to pre-comment)
 
     Args:
@@ -3635,7 +3635,7 @@ def functions_set_comment(address: str, comment: str = "", port: int = None) -> 
 
 @mcp.tool()
 @text_output
-def project_info(port: int = None) -> dict:
+def project_info(port: int | None = None) -> dict:
     """Get information about the currently open Ghidra project
 
     Args:
@@ -3652,7 +3652,7 @@ def project_info(port: int = None) -> dict:
 @mcp.tool()
 @text_output
 def project_list_files(folder: str = "/", recursive: bool = True,
-                       offset: int = 0, limit: int = 100, port: int = None) -> dict:
+                       offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List files in the current Ghidra project
 
     Args:
@@ -3680,7 +3680,7 @@ def project_list_files(folder: str = "/", recursive: bool = True,
 
 @mcp.tool()
 @text_output
-def project_open_file(path: str, port: int = None) -> dict:
+def project_open_file(path: str, port: int | None = None) -> dict:
     """Open a file from the project in CodeBrowser
 
     This will open the file in a new CodeBrowser window, creating a new instance.
@@ -3702,7 +3702,7 @@ def project_open_file(path: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def projects_list(port: int = None) -> dict:
+def projects_list(port: int | None = None) -> dict:
     """List projects visible to the plugin context
 
     Args:
@@ -3718,7 +3718,7 @@ def projects_list(port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def projects_get(name: str, port: int = None) -> dict:
+def projects_get(name: str, port: int | None = None) -> dict:
     """Get a project by name
 
     Args:
@@ -3745,7 +3745,7 @@ def projects_get(name: str, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def programs_list(project: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def programs_list(project: str | None = None, offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List programs in the current project context
 
     Args:
@@ -3767,7 +3767,7 @@ def programs_list(project: str = None, offset: int = 0, limit: int = 100, port: 
 
 @mcp.tool()
 @text_output
-def programs_get(program_id: str = "current", port: int = None) -> dict:
+def programs_get(program_id: str = "current", port: int | None = None) -> dict:
     """Get program details by program ID or 'current'
 
     Args:
@@ -3785,7 +3785,7 @@ def programs_get(program_id: str = "current", port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def programs_delete(program_id: str = "current", port: int = None) -> dict:
+def programs_delete(program_id: str = "current", port: int | None = None) -> dict:
     """Delete/close a program by program ID or 'current'
 
     Args:
@@ -3802,7 +3802,7 @@ def programs_delete(program_id: str = "current", port: int = None) -> dict:
 
 
 @mcp.tool()
-def programs_save(all: bool = False, port: int = None) -> dict:
+def programs_save(all: bool = False, port: int | None = None) -> dict:
     """Save the current program to the project (Ghidra's "Save")
 
     Persists analysis (renames, types, comments, etc.) so it survives a Ghidra restart.
@@ -3823,7 +3823,7 @@ def programs_save(all: bool = False, port: int = None) -> dict:
 
 # Script tools
 @mcp.tool()
-def scripts_list(port: int = None) -> dict:
+def scripts_list(port: int | None = None) -> dict:
     """List Ghidra scripts available to run
 
     Requires the server started with script execution enabled
@@ -3840,7 +3840,7 @@ def scripts_list(port: int = None) -> dict:
 
 
 @mcp.tool()
-def scripts_run(name: str = None, source: str = None, args: list = None, port: int = None) -> dict:
+def scripts_run(name: str | None = None, source: str | None = None, args: list | None = None, port: int | None = None) -> dict:
     """Run a Ghidra script: an existing one by name, or ad-hoc GhidraScript source
 
     Use this for multi-stage or batch operations that would otherwise need many tool calls
@@ -3881,7 +3881,7 @@ def scripts_run(name: str = None, source: str = None, args: list = None, port: i
 
 @mcp.tool()
 @text_output
-def analysis_status(port: int = None) -> dict:
+def analysis_status(port: int | None = None) -> dict:
     """Get analysis status for the current program
 
     Args:
@@ -3895,7 +3895,7 @@ def analysis_status(port: int = None) -> dict:
     return simplify_response(response)
 
 
-def _analysis_run_legacy(background: bool = True, port: int = None) -> dict:
+def _analysis_run_legacy(background: bool = True, port: int | None = None) -> dict:
     """Legacy helper retained for backward compatibility inside this module."""
     return analysis_run(port=port, background=background)
 
@@ -3904,7 +3904,7 @@ def _analysis_run_legacy(background: bool = True, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def classes_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def classes_list(offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List classes and namespaces in the program
 
     Args:
@@ -3928,7 +3928,7 @@ def classes_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def symbols_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def symbols_list(offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List all symbols in the program
 
     Args:
@@ -3952,7 +3952,7 @@ def symbols_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
 
 @mcp.tool()
 @text_output
-def symbols_imports(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def symbols_imports(offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List imported symbols (external function references)
 
     Args:
@@ -3976,7 +3976,7 @@ def symbols_imports(offset: int = 0, limit: int = 100, port: int = None) -> dict
 
 @mcp.tool()
 @text_output
-def symbols_exports(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def symbols_exports(offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List exported symbols
 
     Args:
@@ -4000,7 +4000,7 @@ def symbols_exports(offset: int = 0, limit: int = 100, port: int = None) -> dict
 
 @mcp.tool()
 @text_output
-def segments_list(offset: int = 0, limit: int = 100, name: str = None, port: int = None) -> dict:
+def segments_list(offset: int = 0, limit: int = 100, name: str | None = None, port: int | None = None) -> dict:
     """List memory segments/blocks with permissions
 
     Args:
@@ -4027,7 +4027,7 @@ def segments_list(offset: int = 0, limit: int = 100, name: str = None, port: int
 
 @mcp.tool()
 @text_output
-def namespaces_list(offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def namespaces_list(offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """List namespaces in the program
 
     Args:
@@ -4051,8 +4051,8 @@ def namespaces_list(offset: int = 0, limit: int = 100, port: int = None) -> dict
 
 @mcp.tool()
 @text_output
-def variables_list(offset: int = 0, limit: int = 100, search: str = None,
-                   global_only: bool = False, source: str = "database", port: int = None) -> dict:
+def variables_list(offset: int = 0, limit: int = 100, search: str | None = None,
+                   global_only: bool = False, source: str = "database", port: int | None = None) -> dict:
     """List variables in the program
 
     Args:
@@ -4088,8 +4088,8 @@ def variables_list(offset: int = 0, limit: int = 100, search: str = None,
 
 @mcp.tool()
 @text_output
-def datatypes_list(offset: int = 0, limit: int = 100, category: str = None,
-                   kind: str = None, port: int = None) -> dict:
+def datatypes_list(offset: int = 0, limit: int = 100, category: str | None = None,
+                   kind: str | None = None, port: int | None = None) -> dict:
     """List data types defined in the program
 
     Args:
@@ -4119,7 +4119,7 @@ def datatypes_list(offset: int = 0, limit: int = 100, category: str = None,
 
 @mcp.tool()
 @text_output
-def datatypes_search(name: str, offset: int = 0, limit: int = 100, port: int = None) -> dict:
+def datatypes_search(name: str, offset: int = 0, limit: int = 100, port: int | None = None) -> dict:
     """Search for data types by name
 
     Args:
@@ -4144,8 +4144,8 @@ def datatypes_search(name: str, offset: int = 0, limit: int = 100, port: int = N
 
 @mcp.tool()
 @text_output
-def datatypes_create_struct(name: str, category: str = "/", fields: list = None,
-                            port: int = None) -> dict:
+def datatypes_create_struct(name: str, category: str = "/", fields: list | None = None,
+                            port: int | None = None) -> dict:
     """Create a struct datatype
 
     Args:
@@ -4177,8 +4177,8 @@ def datatypes_create_struct(name: str, category: str = "/", fields: list = None,
 
 @mcp.tool()
 @text_output
-def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values: dict = None,
-                          port: int = None) -> dict:
+def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values: dict | None = None,
+                          port: int | None = None) -> dict:
     """Create an enum datatype
 
     Args:
@@ -4211,8 +4211,8 @@ def datatypes_create_enum(name: str, size: int = 4, category: str = "/", values:
 
 @mcp.tool()
 @text_output
-def datatypes_create_union(name: str, category: str = "/", fields: list = None,
-                           port: int = None) -> dict:
+def datatypes_create_union(name: str, category: str = "/", fields: list | None = None,
+                           port: int | None = None) -> dict:
     """Create a union datatype
 
     Args:
