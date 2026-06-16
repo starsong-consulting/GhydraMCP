@@ -206,7 +206,7 @@ def get_prev(ctx, address):
 
 
 @functions.command('get')
-@click.option('--name', '-n', help='Function name')
+@click.option('--name', '-n', help='Function fully-qualified name (e.g. "FOM::Read"); a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
 @click.pass_context
 def get_function(ctx, name, address):
@@ -255,7 +255,7 @@ def get_function(ctx, name, address):
 
 
 @functions.command('decompile')
-@click.option('--name', '-n', help='Function name')
+@click.option('--name', '-n', help='Function fully-qualified name (e.g. "FOM::Read"); a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
 @click.option('--syntax-tree', is_flag=True, help='Include syntax tree in output')
 @click.option('--style', default='normalize', help='Decompiler style (default: normalize)')
@@ -334,7 +334,7 @@ def decompile(ctx, name, address, syntax_tree, style, no_constants, timeout, sta
 
 
 @functions.command('disassemble')
-@click.option('--name', '-n', help='Function name')
+@click.option('--name', '-n', help='Function fully-qualified name (e.g. "FOM::Read"); a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
 @click.option('--offset', '-o', default=0, type=int, help='Number of instructions to skip')
 @click.option('--limit', '-l', default=0, type=int, help='Max instructions to return (0 = all)')
@@ -415,9 +415,9 @@ def create_function(ctx, address):
 
 
 @functions.command('rename')
-@click.option('--old-name', help='Current function name')
+@click.option('--old-name', help='Current fully-qualified function name; a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
-@click.option('--new-name', required=True, help='New function name')
+@click.option('--new-name', required=True, help='New FQN; "A::B::foo" moves into namespace A::B (created if absent); leading "::" moves to global; bare keeps the current namespace')
 @click.pass_context
 def rename_function(ctx, old_name, address, new_name):
     """Rename a function.
@@ -461,7 +461,7 @@ def rename_function(ctx, old_name, address, new_name):
 
 
 @functions.command('set-signature')
-@click.option('--name', '-n', help='Function name')
+@click.option('--name', '-n', help='Function fully-qualified name (e.g. "FOM::Read"); a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
 @click.option('--signature', required=True, help='Function signature (e.g., "int func(char *data, int size)")')
 @click.pass_context
@@ -507,7 +507,7 @@ def set_signature(ctx, name, address, signature):
 
 
 @functions.command('delete')
-@click.option('--name', '-n', help='Function name')
+@click.option('--name', '-n', help='Function fully-qualified name (e.g. "FOM::Read"); a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
 @click.pass_context
 def delete_function(ctx, name, address):
@@ -540,7 +540,7 @@ def delete_function(ctx, name, address):
 
 
 @functions.command('get-variables')
-@click.option('--name', '-n', help='Function name')
+@click.option('--name', '-n', help='Function fully-qualified name (e.g. "FOM::Read"); a bare name matches the global namespace only')
 @click.option('--address', '-a', help='Function address (hex)')
 @click.pass_context
 def get_variables(ctx, name, address):

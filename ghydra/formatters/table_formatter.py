@@ -476,15 +476,13 @@ class TableFormatter(BaseFormatter):
         table.add_column("Address", style="cyan", no_wrap=True)
         table.add_column("Type", style="yellow")
         table.add_column("Name", style="green")
-        table.add_column("Namespace", style="dim")
 
         for item in result:
             primary = " *" if item.get("isPrimary") else ""
             table.add_row(
                 item.get("address", "?"),
                 item.get("type", "?"),
-                item.get("name", "?") + primary,
-                item.get("namespace", "")
+                item.get("name", "?") + primary
             )
 
         return self._capture(table)
