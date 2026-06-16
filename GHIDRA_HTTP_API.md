@@ -94,13 +94,15 @@ Common HTTP Status Codes:
 
 Resources like functions, data, and symbols often exist at specific memory addresses and may have names.
 
+Names are **fully-qualified** (FQN): the namespace path joined with `::` (e.g. `MyClass::myMethod`, `FOM::SharedMemory::ReadUInt`); members of the global namespace are unprefixed (e.g. `main`). **Breaking:** all name filters below match against the fully-qualified name, and a bare name (no `::`) resolves in the global namespace only (it no longer matches a symbol that lives in some namespace).
+
 - **By Address:** Use the resource's path with the address (hexadecimal, e.g., `0x401000` or `08000004`).
   - Example: `GET /functions/0x401000`
 - **Querying Lists:** List endpoints (e.g., `/functions`, `/symbols`, `/data`) support filtering via query parameters:
   - `?addr=[address in hex]`: Find item at a specific address.
-  - `?name=[full_name]`: Find item(s) with an exact name match (case-sensitive).
-  - `?name_contains=[substring]`: Find item(s) whose name contains the substring (case-insensitive).
-  - `?name_matches_regex=[regex]`: Find item(s) whose name matches the Java-compatible regular expression.
+  - `?name=[fqn]`: Find item(s) whose fully-qualified name matches exactly (case-sensitive). (`/data` uses `?label=` / `?label_contains=`.)
+  - `?name_contains=[substring]`: Find item(s) whose fully-qualified name contains the substring (case-insensitive).
+  - `?name_matches_regex=[regex]`: Find item(s) whose fully-qualified name matches the Java-compatible regular expression.
 
 ### Pagination
 
@@ -284,17 +286,18 @@ Provides information about the current cursor position and function in Ghidra's 
 
 ### 4. Functions
 
-Represents functions within the current program.
+Represents functions within the current program. Function names are **fully-qualified** (FQN), including the namespace path (e.g. `FOM::SharedMemory::ReadUInt`); functions in the global namespace are unprefixed (e.g. `main`).
 
-- **`GET /functions`**: List functions. Supports searching (by name/address/regex) and pagination.
+- **`GET /functions`**: List functions. Supports searching (by name/address/regex, all against the FQN) and pagination.
   ```json
   // Example Response Fragment
   "result": [
     { "name": "FUN_08000004", "address": "08000004", "_links": { "self": { "href": "/functions/08000004" } } },
-    { "name": "init_peripherals", "address": "08001cf0", "_links": { "self": { "href": "/functions/08001cf0" } } }
+    { "name": "FOM::SharedMemory::ReadUInt", "address": "08001cf0", "_links": { "self": { "href": "/functions/08001cf0" } } }
   ]
   ```
 - **`POST /functions`**: Create a function at a specific address. Requires `address` in the request body. Returns the created function resource.
+- **`GET /functions/by-name/{fqn}`**: Get a function by its fully-qualified name. The FQN must be URL-encoded (e.g. `FOM::ReadUInt` -> `FOM%3A%3AReadUInt`); a bare name resolves in the global namespace only. `PATCH` and `DELETE` (and the `decompile`/`disassembly`/`variables` sub-resources) are also served under this path.
 - **`GET /functions/{address}`**: Get details for a specific function (name, signature, size, stack info, etc.).
   ```json
   // Example Response Fragment for GET /functions/0x4010a0
@@ -317,13 +320,13 @@ Represents functions within the current program.
     "xrefs_from": { "href": "/xrefs?from_addr=0x4010a0" }
   }
   ```
-- **`PATCH /functions/{address}`**: Modify a function. Addressable only by address. Payload can contain:
-  - `name`: New function name.
+- **`PATCH /functions/{address}`**: Modify a function. Payload can contain:
+  - `name`: New fully-qualified name. `A::B::foo` moves the function into namespace `A::B` (created if absent); a leading `::` (or `Global::`) moves it to the global namespace; a bare name keeps the current namespace.
   - `signature`: Full function signature string (e.g., `void my_func(int p1, char * p2)`).
   - `comment`: Set/update the function's primary comment.
   ```json
-  // Example PATCH payload
-  { "name": "calculate_checksum", "signature": "uint32_t calculate_checksum(uint8_t* buffer, size_t length)" }
+  // Example PATCH payload (rename and move into the Crypto namespace)
+  { "name": "Crypto::calculate_checksum", "signature": "uint32_t calculate_checksum(uint8_t* buffer, size_t length)" }
   ```
 - **`DELETE /functions/{address}`**: Delete the function definition at the specified address.
 
