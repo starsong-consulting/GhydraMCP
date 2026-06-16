@@ -21,8 +21,16 @@ public record DataDto(
         if (data == null) return null;
 
         String label = null;
-        if (data.getPrimarySymbol() != null) {
-            label = data.getPrimarySymbol().getName();
+        try {
+            if (data.getPrimarySymbol() != null) {
+                // For an unnamed pointer this resolves the DYNAMIC name, which Ghidra
+                // computes recursively and can overflow on a self-referential pointer.
+                // Catch Throwable so one poisoned item degrades to a placeholder rather
+                // than blowing up the whole listing scan.
+                label = data.getPrimarySymbol().getName();
+            }
+        } catch (Throwable t) {
+            label = "<unresolved>";
         }
 
         String value = null;
