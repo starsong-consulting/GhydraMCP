@@ -1,6 +1,8 @@
 """Table-based output formatter using rich library."""
 
 import io
+import os
+import sys
 from typing import Any, Dict
 
 from rich.console import Console
@@ -25,9 +27,14 @@ class TableFormatter(BaseFormatter):
         Args:
             use_colors: Enable colored output
         """
+        # Only colorize when stdout is a real terminal. The old force_terminal=use_colors
+        # leaked ANSI codes into piped output, corrupting programmatic/agent parsing of hex
+        # addresses. Auto-detect the TTY so default output is agent-clean without --no-color,
+        # and honor the NO_COLOR convention (https://no-color.org).
+        self._use_colors = use_colors and not os.environ.get("NO_COLOR") and sys.stdout.isatty()
         self.console = Console(
-            color_system="auto" if use_colors else None,
-            force_terminal=use_colors
+            color_system="auto" if self._use_colors else None,
+            force_terminal=self._use_colors or None,
         )
 
     def _capture(self, renderable) -> str:
@@ -40,11 +47,12 @@ class TableFormatter(BaseFormatter):
             Captured string output
         """
         buffer = io.StringIO()
-        # Create console with same color settings
-        color_sys = "auto" if self.console._color_system else None
+        # Mirror the main console's color decision (TTY-aware) so captured output is
+        # plain when stdout is piped.
         temp_console = Console(
-            file=buffer, color_system=color_sys,
-            force_terminal=self.console._force_terminal
+            file=buffer,
+            color_system="auto" if self._use_colors else None,
+            force_terminal=self._use_colors or None,
         )
         temp_console.print(renderable, soft_wrap=True)
         return buffer.getvalue().rstrip()
