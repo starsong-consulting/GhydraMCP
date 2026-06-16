@@ -68,7 +68,7 @@ The API is organized into namespaces for different types of operations:
 - datatypes_* : For data type management
 """
 
-mcp = FastMCP("GhydraMCP", version=BRIDGE_VERSION, instructions=instructions)
+mcp = FastMCP("GhydraMCP", instructions=instructions)
 
 # Backward-compatible host env resolution:
 # - GHIDRA_HYDRA_HOST: current preferred variable
