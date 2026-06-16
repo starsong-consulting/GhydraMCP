@@ -484,6 +484,17 @@ def format_disassembly(response: dict, **kwargs) -> str:
         operands = instr.get("operands", "")
         lines.append(f"  {addr}  {bytes_hex:<12} {mnemonic:<8} {operands}")
 
+    # Surface truncation: the server caps a page (default 100 instructions) and the
+    # raw list carries no hint that more follow, so a long function silently looks
+    # complete. meta.total is the full instruction count for the function.
+    meta = response.get("meta") or {}
+    total = _list_total(response, instructions)
+    offset = meta.get("offset") or 0
+    shown = len(instructions)
+    if offset + shown < total:
+        more = total - offset - shown
+        lines.append(f"\n  ... {more} more instruction(s) of {total} total (use offset={offset + shown})")
+
     return "\n".join(lines)
 
 
@@ -2385,14 +2396,16 @@ def functions_decompile(name: str = None, address: str = None,
 
 @mcp.tool()
 @text_output
-def functions_disassemble(name: str = None, address: str = None, offset: int = 0, limit: int = 0, port: int = None) -> dict:
+def functions_disassemble(name: str = None, address: str = None, offset: int = 0, limit: int = 100, port: int = None) -> dict:
     """Get disassembly for a function
 
     Args:
         name: Function name (mutually exclusive with address)
         address: Function address in hex format (mutually exclusive with name)
         offset: Number of instructions to skip (default 0)
-        limit: Maximum number of instructions to return (default 0 = all)
+        limit: Maximum number of instructions per page (default 100, server max 1000).
+            Long functions are paginated; the text output footer reports the total
+            instruction count and the next offset to fetch the rest.
         port: Specific Ghidra instance port (optional)
 
     Returns:
