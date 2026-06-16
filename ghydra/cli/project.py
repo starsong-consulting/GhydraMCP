@@ -224,3 +224,30 @@ def delete_program(ctx, program_id):
         error_output = formatter.format_error(e)
         rich_echo(error_output, err=True)
         ctx.exit(1)
+
+
+@project.command('save-program')
+@click.option('--all', 'save_all', is_flag=True,
+              help='Save all open programs with unsaved changes')
+@click.pass_context
+def save_program(ctx, save_all):
+    """Save the current program to the project (persists analysis).
+
+    \b
+    Examples:
+        ghydra project save-program
+        ghydra project save-program --all
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+
+    try:
+        endpoint = 'program/save?all=true' if save_all else 'program/save'
+        response = client.post(endpoint)
+        output = formatter.format_simple_result(response)
+        click.echo(output)
+
+    except GhidraError as e:
+        error_output = formatter.format_error(e)
+        rich_echo(error_output, err=True)
+        ctx.exit(1)

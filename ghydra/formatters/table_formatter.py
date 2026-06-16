@@ -425,6 +425,17 @@ class TableFormatter(BaseFormatter):
         if isinstance(result, dict) and "message" in result:
             return self._capture(f"[green]{result['message']}[/green]")
 
+        if isinstance(result, list):
+            if not result:
+                return self._capture("[green]Success[/green] (no items)")
+            rows = []
+            for item in result:
+                if isinstance(item, dict):
+                    rows.append(", ".join(f"{k}: {v}" for k, v in item.items() if k != "_links"))
+                else:
+                    rows.append(str(item))
+            return self._capture("\n".join(rows))
+
         lines = []
         for key, value in result.items():
             if key not in ("_links",):

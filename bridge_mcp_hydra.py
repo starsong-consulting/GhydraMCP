@@ -3801,6 +3801,26 @@ def programs_delete(program_id: str = "current", port: int = None) -> dict:
     return simplify_response(response)
 
 
+@mcp.tool()
+def programs_save(all: bool = False, port: int = None) -> dict:
+    """Save the current program to the project (Ghidra's "Save")
+
+    Persists analysis (renames, types, comments, etc.) so it survives a Ghidra restart.
+    A program with no changes is a no-op (saved=false).
+
+    Args:
+        all: Save every open program with unsaved changes (default: just the current program)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Save result(s); saved=false means there were no unsaved changes
+    """
+    port = _get_instance_port(port)
+    endpoint = "program/save?all=true" if all else "program/save"
+    response = safe_post(port, endpoint, {})
+    return simplify_response(response)
+
+
 # ================= Analysis =================
 
 @mcp.tool()
