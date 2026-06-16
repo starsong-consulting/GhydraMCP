@@ -146,11 +146,11 @@ public class DataService {
         return TransactionHelper.executeInTransaction(program, "Rename label at " + addressStr, () -> {
             SymbolTable symTable = program.getSymbolTable();
             Symbol existing = symTable.getPrimarySymbol(address);
-            String originalName = existing != null ? existing.getName() : null;
+            String originalName = existing != null ? existing.getName(true) : null;
             if (existing != null) {
-                existing.setName(newName, SourceType.USER_DEFINED);
+                GhidraUtil.applyQualifiedName(program, existing, newName, SourceType.USER_DEFINED);
             } else {
-                symTable.createLabel(address, newName, SourceType.USER_DEFINED);
+                GhidraUtil.createLabelWithName(program, address, newName, SourceType.USER_DEFINED);
             }
             Data data = program.getListing().getDataAt(address);
             String typeName = data != null ? data.getDataType().getName() : null;
@@ -191,7 +191,7 @@ public class DataService {
             Listing listing = program.getListing();
             SymbolTable symTable = program.getSymbolTable();
             Symbol existing = symTable.getPrimarySymbol(address);
-            String originalName = existing != null ? existing.getName() : null;
+            String originalName = existing != null ? existing.getName(true) : null;
 
             Data oldData = listing.getDataAt(address);
             String originalType = oldData != null ? oldData.getDataType().getName() : null;
@@ -202,9 +202,9 @@ public class DataService {
             if (hasName) {
                 existing = symTable.getPrimarySymbol(address);
                 if (existing != null) {
-                    existing.setName(newName, SourceType.USER_DEFINED);
+                    GhidraUtil.applyQualifiedName(program, existing, newName, SourceType.USER_DEFINED);
                 } else {
-                    symTable.createLabel(address, newName, SourceType.USER_DEFINED);
+                    GhidraUtil.createLabelWithName(program, address, newName, SourceType.USER_DEFINED);
                 }
             }
 
@@ -293,14 +293,14 @@ public class DataService {
             if (labelEquals != null) {
                 predicates.add(d -> {
                     var sym = d.getPrimarySymbol();
-                    return sym != null && sym.getName().equals(labelEquals);
+                    return sym != null && sym.getName(true).equals(labelEquals);
                 });
             }
             if (labelContains != null) {
                 String lower = labelContains.toLowerCase();
                 predicates.add(d -> {
                     var sym = d.getPrimarySymbol();
-                    return sym != null && sym.getName().toLowerCase().contains(lower);
+                    return sym != null && sym.getName(true).toLowerCase().contains(lower);
                 });
             }
             if (dataType != null) {

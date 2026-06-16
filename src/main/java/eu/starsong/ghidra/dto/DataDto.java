@@ -27,7 +27,7 @@ public record DataDto(
                 // computes recursively and can overflow on a self-referential pointer.
                 // Catch Throwable so one poisoned item degrades to a placeholder rather
                 // than blowing up the whole listing scan.
-                label = data.getPrimarySymbol().getName();
+                label = data.getPrimarySymbol().getName(true);
             }
         } catch (Throwable t) {
             label = "<unresolved>";
