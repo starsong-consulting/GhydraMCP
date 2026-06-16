@@ -599,6 +599,42 @@ Provides functionality for creating and managing struct (composite) data types.
   }
   ```
 
+### 6.3 Scalars
+
+Search for scalar (constant) values in instructions, like Ghidra's "Search For Scalars".
+
+- **`GET /scalars`**: Find occurrences of a specific scalar value in instruction operands.
+  - Query Parameters:
+    - `?value=[int]`: **Required.** Value to search for (hex `0x...` / `-0x...`, or decimal).
+    - `?in_function=[string]`: Only matches inside functions whose name contains this substring (case-insensitive). On a large program this is much faster: it scans only the matching functions instead of every instruction.
+    - `?to_function=[string]`: Only matches where the instruction feeds a nearby call (within ~10 instructions) to a function whose name contains this substring. Useful for finding a specific argument passed to a function.
+    - `?offset=[int]`: Pagination offset (default: 0).
+    - `?limit=[int]`: Maximum results to return (default: 100).
+  - `meta.scanTruncated` is `true` when an unfiltered or `to_function` scan hit its time budget before finishing (large programs). Results are then partial; narrow with `in_function` or a more specific value for completeness.
+  ```json
+  // Example Response for GET /scalars?value=0&to_function=memset
+  "result": [
+    {
+      "address": "00401234",
+      "value": 0,
+      "hexValue": "0x0",
+      "bitLength": 32,
+      "signed": false,
+      "operandIndex": 1,
+      "instruction": "PUSH 0x0",
+      "inFunction": "main",
+      "inFunctionAddress": "00401200",
+      "toFunction": "memset",
+      "toFunctionAddress": "00402000"
+    }
+  ],
+  "meta": { "offset": 0, "limit": 100, "returned": 1, "scanTruncated": false },
+  "_links": {
+    "self": { "href": "/scalars?value=0&to_function=memset&offset=0&limit=100" },
+    "program": { "href": "/program" }
+  }
+  ```
+
 ### 7. Memory Segments
 
 Represents memory blocks/sections defined in the program. 

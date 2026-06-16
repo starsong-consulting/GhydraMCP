@@ -58,6 +58,10 @@ class JSONFormatter(BaseFormatter):
         """Format xrefs as JSON."""
         return self._format_json(data)
 
+    def format_scalars(self, data: Dict[str, Any]) -> str:
+        """Format scalar search results as JSON."""
+        return self._format_json(data)
+
     def format_data_list(self, data: Dict[str, Any]) -> str:
         """Format data list as JSON."""
         return self._format_json(data)

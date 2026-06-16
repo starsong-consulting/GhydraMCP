@@ -90,6 +90,7 @@ from . import (
     data,
     structs,
     xrefs,
+    scalars,
     analysis,
     ui,
     comments,
@@ -108,6 +109,7 @@ cli.add_command(memory.memory)
 cli.add_command(data.data)
 cli.add_command(structs.structs)
 cli.add_command(xrefs.xrefs)
+cli.add_command(scalars.scalars)
 cli.add_command(analysis.analysis)
 cli.add_command(ui.ui)
 cli.add_command(comments.comments)

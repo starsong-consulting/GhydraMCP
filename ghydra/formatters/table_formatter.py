@@ -246,6 +246,43 @@ class TableFormatter(BaseFormatter):
 
         return self._capture(table)
 
+    def format_scalars(self, data: Dict[str, Any]) -> str:
+        """Format scalar search results as table."""
+        results = data.get("result", [])
+        meta = data.get("meta", {}) or {}
+
+        if not results:
+            if meta.get("scanTruncated"):
+                return self._capture("[yellow]No scalars found[/yellow] (scan truncated; "
+                                     "narrow with --in-function or a more specific value)")
+            return self._capture("[yellow]No scalars found[/yellow]")
+
+        offset = meta.get("offset", 0)
+        table = Table(title=f"Scalars ({offset + 1}-{offset + len(results)})", show_lines=False)
+        table.add_column("Address", style="cyan", no_wrap=True)
+        table.add_column("Value", style="green", no_wrap=True)
+        table.add_column("Op", style="dim", no_wrap=True)
+        table.add_column("Instruction", style="yellow", overflow="fold")
+        table.add_column("In Function", style="white")
+        table.add_column("Calls", style="magenta")
+
+        for s in results:
+            table.add_row(
+                s.get("address", "?"),
+                s.get("hexValue", str(s.get("value", "?"))),
+                str(s.get("operandIndex", "")),
+                s.get("instruction", ""),
+                s.get("inFunction") or "-",
+                s.get("toFunction") or "",
+            )
+
+        output = self._capture(table)
+        if meta.get("scanTruncated"):
+            output += "\n" + self._capture("[yellow]Scan truncated to keep the UI responsive; "
+                                           "results may be incomplete - narrow with --in-function "
+                                           "or a more specific value.[/yellow]")
+        return output
+
     def format_data_list(self, data: Dict[str, Any]) -> str:
         """Format data items list as table."""
         result = data.get("result", [])

@@ -56,6 +56,7 @@ The API is organized into namespaces for different types of operations:
 - functions_* : For working with functions
 - data_* : For working with data items
 - structs_* : For creating and managing struct data types
+- scalars_* : For searching scalar (constant) values in instructions
 - memory_* : For memory access
 - xrefs_* : For cross-references
 - analysis_* : For program analysis
@@ -1077,6 +1078,43 @@ def format_datatypes_list(response: dict, offset: int = 0, limit: int = 100, **k
 
 # ================= Formatter Registry & Decorator =================
 
+def format_scalars(response: dict, **kwargs) -> str:
+    """Format scalar search results as plain text"""
+    if not response.get("success", False):
+        return format_error(response)
+
+    items = response.get("result", [])
+    meta = response.get("meta") or {}
+    offset = meta.get("offset", 0)
+
+    if not items:
+        if meta.get("scanTruncated"):
+            return "No scalars found (scan truncated before completing; narrow with in_function or a more specific value)"
+        return "No scalars found"
+
+    lines = [f"Scalars ({offset + 1}-{offset + len(items)}):", ""]
+    for s in items:
+        addr = s.get("address", "")
+        hexv = s.get("hexValue", "")
+        op = s.get("operandIndex", "?")
+        instr = s.get("instruction", "")
+        in_fn = s.get("inFunction") or "-"
+        line = f"  {addr}  {hexv:<12} op{op}  {instr}  [in {in_fn}]"
+        to_fn = s.get("toFunction")
+        if to_fn:
+            line += f"  -> calls {to_fn}"
+        lines.append(line)
+
+    if meta.get("scanTruncated"):
+        lines.append("")
+        lines.append("  (scan stopped early to keep the UI responsive; results may be incomplete "
+                     "- narrow with in_function or a more specific value)")
+    elif (response.get("_links") or {}).get("next"):
+        lines.append(f"\n  ... more available (use offset={offset + len(items)})")
+
+    return "\n".join(lines)
+
+
 FORMATTERS = {
     "functions_list": format_functions_list,
     "functions_get": format_function_info,
@@ -1087,6 +1125,7 @@ FORMATTERS = {
     "functions_disassemble": format_disassembly,
     "functions_get_variables": format_variables,
     "xrefs_list": format_xrefs,
+    "scalars_search": format_scalars,
     "data_list": format_data_list,
     "data_list_strings": format_strings,
     "memory_read": format_memory,
@@ -3089,6 +3128,43 @@ def data_set_type(address: str, data_type: str, port: int = None) -> dict:
     port = _get_instance_port(port)
 
     response = safe_patch(port, f"data/{address}/type", {"type": data_type})
+    return simplify_response(response)
+
+# Scalar tools
+@mcp.tool()
+@text_output
+def scalars_search(value: str, in_function: str = None, to_function: str = None,
+                   offset: int = 0, limit: int = 100, port: int = None) -> dict:
+    """Search for occurrences of a specific scalar (constant) value in instructions
+
+    Finds where a constant appears as an instruction operand, like Ghidra's "Search For
+    Scalars". For a named constant, resolve its value with data_list / datatypes first.
+
+    Args:
+        value: The scalar value to search for (hex "0x..." or decimal)
+        in_function: Only matches inside functions whose name contains this substring
+            (case-insensitive). Strongly preferred on large binaries: it scans only the
+            matching functions instead of the whole program.
+        to_function: Only matches where the instruction feeds a nearby call to a function
+            whose name contains this substring (e.g. find the 0 passed to memset).
+        offset: Pagination offset (default: 0)
+        limit: Maximum items to return (default: 100)
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: Scalar occurrences with address, instruction, and function context. On a large
+        program an unfiltered or to_function search may report scanTruncated when it hits a
+        time budget; narrow it with in_function for complete results.
+    """
+    port = _get_instance_port(port)
+
+    params = {"value": value, "offset": offset, "limit": limit}
+    if in_function:
+        params["in_function"] = in_function
+    if to_function:
+        params["to_function"] = to_function
+
+    response = safe_get(port, "scalars", params)
     return simplify_response(response)
 
 # Struct tools
