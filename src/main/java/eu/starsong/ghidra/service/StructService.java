@@ -146,15 +146,13 @@ public class StructService {
                 }
             } else {
                 if (hasNewName && !Objects.equals(updatedName, originalName)) {
-                    // 12.1's setFieldName no longer declares DuplicateNameException; guard
-                    // explicitly so a clash still surfaces as a 400 rather than whatever
-                    // the API does internally.
-                    for (DataTypeComponent c : struct.getComponents()) {
-                        if (c != component && updatedName.equals(c.getFieldName())) {
-                            throw new IllegalArgumentException("Field name already exists: " + updatedName);
-                        }
+                    try {
+                        component.setFieldName(updatedName);
+                    } catch (Exception e) {
+                        // 11.x declares a checked DuplicateNameException here; 12.x dropped it.
+                        // Catching Exception compiles against both and a clash maps to 400.
+                        throw new IllegalArgumentException("Field name already exists or invalid: " + updatedName, e);
                     }
-                    component.setFieldName(updatedName);
                 }
                 if (hasNewComment) {
                     component.setComment(updatedComment);
@@ -171,7 +169,9 @@ public class StructService {
             if (struct == null) {
                 throw new NotFoundException("Struct not found: " + name, "STRUCT_NOT_FOUND");
             }
-            program.getDataTypeManager().remove(struct);
+            // 2-arg remove exists in both 11.x and 12.x (12.x deprecates it but keeps it);
+            // the 1-arg form is 12.x-only. Use the 2-arg form for cross-version compile.
+            program.getDataTypeManager().remove(struct, ghidra.util.task.TaskMonitor.DUMMY);
             return null;
         });
     }
