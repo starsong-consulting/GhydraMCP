@@ -109,7 +109,7 @@ public class SymbolService {
         }
 
         TransactionHelper.executeInTransaction(program, "Rename Symbol", () -> {
-            symbol.setName(newName, SourceType.USER_DEFINED);
+            GhidraUtil.applyQualifiedName(program, symbol, newName, SourceType.USER_DEFINED);
             return null;
         });
 
@@ -217,15 +217,15 @@ public class SymbolService {
             List<Predicate<Symbol>> predicates = new ArrayList<>();
 
             if (nameEquals != null) {
-                predicates.add(sym -> sym.getName().equals(nameEquals));
+                predicates.add(sym -> sym.getName(true).equals(nameEquals));
             }
             if (nameContains != null) {
                 String lower = nameContains.toLowerCase();
-                predicates.add(sym -> sym.getName().toLowerCase().contains(lower));
+                predicates.add(sym -> sym.getName(true).toLowerCase().contains(lower));
             }
             if (nameMatchesRegex != null) {
                 Pattern pattern = Pattern.compile(nameMatchesRegex);
-                predicates.add(sym -> pattern.matcher(sym.getName()).matches());
+                predicates.add(sym -> pattern.matcher(sym.getName(true)).matches());
             }
             if (type != null) {
                 predicates.add(sym -> sym.getSymbolType().toString().equalsIgnoreCase(type));

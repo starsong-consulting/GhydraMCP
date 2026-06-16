@@ -10,7 +10,6 @@ public record SymbolDto(
     String name,
     String address,
     String type,
-    String namespace,
     boolean isPrimary,
     boolean isExternal,
     boolean isGlobal,
@@ -23,10 +22,9 @@ public record SymbolDto(
         if (sym == null) return null;
 
         return new SymbolDto(
-            sym.getName(),
+            sym.getName(true),
             sym.getAddress().toString(),
             sym.getSymbolType().toString(),
-            sym.getParentNamespace() != null ? sym.getParentNamespace().getName(true) : null,
             sym.isPrimary(),
             sym.isExternal(),
             sym.isGlobal(),
