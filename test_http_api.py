@@ -146,6 +146,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("segments", links)
         self.assertIn("memory", links)
         self.assertIn("xrefs", links)
+        self.assertIn("analysis", links)
 
     def test_functions_endpoint(self):
         """Test the /functions endpoint"""

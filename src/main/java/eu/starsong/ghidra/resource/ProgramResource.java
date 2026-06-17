@@ -129,6 +129,7 @@ public class ProgramResource implements Resource {
             .link("segments", "/segments")
             .link("memory", "/memory")
             .link("xrefs", "/xrefs")
+            .link("analysis", "/analysis/status")
             .link("programs", "/programs")
             .build());
     }
