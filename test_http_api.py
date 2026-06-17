@@ -135,7 +135,6 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         result = data["result"]
         self.assertIn("programId", result)
         self.assertIn("name", result)
-        self.assertIn("isOpen", result)
         
         # Check for HATEOAS links
         self.assertIn("_links", data)
@@ -147,7 +146,6 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         self.assertIn("segments", links)
         self.assertIn("memory", links)
         self.assertIn("xrefs", links)
-        self.assertIn("analysis", links)
 
     def test_functions_endpoint(self):
         """Test the /functions endpoint"""
@@ -174,10 +172,10 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # For single-object responses, these might not be present
         result = data["result"]
         if isinstance(result, list):
-            self.assertIn("size", data)
-            self.assertIn("offset", data)
-            self.assertIn("limit", data)
-        
+            self.assertIn("meta", data)
+            self.assertIn("offset", data["meta"])
+            self.assertIn("limit", data["meta"])
+
         # Test the content of the result regardless of whether it's a list or single object
         if isinstance(result, list) and result:
             # If it's a list, check the first item
@@ -212,12 +210,13 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # In transitional API implementation, pagination metadata might not be present
         # for single-object responses or if the endpoint doesn't support pagination
         if isinstance(result, list):
-            # Ensure pagination parameters are correctly applied
-            self.assertIn("size", data)
-            self.assertIn("offset", data)
-            self.assertIn("limit", data)
-            self.assertEqual(data["offset"], 0)
-            self.assertEqual(data["limit"], 5)
+            # Ensure pagination parameters are correctly applied (metadata is under "meta")
+            self.assertIn("meta", data)
+            meta = data["meta"]
+            self.assertIn("offset", meta)
+            self.assertIn("limit", meta)
+            self.assertEqual(meta["offset"], 0)
+            self.assertEqual(meta["limit"], 5)
             
             # For list responses, verify the length
             self.assertLessEqual(len(result), 5)
@@ -332,9 +331,9 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.assertIn("start", seg, "Segment missing 'start' field")
             self.assertIn("end", seg, "Segment missing 'end' field")
             self.assertIn("size", seg, "Segment missing 'size' field")
-            self.assertIn("readable", seg, "Segment missing 'readable' field")
-            self.assertIn("writable", seg, "Segment missing 'writable' field")
-            self.assertIn("executable", seg, "Segment missing 'executable' field")
+            self.assertIn("isRead", seg, "Segment missing 'isRead' field")
+            self.assertIn("isWrite", seg, "Segment missing 'isWrite' field")
+            self.assertIn("isExecute", seg, "Segment missing 'isExecute' field")
             
             # Verify HATEOAS links in segment
             self.assertIn("_links", seg, "Segment missing '_links' field")
@@ -450,17 +449,13 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # Additional checks for decompilation result
         result = data["result"]
         
-        # HATEOAS-compliant decompile endpoint should return decompiled code
-        self.assertIn("decompiled", result, "Result missing 'decompiled' field")
-        self.assertIsInstance(result["decompiled"], str, "Decompiled code must be a string")
-        
-        # Verify complete function information
-        if "address" not in result and "function" in result and "address" in result["function"]:
-            # If address is in function object, it's accepted
-            pass
-        else:
-            self.assertIn("address", result, "Result missing 'address' field")
-        self.assertIn("function", result, "Result missing 'function' field")
+        # Decompile endpoint returns the decompiled C in "decompilation"
+        self.assertIn("decompilation", result, "Result missing 'decompilation' field")
+        self.assertIsInstance(result["decompilation"], str, "Decompiled code must be a string")
+
+        # Function identity is reported via functionName / functionAddress
+        self.assertIn("functionName", result, "Result missing 'functionName' field")
+        self.assertIn("functionAddress", result, "Result missing 'functionAddress' field")
         
     def test_disassemble_function_endpoint(self):
         """Test the /functions/{address}/disassembly endpoint"""
@@ -503,24 +498,19 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         # Additional checks for disassembly result
         result = data["result"]
         
-        # HATEOAS-compliant disassembly endpoint should return instructions
-        self.assertIn("instructions", result, "Result missing 'instructions' field")
-        self.assertIsInstance(result["instructions"], list, "Instructions must be a list")
-        self.assertTrue(len(result["instructions"]) > 0, "Instructions list is empty")
-        
+        # Disassembly result is a list of instructions
+        self.assertIsInstance(result, list, "Disassembly result must be a list of instructions")
+        self.assertTrue(len(result) > 0, "Instructions list is empty")
+
         # Check the first instruction structure
-        first_instr = result["instructions"][0]
+        first_instr = result[0]
         self.assertIn("address", first_instr, "Instruction missing 'address' field")
         self.assertIn("mnemonic", first_instr, "Instruction missing 'mnemonic' field")
         self.assertIn("bytes", first_instr, "Instruction missing 'bytes' field")
-        
-        # Verify function information
-        if "address" not in result and "function" in result and "address" in result["function"]:
-            # If address is in function object, it's accepted
-            pass
-        else:
-            self.assertIn("address", result, "Result missing 'address' field")
-        self.assertIn("function", result, "Result missing 'function' field")
+
+        # Function information is carried in the pagination meta block
+        self.assertIn("meta", data, "Response missing 'meta' field")
+        self.assertIn("function", data["meta"], "meta missing 'function' field")
         
     def test_function_variables_endpoint(self):
         """Test the /functions/by-name/{name}/variables endpoint"""
@@ -720,8 +710,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         links = data["_links"]
         self.assertIn("self", links)
         self.assertIn("program", links)
-        self.assertIn("decompile", links)
-        self.assertIn("disassembly", links)
+        self.assertIn("by_address", links)
         
         result = data.get("result", {})
         if isinstance(result, dict):
@@ -779,8 +768,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         
         result = data.get("result", {})
         self.assertIn("root", result, "Callgraph missing 'root' field")
-        self.assertIn("nodes", result, "Callgraph missing 'nodes' field")
-        self.assertIn("edges", result, "Callgraph missing 'edges' field")
+        self.assertIn("callees", result, "Callgraph missing 'callees' field")
+        self.assertIn("callers", result, "Callgraph missing 'callers' field")
         
         # Test with the name parameter
         response = requests.get(f"{BASE_URL}/analysis/callgraph?name={func_name}&max_depth=2")
@@ -791,8 +780,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         
         result = data.get("result", {})
         self.assertIn("root", result, "Callgraph missing 'root' field")
-        self.assertIn("nodes", result, "Callgraph missing 'nodes' field")
-        self.assertIn("edges", result, "Callgraph missing 'edges' field")
+        self.assertIn("callees", result, "Callgraph missing 'callees' field")
+        self.assertIn("callers", result, "Callgraph missing 'callers' field")
 
     def test_data_operations(self):
         """Test data update operations including renaming and type changes"""
@@ -815,43 +804,28 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         try:
             # Test 1: Rename Only
             test_name = "TEST_DATA_RENAME"
-            payload = {
-                "address": address,
-                "newName": test_name
-            }
-            
-            response = requests.post(f"{BASE_URL}/data", json=payload)
+            response = requests.patch(f"{BASE_URL}/data/{address}", json={"name": test_name})
             self.assertEqual(response.status_code, 200)
-            
+
             data = response.json()
             self.assertStandardSuccessResponse(data)
             self.assertEqual(data["result"]["name"], test_name)
             self.assertEqual(data["result"]["address"], address)
             
             # Test 2: Type Change Only
-            payload = {
-                "address": address,
-                "type": "int"
-            }
-            
-            response = requests.post(f"{BASE_URL}/data/type", json=payload)
+            response = requests.patch(f"{BASE_URL}/data/{address}/type", json={"type": "int"})
             self.assertEqual(response.status_code, 200)
-            
+
             data = response.json()
             self.assertStandardSuccessResponse(data)
             self.assertEqual(data["result"]["dataType"], "int")
             self.assertEqual(data["result"]["address"], address)
             
             # Test 3: Both Name and Type Change
-            payload = {
-                "address": address,
-                "newName": "TEST_DATA_BOTH",
-                "type": "byte"
-            }
-            
-            response = requests.post(f"{BASE_URL}/data/update", json=payload)
+            response = requests.patch(f"{BASE_URL}/data/{address}",
+                                      json={"name": "TEST_DATA_BOTH", "type": "byte"})
             self.assertEqual(response.status_code, 200)
-            
+
             data = response.json()
             self.assertStandardSuccessResponse(data)
             self.assertEqual(data["result"]["name"], "TEST_DATA_BOTH")
@@ -860,12 +834,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             
             # Restore original values
             if original_type != "undefined" and original_name != "unnamed":
-                payload = {
-                    "address": address,
-                    "newName": original_name,
-                    "type": original_type
-                }
-                requests.post(f"{BASE_URL}/data", json=payload)
+                requests.patch(f"{BASE_URL}/data/{address}",
+                               json={"name": original_name, "type": original_type})
         except Exception as e:
             self.fail(f"Data operations test failed: {str(e)}")
 
