@@ -6,9 +6,9 @@
 [![GitHub contributors](https://img.shields.io/github/contributors/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/graphs/contributors)
 [![Build Status](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml)
 
-# GhydraMCP v3.0.0-beta
+# GhydraMCP
 
-GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI assistants that enables comprehensive AI-assisted reverse engineering through the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp).
+GhydraMCP connects [Ghidra](https://ghidra-sre.org/) to AI assistants for reverse engineering, over the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp) or a command-line tool.
 
 ![GhydraMCP logo](https://github.com/user-attachments/assets/86b9b2de-767c-4ed5-b082-510b8109f00f)
 
@@ -16,87 +16,85 @@ GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI 
 
 > **Note:** The MCP bridge (`bridge_mcp_hydra.py`) is being deprecated in favor of the CLI tool (`ghydra`). The CLI provides the same capabilities with better output formatting, `--json` mode for scripting and AI tool use, and doesn't require an MCP-capable client. The bridge will continue to work but is no longer the recommended integration path.
 
-GhydraMCP v3.0.0-beta integrates four key components:
+GhydraMCP has four components:
 
-1. **Modular Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a HATEOAS-driven REST API
-2. **CLI Tool (`ghydra`)**: A standalone command-line interface for direct interaction with Ghidra — human-readable tables, `--json` mode for AI tool use and scripting
-3. **MCP Bridge** *(deprecated)*: A Python script that translates MCP requests into API calls
-4. **Multi-instance Architecture**: Connect multiple Ghidra instances to analyze different binaries simultaneously
+1. **Ghidra plugin**: exposes Ghidra over a HATEOAS REST API
+2. **CLI tool (`ghydra`)**: a standalone terminal client; human-readable tables, plus `--json` for scripting and AI tool use
+3. **MCP bridge** *(deprecated)*: a Python script that translates MCP requests into API calls
+4. **Multiple instances**: connect several Ghidra windows to work on different binaries at once
 
-This architecture enables AI assistants like Claude to seamlessly:
-- Decompile and analyze binary code with customizable output formats
-- Map program structures, function relationships, and complex data types
-- Perform advanced binary analysis (cross-references, call graphs, data flow, etc.)
-- Make precise modifications to the analysis (rename, annotate, create/delete/modify data, etc.)
-- Read memory directly and manipulate binary at a low level
-- Navigate resources through discoverable HATEOAS links
+Through it, an assistant can:
+- Decompile and analyze binary code, with a few output formats
+- Map program structure, function relationships, and data types
+- Run binary analysis (cross-references, call graphs, data flow)
+- Edit the analysis (rename, annotate, create/delete/modify data)
+- Read and write memory
+- Follow HATEOAS links between resources
 
-GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/) but has evolved into a comprehensive reverse engineering platform with enhanced multi-instance support, extensive data manipulation capabilities, and a robust HATEOAS-compliant API architecture.
+GhydraMCP started as a fork of [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/) and added multi-instance support, data manipulation, and a HATEOAS REST API.
 
 # Features
 
-GhydraMCP v3.0.0-beta provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
+## Program analysis
 
-## Advanced Program Analysis
-
-- **Enhanced Decompilation**:
+- **Decompilation**:
   - Convert binary functions to readable C code 
   - Toggle between clean C-like pseudocode and raw decompiler output
   - Show/hide syntax trees for detailed analysis
   - Multiple simplification styles for different analysis approaches
   
-- **Comprehensive Static Analysis**: 
+- **Static analysis**: 
   - Cross-reference analysis (find callers and callees)
-  - Complete call graph generation and traversal
+  - Call graph generation and traversal
   - Data flow analysis with variable tracking
   - Type propagation and reconstruction
   - Function relationship mapping
   
-- **Memory Operations**:
+- **Memory**:
   - Direct memory reading with hex and raw byte representation
   - Address space navigation and mapping
   - Memory segment analysis
 
-- **Symbol Management**:
+- **Symbols**:
   - View and analyze imports and exports
   - Identify library functions and dependencies
   - Symbol table exploration and manipulation
   - Namespace hierarchy visualization
   - Fully-qualified names: functions, symbols, data, variables, and xrefs are returned and matched by their namespace-qualified name (e.g. `MyClass::method`; global-namespace members are unprefixed). A bare name resolves in the global namespace only, and renaming with `::` moves a symbol into that namespace (created if absent)
 
-## Interactive Reverse Engineering
+## Interactive reverse engineering
 
-- **Code Understanding**:
-  - Explore function code with rich context
+- **Code understanding**:
+  - Explore function code in context
   - Analyze data structures and complex types
   - View disassembly with linking to decompiled code
   - Examine function prototypes and signatures
   
-- **Comprehensive Annotation**:
+- **Annotation**:
   - Rename functions, variables, and data 
   - Add multiple comment types (EOL, plate, pre/post)
   - Create and modify data types
   - Set and update function signatures and prototypes
 
-## Complete Data Manipulation
+## Data manipulation
 
-- **Data Creation and Management**:
+- **Data**:
   - Create new data items with specified types
   - Delete existing data items
-  - Rename data items with proper scope handling
+  - Rename data items
   - Set and update data types for existing items
   - Combined rename and retype operations
   - Type definition management
 
-- **Function Manipulation**:
-  - Rename functions with proper scoping
+- **Functions**:
+  - Rename functions
   - Update function signatures with parameter information
   - Modify local variable names and types
   - Set function return types
 
-## Multi-instance and Project Management
+## Multiple instances and projects
 
-- **Multi-instance Support**:
+- **Instances**:
   - Run multiple Ghidra instances simultaneously on ports 8192-8447 (256 port range)
   - Analyze different binaries in parallel
   - Connect to specific instances using port numbers
@@ -104,14 +102,14 @@ GhydraMCP v3.0.0-beta provides a comprehensive set of reverse engineering capabi
   - Instance metadata with project and file information
   - Plugin version and API checking for compatibility
 
-- **Project Management**:
+- **Projects**:
   - Get current project information (name, location, file counts)
   - List all files in a project with filtering
   - Open project files in new CodeBrowser windows
   - Navigate project folder hierarchy
   - Automatic instance registration when opening new programs
 
-## Program Navigation and Discovery
+## Navigation and discovery
 
 - List and search functions, classes, and namespaces
 - View memory segments and layout
@@ -152,7 +150,7 @@ https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
 
 ## CLI Tool
 
-GhydraMCP includes `ghydra`, a command-line tool for interacting with Ghidra directly from the terminal. It works standalone — no MCP client needed.
+GhydraMCP includes `ghydra`, a command-line tool for interacting with Ghidra directly from the terminal. It works standalone, no MCP client needed.
 
 ```bash
 # Install
@@ -191,11 +189,11 @@ GhydraMCP works with any MCP-compatible client using **stdio transport**. It has
 
 See the [Client Setup](#client-setup) section below for detailed configuration instructions for each client.
 
-## API Reference (Updated for v3.0.0-beta)
+## API Reference
 
 ### Available Tools
 
-GhydraMCP v3.0.0-beta organizes tools into logical namespaces for better discoverability and organization:
+Tools are grouped into namespaces:
 
 **Instance Management** (`instances_*`):
 - `instances_list`: List active Ghidra instances (auto-discovers on default host) - **use this first**
@@ -474,7 +472,7 @@ After saving the configuration, restart Cline to load the GhydraMCP server.
 
 ## Example Session
 
-Below is an example of how an AI assistant might interact with Ghidra using GhydraMCP v3.0.0-beta:
+An example of an AI assistant driving Ghidra through GhydraMCP:
 
 **User:**
 ```
@@ -593,11 +591,11 @@ This shows process_packet coordinates validation, parsing, and response transmis
 
 # JSON Communication
 
-GhydraMCP uses structured JSON for all communication between the Python bridge and Java plugin. This ensures consistent and reliable data exchange.
+GhydraMCP uses JSON for all communication between the bridge or CLI and the Java plugin.
 
 ## API Architecture
 
-GhydraMCP v3.0.0-beta implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
+The REST API is HATEOAS-driven:
 
 ### Core API Design
 
@@ -666,11 +664,11 @@ Error responses include detailed information:
 }
 ```
 
-This HATEOAS approach enables resource discovery and self-documenting APIs, making integration and exploration significantly easier.
+The links let a client discover related resources without hardcoding URLs.
 
 # Testing
 
-GhydraMCP includes comprehensive test suites for both the HTTP API and MCP bridge. See [TESTING.md](TESTING.md) for details on running the tests.
+GhydraMCP has test suites for the HTTP API and the MCP bridge. See [TESTING.md](TESTING.md) for how to run them.
 
 ## HTTP API Tests
 
