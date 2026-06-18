@@ -1,12 +1,12 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/releases)
-[![API Version](https://img.shields.io/badge/API-v2020-orange)](https://github.com/starsong-consulting/GhydraMCP/blob/main/GHIDRA_HTTP_API.md)
+[![API Version](https://img.shields.io/badge/API-v3000-orange)](https://github.com/starsong-consulting/GhydraMCP/blob/main/GHIDRA_HTTP_API.md)
 [![GitHub stars](https://img.shields.io/github/stars/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/network/members)
 [![GitHub contributors](https://img.shields.io/github/contributors/starsong-consulting/GhydraMCP)](https://github.com/starsong-consulting/GhydraMCP/graphs/contributors)
 [![Build Status](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml/badge.svg)](https://github.com/starsong-consulting/GhydraMCP/actions/workflows/build.yml)
 
-# GhydraMCP v2.2.0
+# GhydraMCP v3.0.0-beta
 
 GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI assistants that enables comprehensive AI-assisted reverse engineering through the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp).
 
@@ -16,7 +16,7 @@ GhydraMCP is a powerful bridge between [Ghidra](https://ghidra-sre.org/) and AI 
 
 > **Note:** The MCP bridge (`bridge_mcp_hydra.py`) is being deprecated in favor of the CLI tool (`ghydra`). The CLI provides the same capabilities with better output formatting, `--json` mode for scripting and AI tool use, and doesn't require an MCP-capable client. The bridge will continue to work but is no longer the recommended integration path.
 
-GhydraMCP v2.2.0 integrates four key components:
+GhydraMCP v3.0.0-beta integrates four key components:
 
 1. **Modular Ghidra Plugin**: Exposes Ghidra's powerful reverse engineering capabilities through a HATEOAS-driven REST API
 2. **CLI Tool (`ghydra`)**: A standalone command-line interface for direct interaction with Ghidra — human-readable tables, `--json` mode for AI tool use and scripting
@@ -35,7 +35,7 @@ GhydraMCP is based on [GhidraMCP by Laurie Wired](https://github.com/LaurieWired
 
 # Features
 
-GhydraMCP version 2.2.0 provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
+GhydraMCP v3.0.0-beta provides a comprehensive set of reverse engineering capabilities to AI assistants through its HATEOAS-driven API:
 
 ## Advanced Program Analysis
 
@@ -62,6 +62,7 @@ GhydraMCP version 2.2.0 provides a comprehensive set of reverse engineering capa
   - Identify library functions and dependencies
   - Symbol table exploration and manipulation
   - Namespace hierarchy visualization
+  - Fully-qualified names: functions, symbols, data, variables, and xrefs are returned and matched by their namespace-qualified name (e.g. `MyClass::method`; global-namespace members are unprefixed). A bare name resolves in the global namespace only, and renaming with `::` moves a symbol into that namespace (created if absent)
 
 ## Interactive Reverse Engineering
 
@@ -190,11 +191,11 @@ GhydraMCP works with any MCP-compatible client using **stdio transport**. It has
 
 See the [Client Setup](#client-setup) section below for detailed configuration instructions for each client.
 
-## API Reference (Updated for v2.2.0)
+## API Reference (Updated for v3.0.0-beta)
 
 ### Available Tools
 
-GhydraMCP v2.2.0 organizes tools into logical namespaces for better discoverability and organization:
+GhydraMCP v3.0.0-beta organizes tools into logical namespaces for better discoverability and organization:
 
 **Instance Management** (`instances_*`):
 - `instances_list`: List active Ghidra instances (auto-discovers on default host) - **use this first**
@@ -206,11 +207,11 @@ GhydraMCP v2.2.0 organizes tools into logical namespaces for better discoverabil
 
 **Function Analysis** (`functions_*`):
 - `functions_list`: List all functions (params: offset, limit, port [optional])
-- `functions_get`: Get function details (params: name or address, port [optional])
+- `functions_get`: Get function details (params: name or address, port [optional]); `name` is the fully-qualified name (e.g. `MyClass::method`), a bare name resolves in the global namespace only
 - `functions_decompile`: Get decompiled C code (params: name or address, syntax_tree, style, timeout, port [optional]); incomplete results return retry metadata and suggested timeout
 - `functions_disassemble`: Get disassembled instructions (params: name or address, port [optional])
 - `functions_create`: Create function at address (params: address, port [optional])
-- `functions_rename`: Rename a function (params: old_name or address, new_name, port [optional])
+- `functions_rename`: Rename a function (params: old_name or address, new_name, port [optional]); a `new_name` containing `::` moves the function into that namespace (created if absent), a leading `::` moves it to the global namespace
 - `functions_set_signature`: Update function prototype (params: name or address, signature, port [optional])
 - `functions_delete`: Delete a function (params: name or address, port [optional])
 - `functions_get_variables`: Get function variables (params: name or address, port [optional])
@@ -473,7 +474,7 @@ After saving the configuration, restart Cline to load the GhydraMCP server.
 
 ## Example Session
 
-Below is an example of how an AI assistant might interact with Ghidra using GhydraMCP v2.2.0:
+Below is an example of how an AI assistant might interact with Ghidra using GhydraMCP v3.0.0-beta:
 
 **User:**
 ```
@@ -596,7 +597,7 @@ GhydraMCP uses structured JSON for all communication between the Python bridge a
 
 ## API Architecture
 
-GhydraMCP v2.2.0 implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
+GhydraMCP v3.0.0-beta implements a comprehensive HATEOAS-driven REST API that follows hypermedia design principles:
 
 ### Core API Design
 
