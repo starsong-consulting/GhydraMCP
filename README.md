@@ -264,6 +264,16 @@ Tools are grouped into namespaces:
 - `datatypes_create_enum`: Create enum datatype (params: name, size [optional], category [optional], values_json [optional], port [optional]); supports JSON value definitions
 - `datatypes_create_union`: Create union datatype (params: name, category [optional], fields_json [optional], port [optional]); supports JSON field definitions
 
+**Emulation** (`emulation_*`) — PCode dynamic analysis via Ghidra's `EmulatorHelper`:
+- `emulation_reset`: Start a fresh session at an address (params: start, registers [optional], memory [optional], port [optional])
+- `emulation_run`: Run until an address/breakpoint/error/max_steps (params: until [optional], max_steps [optional], trace [optional], port [optional])
+- `emulation_step`: Single-step the session (params: count [optional], trace [optional], port [optional])
+- `emulation_state`: Current state without executing (params: port [optional])
+- `emulation_read_register` / `emulation_write_register`: Read/write a register as hex (params: name, value [write], port [optional])
+- `emulation_read_memory` / `emulation_write_memory`: Read/write emulated memory as hex (params: address, length [read]/hex_bytes [write], port [optional])
+- `emulation_set_breakpoint`: Set an emulation breakpoint (params: address, port [optional])
+- `emulation_dispose`: Dispose the session (params: port [optional])
+
 **Comment Management** (`comments_*`):
 - `comments_set`: Set memory comment (params: address, comment [optional], comment_type [optional], port [optional])
 - `comments_get`: Get memory comment (params: address, comment_type [optional], port [optional])

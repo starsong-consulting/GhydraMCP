@@ -148,6 +148,32 @@ ghydra functions get-variables --name main
 ghydra functions set-comment --address 0x401000 --comment "Main entry point"
 ```
 
+### Emulation Commands
+
+Dynamic analysis via Ghidra's PCode emulator. Call `reset` first to create the session;
+register/memory values are hex strings. Runs are bounded by `--max-steps`.
+
+```bash
+# Start a session at an address (sets PC there)
+ghydra emulation reset --start 0x140074000
+
+# Run until a target / breakpoint / error / max-steps, optionally tracing executed addrs
+ghydra emulation run --until 0x140075000 --max-steps 100000 --trace
+ghydra emulation run --no-trace
+
+# Single-step
+ghydra emulation step --count 5
+
+# Inspect current state (pc, registers, stopReason, trace)
+ghydra emulation state
+
+# Read emulated memory as hex (e.g. dump decrypted data)
+ghydra emulation read-mem --address 0x140090000 --length 64
+
+# Dispose the session
+ghydra emulation dispose
+```
+
 ## Remaining Command Groups to Implement
 
 The following command groups follow the same pattern as `instances` and `functions`. Here's how to implement them:
