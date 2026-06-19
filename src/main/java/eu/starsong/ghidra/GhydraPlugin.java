@@ -87,6 +87,7 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
                 new ProgramResource(),
                 new InstanceResource(),
                 new AnalysisResource(),
+                new EmulationResource(),
                 new StructResource(),
                 new DataTypeResource(),
                 new ScalarResource(new eu.starsong.ghidra.service.ScalarService()),
