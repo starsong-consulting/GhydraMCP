@@ -2841,6 +2841,160 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int |
     response = safe_patch(port, f"programs/current/memory/{address}", payload)
     return simplify_response(response)
 
+
+@mcp.tool()
+@text_output
+def emulation_reset(start: str, registers: dict | None = None,
+                    memory: list | None = None, port: int | None = None) -> dict:
+    """Start a fresh PCode emulation session at an address.
+
+    Args:
+        start: Start address in hex (PC is set here)
+        registers: Optional {register_name: hex_value} initial register writes
+        memory: Optional [{"address": hex, "hex": "ca fe"}] initial memory writes
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: initial emulation state (pc, registers, steps, stopReason)
+    """
+    port = _get_instance_port(port)
+    body: dict = {"start": start}
+    if registers:
+        body["registers"] = registers
+    if memory:
+        body["memory"] = memory
+    return simplify_response(safe_post(port, "emulation/reset", body))
+
+
+@mcp.tool()
+@text_output
+def emulation_run(until: str | None = None, max_steps: int = 100000,
+                  trace: bool = False, port: int | None = None) -> dict:
+    """Run the emulation session until an address, a breakpoint, an error, or max_steps.
+
+    Args:
+        until: Optional stop address in hex
+        max_steps: Hard step cap (default 100000, server caps at 5000000)
+        trace: When true, returns the list of executed instruction addresses
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: final emulation state including stopReason and optional trace
+    """
+    port = _get_instance_port(port)
+    body: dict = {"max_steps": max_steps, "trace": trace}
+    if until:
+        body["until"] = until
+    return simplify_response(safe_post(port, "emulation/run", body))
+
+
+@mcp.tool()
+@text_output
+def emulation_step(count: int = 1, trace: bool = False, port: int | None = None) -> dict:
+    """Single-step the emulation session count times.
+
+    Args:
+        count: Number of instructions to step (default 1)
+        trace: When true, returns executed instruction addresses
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/step", {"count": count, "trace": trace}))
+
+
+@mcp.tool()
+@text_output
+def emulation_state(port: int | None = None) -> dict:
+    """Get the current emulation session state without executing.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_get(port, "emulation/state"))
+
+
+@mcp.tool()
+@text_output
+def emulation_read_register(name: str, port: int | None = None) -> dict:
+    """Read an emulated register value (hex).
+
+    Args:
+        name: Register name (e.g. "RAX", "RIP")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_get(port, f"emulation/registers/{quote(name)}"))
+
+
+@mcp.tool()
+@text_output
+def emulation_write_register(name: str, value: str, port: int | None = None) -> dict:
+    """Write an emulated register value.
+
+    Args:
+        name: Register name (e.g. "RAX")
+        value: Hex value (e.g. "0x140075000")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/registers", {"name": name, "value": value}))
+
+
+@mcp.tool()
+@text_output
+def emulation_read_memory(address: str, length: int = 64, port: int | None = None) -> dict:
+    """Read bytes from emulated memory (hex), e.g. to dump decrypted data.
+
+    Args:
+        address: Memory address in hex
+        length: Number of bytes (default 64, server caps at 4096)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(
+        safe_get(port, f"emulation/memory/{quote(address, safe=':')}", {"length": length}))
+
+
+@mcp.tool()
+@text_output
+def emulation_write_memory(address: str, hex_bytes: str, port: int | None = None) -> dict:
+    """Write bytes to emulated memory.
+
+    Args:
+        address: Memory address in hex
+        hex_bytes: Hex byte string (e.g. "9090")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/memory", {"address": address, "hex": hex_bytes}))
+
+
+@mcp.tool()
+@text_output
+def emulation_set_breakpoint(address: str, port: int | None = None) -> dict:
+    """Set an emulation breakpoint at an address.
+
+    Args:
+        address: Address in hex
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/breakpoints", {"address": address}))
+
+
+@mcp.tool()
+@text_output
+def emulation_dispose(port: int | None = None) -> dict:
+    """Dispose the emulation session and free the emulator.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_delete(port, "emulation"))
+
+
 @mcp.tool()
 @text_output
 def memory_disassemble(address: str, limit: int = 50, offset: int = 0, port: int | None = None) -> dict:
