@@ -1,0 +1,10 @@
+C:\Users\proma\Documents\GhydraMCP\.github\workflows\build.yml
+C:\Users\proma\Documents\GhydraMCP\CHANGELOG.md
+C:\Users\proma\Documents\GhydraMCP\CONTRIBUTING.md
+C:\Users\proma\Documents\GhydraMCP\GHIDRA_HTTP_API.md
+C:\Users\proma\Documents\GhydraMCP\GHYDRA_CLI.md
+C:\Users\proma\Documents\GhydraMCP\README.md
+C:\Users\proma\Documents\GhydraMCP\TESTING.md
+C:\Users\proma\Documents\GhydraMCP\docs\plans\2026-04-23-central-plugin-refactor.md
+C:\Users\proma\Documents\GhydraMCP\images\enable_plugin.png
+C:\Users\proma\Documents\GhydraMCP\images\new_plugins_found.png

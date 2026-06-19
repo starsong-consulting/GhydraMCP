@@ -1,0 +1,642 @@
+{
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\bridge_mcp_hydra.py": {
+    "mtime": 1781890478.6245756,
+    "ast_hash": "219c5696fc31d929fb8f0ce824d85f8d",
+    "semantic_hash": "219c5696fc31d929fb8f0ce824d85f8d"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\__init__.py": {
+    "mtime": 1781890478.6252184,
+    "ast_hash": "746eb3e3a94ee3c651c93bb4ef8a2a55",
+    "semantic_hash": "746eb3e3a94ee3c651c93bb4ef8a2a55"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\__init__.py": {
+    "mtime": 1781890478.6257534,
+    "ast_hash": "e522e1d119db0899da2a0f6b3686d0dc",
+    "semantic_hash": "e522e1d119db0899da2a0f6b3686d0dc"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\analysis.py": {
+    "mtime": 1781890478.6262863,
+    "ast_hash": "5741c811599a4954c64940417e87b9fb",
+    "semantic_hash": "5741c811599a4954c64940417e87b9fb"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\classes.py": {
+    "mtime": 1781890478.6262863,
+    "ast_hash": "d78d6199a3ee8ab536fb057c3a8c0f15",
+    "semantic_hash": "d78d6199a3ee8ab536fb057c3a8c0f15"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\comments.py": {
+    "mtime": 1781890478.6268234,
+    "ast_hash": "785ecaadc3e865b9454659dba8b9c7bb",
+    "semantic_hash": "785ecaadc3e865b9454659dba8b9c7bb"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\data.py": {
+    "mtime": 1781890478.6268234,
+    "ast_hash": "2d4cba01cc1b4078034f742025c9a1a6",
+    "semantic_hash": "2d4cba01cc1b4078034f742025c9a1a6"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\datatypes.py": {
+    "mtime": 1781890478.62742,
+    "ast_hash": "0db377ba737e19f2feb4d55de853fe0e",
+    "semantic_hash": "0db377ba737e19f2feb4d55de853fe0e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\functions.py": {
+    "mtime": 1781890478.6279619,
+    "ast_hash": "49edecfef37a21cb80808beae14fc5c4",
+    "semantic_hash": "49edecfef37a21cb80808beae14fc5c4"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\instances.py": {
+    "mtime": 1781890478.6279619,
+    "ast_hash": "b246691f7ef18aba60e70323c915208f",
+    "semantic_hash": "b246691f7ef18aba60e70323c915208f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\main.py": {
+    "mtime": 1781890478.628495,
+    "ast_hash": "fd14afa0af827abc6c8ece8841374791",
+    "semantic_hash": "fd14afa0af827abc6c8ece8841374791"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\memory.py": {
+    "mtime": 1781890478.6290276,
+    "ast_hash": "a48ab11f764d9520301358509e1d43c8",
+    "semantic_hash": "a48ab11f764d9520301358509e1d43c8"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\namespaces.py": {
+    "mtime": 1781890478.6290276,
+    "ast_hash": "bf94ec4ccebf86de284b429126b0ada2",
+    "semantic_hash": "bf94ec4ccebf86de284b429126b0ada2"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\project.py": {
+    "mtime": 1781890478.6290276,
+    "ast_hash": "8427396888e8f2acf11652c4f1b3bc72",
+    "semantic_hash": "8427396888e8f2acf11652c4f1b3bc72"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\scalars.py": {
+    "mtime": 1781890478.629565,
+    "ast_hash": "53e98ac724c1bc95cc20c85d3cd0b741",
+    "semantic_hash": "53e98ac724c1bc95cc20c85d3cd0b741"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\scripts.py": {
+    "mtime": 1781890478.629565,
+    "ast_hash": "a335d68001b3ac63a4f4415c62c2ea71",
+    "semantic_hash": "a335d68001b3ac63a4f4415c62c2ea71"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\segments.py": {
+    "mtime": 1781890478.6300976,
+    "ast_hash": "bcf09aab4378c0102d644408c785b474",
+    "semantic_hash": "bcf09aab4378c0102d644408c785b474"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\structs.py": {
+    "mtime": 1781890478.6300976,
+    "ast_hash": "a5e186c69c86a9ea1ceb46ba4aad0355",
+    "semantic_hash": "a5e186c69c86a9ea1ceb46ba4aad0355"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\symbols.py": {
+    "mtime": 1781890478.6306305,
+    "ast_hash": "63cb081d605204ca87f957c7201183d7",
+    "semantic_hash": "63cb081d605204ca87f957c7201183d7"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\ui.py": {
+    "mtime": 1781890478.6306305,
+    "ast_hash": "f3e3014135e3b73918f40b7e6a37992e",
+    "semantic_hash": "f3e3014135e3b73918f40b7e6a37992e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\variables.py": {
+    "mtime": 1781890478.6306305,
+    "ast_hash": "bc86900e4c20f06878ca72f5948366b7",
+    "semantic_hash": "bc86900e4c20f06878ca72f5948366b7"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\cli\\xrefs.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "a8d9981e634a42cde539035f86f9f611",
+    "semantic_hash": "a8d9981e634a42cde539035f86f9f611"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\client\\__init__.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "6b35ca4ba8e6baefbc346810ea090e06",
+    "semantic_hash": "6b35ca4ba8e6baefbc346810ea090e06"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\client\\exceptions.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "7fa10ed582f0e7020f9c40d3d9687aa7",
+    "semantic_hash": "7fa10ed582f0e7020f9c40d3d9687aa7"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\client\\http_client.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "a95132f1fd28fbd646b2415ebc7b284f",
+    "semantic_hash": "a95132f1fd28fbd646b2415ebc7b284f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\client\\models.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "328ff06d0d0a5b2f7fc2eaef29930f62",
+    "semantic_hash": "328ff06d0d0a5b2f7fc2eaef29930f62"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\config\\__init__.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "3dcf9b150abd3cdecb1432f2dc997685",
+    "semantic_hash": "3dcf9b150abd3cdecb1432f2dc997685"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\config\\config_manager.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "19ac20d4b628b7d370900e4f9ec88ca8",
+    "semantic_hash": "19ac20d4b628b7d370900e4f9ec88ca8"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\config\\defaults.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "e5609a2d5e12aa6df966590510200251",
+    "semantic_hash": "e5609a2d5e12aa6df966590510200251"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\formatters\\__init__.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "05c48ed3fc43890bfd5f96090a5e6d29",
+    "semantic_hash": "05c48ed3fc43890bfd5f96090a5e6d29"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\formatters\\base.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "cbee4700378da109d61b832c97d50b93",
+    "semantic_hash": "cbee4700378da109d61b832c97d50b93"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\formatters\\json_formatter.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "ba2c94206789b5fa4fe2aec22c7af7b3",
+    "semantic_hash": "ba2c94206789b5fa4fe2aec22c7af7b3"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\formatters\\table_formatter.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "90d0eaf109cacbea56f04c7c6612a1cf",
+    "semantic_hash": "90d0eaf109cacbea56f04c7c6612a1cf"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\utils\\__init__.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "50bcc360b57986c678f864dd58fd7ba6",
+    "semantic_hash": "50bcc360b57986c678f864dd58fd7ba6"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\utils\\output.py": {
+    "mtime": 1781890478.6311643,
+    "ast_hash": "9391b83ba78f2a73369da9cf107228c5",
+    "semantic_hash": "9391b83ba78f2a73369da9cf107228c5"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\utils\\pager.py": {
+    "mtime": 1781890478.6351929,
+    "ast_hash": "d8d892b17259b724e72e3838233f11f4",
+    "semantic_hash": "d8d892b17259b724e72e3838233f11f4"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\ghydra\\utils\\validators.py": {
+    "mtime": 1781890478.6351929,
+    "ast_hash": "40b0323636494c05bbe85ba42ffa54da",
+    "semantic_hash": "40b0323636494c05bbe85ba42ffa54da"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\run_tests.py": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "f07d770e9bdac3273a6a5f95e50499e7",
+    "semantic_hash": "f07d770e9bdac3273a6a5f95e50499e7"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\GhydraPlugin.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "206ee24b2752d77da02fbdff8dd0ecb2",
+    "semantic_hash": "206ee24b2752d77da02fbdff8dd0ecb2"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\api\\ApiConstants.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "bd3d694e4cc3ff82971855d63c4a63c6",
+    "semantic_hash": "bd3d694e4cc3ff82971855d63c4a63c6"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\ClassDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "433362d550f59ed8adc33b2b4cf6100c",
+    "semantic_hash": "433362d550f59ed8adc33b2b4cf6100c"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\DataDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "3c4de1275a413cf83eab8f0d8d20a45e",
+    "semantic_hash": "3c4de1275a413cf83eab8f0d8d20a45e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\DataTypeSummaryDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "8be9010886c59d5db752361d8c56c49d",
+    "semantic_hash": "8be9010886c59d5db752361d8c56c49d"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\DecompileResultDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "2cb13743d78050caba04100dcb4a8f42",
+    "semantic_hash": "2cb13743d78050caba04100dcb4a8f42"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\DisassemblyInstructionDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "1e7af38b9ec86f880d76f84b1fa03276",
+    "semantic_hash": "1e7af38b9ec86f880d76f84b1fa03276"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\EnumDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "40e5a21f06300610bb26f94e15fbdfc8",
+    "semantic_hash": "40e5a21f06300610bb26f94e15fbdfc8"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\FunctionDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "342d3043a80eff0e3371c2f180768bf5",
+    "semantic_hash": "342d3043a80eff0e3371c2f180768bf5"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\FunctionSummaryDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "205e472ba100d4368b856a930f1aaa7f",
+    "semantic_hash": "205e472ba100d4368b856a930f1aaa7f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\MemoryBlockDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "df27e2d9d07806bf7f4fcf6ec248133f",
+    "semantic_hash": "df27e2d9d07806bf7f4fcf6ec248133f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\ProjectDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "b4a5f4e300fb66481814ae12f0614ef5",
+    "semantic_hash": "b4a5f4e300fb66481814ae12f0614ef5"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\ProjectFileDto.java": {
+    "mtime": 1781890478.83668,
+    "ast_hash": "c1dd0c73221560aec3f054fa5d45934f",
+    "semantic_hash": "c1dd0c73221560aec3f054fa5d45934f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\ScalarMatchDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "b2586f9954d7e5df2cb951bf4b4f9afa",
+    "semantic_hash": "b2586f9954d7e5df2cb951bf4b4f9afa"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\StructDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "45ea74af57e7ade2f5c1a48c92437f6e",
+    "semantic_hash": "45ea74af57e7ade2f5c1a48c92437f6e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\StructFieldDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "7e0e88c7af726ee5a79f35ccd57d8238",
+    "semantic_hash": "7e0e88c7af726ee5a79f35ccd57d8238"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\StructSummaryDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "e1b8406f5a524074d4409b26d93a0174",
+    "semantic_hash": "e1b8406f5a524074d4409b26d93a0174"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\SymbolDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "f7c45544362c9002912c1e28fa3ffef4",
+    "semantic_hash": "f7c45544362c9002912c1e28fa3ffef4"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\UnionDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "45d27fd3c7d603477f40fb3aef8c7cfe",
+    "semantic_hash": "45d27fd3c7d603477f40fb3aef8c7cfe"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\VariableDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "f82aee70a941fb05a5c672cfd6e63f38",
+    "semantic_hash": "f82aee70a941fb05a5c672cfd6e63f38"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\dto\\XrefDto.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "a24b7810d28ff736e8b614dce4ba1623",
+    "semantic_hash": "a24b7810d28ff736e8b614dce4ba1623"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\hateoas\\LinkFormat.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "ec46e3972fd404d0bb03f61b5239166f",
+    "semantic_hash": "ec46e3972fd404d0bb03f61b5239166f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\hateoas\\Links.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "92a4e9f48f175887f2b381073d85474f",
+    "semantic_hash": "92a4e9f48f175887f2b381073d85474f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\hateoas\\PaginatedResult.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "618757e6e0c44611f578a64983749341",
+    "semantic_hash": "618757e6e0c44611f578a64983749341"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\hateoas\\Paginator.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "db0b02b5de07618a4756ff5bfd82ee20",
+    "semantic_hash": "db0b02b5de07618a4756ff5bfd82ee20"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\hateoas\\Response.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "597b931f1bdc0473307c13303f2616e7",
+    "semantic_hash": "597b931f1bdc0473307c13303f2616e7"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\middleware\\CorsHandler.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "790e5968aa5936ee024748b0d7497e65",
+    "semantic_hash": "790e5968aa5936ee024748b0d7497e65"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\middleware\\ErrorHandler.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "7871dc5b51e9a088151c551cbf16f73f",
+    "semantic_hash": "7871dc5b51e9a088151c551cbf16f73f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\AnalysisResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "a7c836a450990fdd55eeabf3b792187f",
+    "semantic_hash": "a7c836a450990fdd55eeabf3b792187f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\ClassResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "4341480cb6536bc9791f3a09eac70b2f",
+    "semantic_hash": "4341480cb6536bc9791f3a09eac70b2f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\DataResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "cd5ee6576e120039f3e6bd7620f95a85",
+    "semantic_hash": "cd5ee6576e120039f3e6bd7620f95a85"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\DataTypeResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "5625313f037ac803c2bb9e405639070e",
+    "semantic_hash": "5625313f037ac803c2bb9e405639070e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\DevResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "1005533a0c10d729467a144be4be232d",
+    "semantic_hash": "1005533a0c10d729467a144be4be232d"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\FunctionResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "e7f821ee56ed4f1620f140f12a7a07c4",
+    "semantic_hash": "e7f821ee56ed4f1620f140f12a7a07c4"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\InstanceResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "a2e86d9c2ee878bae7bd0be992c37c4b",
+    "semantic_hash": "a2e86d9c2ee878bae7bd0be992c37c4b"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\MemoryResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "aef53a39b586d5bb8ca762477ba16950",
+    "semantic_hash": "aef53a39b586d5bb8ca762477ba16950"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\NamespaceResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "8d158fb7ad7cd539b631f5d3c5b68a34",
+    "semantic_hash": "8d158fb7ad7cd539b631f5d3c5b68a34"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\ProgramResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "b7691a2a74ce2541e7c107fc124aa0f7",
+    "semantic_hash": "b7691a2a74ce2541e7c107fc124aa0f7"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\ProjectResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "f4abde5b09e19495690f37b8058cbe90",
+    "semantic_hash": "f4abde5b09e19495690f37b8058cbe90"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\RootResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "fba25f5581e43fa89b08e94bf5511941",
+    "semantic_hash": "fba25f5581e43fa89b08e94bf5511941"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\ScalarResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "59bef234c4669c4ee0b2e3d7ceb18716",
+    "semantic_hash": "59bef234c4669c4ee0b2e3d7ceb18716"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\ScriptResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "b537884e0576fb50c5f2fea998867796",
+    "semantic_hash": "b537884e0576fb50c5f2fea998867796"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\SegmentResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "3048c9e2307d141e467c50b1147b3d11",
+    "semantic_hash": "3048c9e2307d141e467c50b1147b3d11"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\StructResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "61a958eb9b31dece3feb1f98a00aaa81",
+    "semantic_hash": "61a958eb9b31dece3feb1f98a00aaa81"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\SymbolResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "54d41907a9e30a83aadf5e8f20e76a41",
+    "semantic_hash": "54d41907a9e30a83aadf5e8f20e76a41"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\UiResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "18a87e62febf884a67bfe01746e4a0fc",
+    "semantic_hash": "18a87e62febf884a67bfe01746e4a0fc"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\VariableResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "0240402d9131db6bbeffe79ba0c0f7ee",
+    "semantic_hash": "0240402d9131db6bbeffe79ba0c0f7ee"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\resource\\XrefResource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "da04e7d626908a3fcdeaab5afa0946df",
+    "semantic_hash": "da04e7d626908a3fcdeaab5afa0946df"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\server\\GhidraContext.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "5ca1a6e974e40207b190dad42b46f6c0",
+    "semantic_hash": "5ca1a6e974e40207b190dad42b46f6c0"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\server\\GhydraServer.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "cb4845348ca38cf923cc399ff14d48bf",
+    "semantic_hash": "cb4845348ca38cf923cc399ff14d48bf"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\server\\GsonMapper.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "770bbc9c5af9c33937a87fd5a5dd8a2b",
+    "semantic_hash": "770bbc9c5af9c33937a87fd5a5dd8a2b"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\server\\Resource.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "78c69da6b936b7017e9187fbd2e46a5a",
+    "semantic_hash": "78c69da6b936b7017e9187fbd2e46a5a"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\AnalysisService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "bbac0302a2e5b7933496d45f1cd2147a",
+    "semantic_hash": "bbac0302a2e5b7933496d45f1cd2147a"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\DataService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "924a8155ccadb71ae89b228749dfced4",
+    "semantic_hash": "924a8155ccadb71ae89b228749dfced4"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\DataTypeService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "ab403a54c54893d1c6c45a294470696e",
+    "semantic_hash": "ab403a54c54893d1c6c45a294470696e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\DecompilerService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "59dad993e47be13212de1554a94f7b9e",
+    "semantic_hash": "59dad993e47be13212de1554a94f7b9e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\FunctionService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "6b310f6fb733a4fe14135f289e162089",
+    "semantic_hash": "6b310f6fb733a4fe14135f289e162089"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\MemoryService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "5c19441ca1d4b3474dc6edde77371f53",
+    "semantic_hash": "5c19441ca1d4b3474dc6edde77371f53"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\NamespaceService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "f173c3ed12baadaaacc7dd2caa1fa104",
+    "semantic_hash": "f173c3ed12baadaaacc7dd2caa1fa104"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\ProjectService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "0ffbc7ee02005a880a852b024988ea7f",
+    "semantic_hash": "0ffbc7ee02005a880a852b024988ea7f"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\SaveService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "94e9d279b844a822217864252c20d294",
+    "semantic_hash": "94e9d279b844a822217864252c20d294"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\ScalarService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "3f500c6824b5e7e41b8d6fb598267655",
+    "semantic_hash": "3f500c6824b5e7e41b8d6fb598267655"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\ScriptService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "7e5a1a6514df4c5f885f2dd8b3c3fb9b",
+    "semantic_hash": "7e5a1a6514df4c5f885f2dd8b3c3fb9b"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\StructService.java": {
+    "mtime": 1781890478.84271,
+    "ast_hash": "b38917cb6a016633250e61ac14049b54",
+    "semantic_hash": "b38917cb6a016633250e61ac14049b54"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\SymbolService.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "b49cd0bc30a2850c7fe1b649c9d65c74",
+    "semantic_hash": "b49cd0bc30a2850c7fe1b649c9d65c74"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\VariableService.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "d659b7cb4602cc32d78ac218b7a8f768",
+    "semantic_hash": "d659b7cb4602cc32d78ac218b7a8f768"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\service\\XrefService.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "70372d9a868f3e71ee43a27898bfbd7c",
+    "semantic_hash": "70372d9a868f3e71ee43a27898bfbd7c"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\util\\DataFlowUtil.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "8ba3206198c6086b212dde923d332d61",
+    "semantic_hash": "8ba3206198c6086b212dde923d332d61"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\util\\DecompilerCache.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "c996bbe4744f86dcfa22a12c7c9ae77d",
+    "semantic_hash": "c996bbe4744f86dcfa22a12c7c9ae77d"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\util\\GhidraSupplier.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "bd8b0706b3b57f43800a03da594cb789",
+    "semantic_hash": "bd8b0706b3b57f43800a03da594cb789"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\util\\GhidraSwing.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "9fe27831fcfe53ca916e6d9193b9efb6",
+    "semantic_hash": "9fe27831fcfe53ca916e6d9193b9efb6"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\util\\GhidraUtil.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "c2ed5b27bfb8d0ad885aee462454f48c",
+    "semantic_hash": "c2ed5b27bfb8d0ad885aee462454f48c"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\main\\java\\eu\\starsong\\ghidra\\util\\TransactionHelper.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "a630767868ddc452cfce9714bbd4eb1a",
+    "semantic_hash": "a630767868ddc452cfce9714bbd4eb1a"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\test\\java\\eu\\starsong\\ghidra\\AppTest.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "c3bfee3b09386fe1ed09960f7185ce14",
+    "semantic_hash": "c3bfee3b09386fe1ed09960f7185ce14"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\src\\test\\java\\eu\\starsong\\ghidra\\util\\GhidraUtilTest.java": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "5392b611424dc39fef8244c378106928",
+    "semantic_hash": "5392b611424dc39fef8244c378106928"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\test_comments.py": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "b566f7a9b2e6550096c1e5b67ad5b80a",
+    "semantic_hash": "b566f7a9b2e6550096c1e5b67ad5b80a"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\test_data_operations.py": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "e691d41f62ded36d005235c0e92c2c43",
+    "semantic_hash": "e691d41f62ded36d005235c0e92c2c43"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\test_http_api.py": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "26c4bf57ed316f5f831c695adca30d5d",
+    "semantic_hash": "26c4bf57ed316f5f831c695adca30d5d"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\test_javalin_port.py": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "2bf3f794680157cea15620087d1ba369",
+    "semantic_hash": "2bf3f794680157cea15620087d1ba369"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\test_mcp_client.py": {
+    "mtime": 1781890478.8583705,
+    "ast_hash": "9f016db1b8674bbce656b48a9a35f334",
+    "semantic_hash": "9f016db1b8674bbce656b48a9a35f334"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\.github\\workflows\\build.yml": {
+    "mtime": 1781890478.6204815,
+    "ast_hash": "9381a2ac0d78f38aa2877227e18563e4",
+    "semantic_hash": "9381a2ac0d78f38aa2877227e18563e4"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\CHANGELOG.md": {
+    "mtime": 1781890478.6218202,
+    "ast_hash": "968670ef67023498ff6cfa490420193c",
+    "semantic_hash": "968670ef67023498ff6cfa490420193c"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\CONTRIBUTING.md": {
+    "mtime": 1781890478.6221075,
+    "ast_hash": "db57201e87f864b5f334a4dca874170e",
+    "semantic_hash": "db57201e87f864b5f334a4dca874170e"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\GHIDRA_HTTP_API.md": {
+    "mtime": 1781890478.622324,
+    "ast_hash": "683ef46dd5663c616b2c593ae5b74951",
+    "semantic_hash": "683ef46dd5663c616b2c593ae5b74951"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\GHYDRA_CLI.md": {
+    "mtime": 1781890478.6228578,
+    "ast_hash": "42c343a4d0d5cf8ed5b0dd3ed127d4e8",
+    "semantic_hash": "42c343a4d0d5cf8ed5b0dd3ed127d4e8"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\README.md": {
+    "mtime": 1781890478.623529,
+    "ast_hash": "afb31e18eb67cc476b5abdaa92073fd3",
+    "semantic_hash": "afb31e18eb67cc476b5abdaa92073fd3"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\TESTING.md": {
+    "mtime": 1781890478.623529,
+    "ast_hash": "9a13bc3088ec6d54a02d39e688bea3bc",
+    "semantic_hash": "9a13bc3088ec6d54a02d39e688bea3bc"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\docs\\plans\\2026-04-23-central-plugin-refactor.md": {
+    "mtime": 1781890478.6252184,
+    "ast_hash": "04e3549b8ae7af82b7292ed80301731c",
+    "semantic_hash": "04e3549b8ae7af82b7292ed80301731c"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\images\\enable_plugin.png": {
+    "mtime": 1781890478.6351929,
+    "ast_hash": "a26de1a8e801fb0ffe6fa24dd03f9291",
+    "semantic_hash": "a26de1a8e801fb0ffe6fa24dd03f9291"
+  },
+  "C:\\Users\\proma\\Documents\\GhydraMCP\\images\\new_plugins_found.png": {
+    "mtime": 1781890478.6351929,
+    "ast_hash": "98a45cb04258512b4e023230a8b4f78c",
+    "semantic_hash": "98a45cb04258512b4e023230a8b4f78c"
+  }
+}
