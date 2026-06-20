@@ -112,6 +112,14 @@ unmapped, preserving the fault as a real signal.
 
 - **`bridge_mcp_hydra.py` `unicorn_run`:** `success = (state["stop_reason"] == "DONE")`; add
   `"last_error": state["last_error"]` to the returned payload. (Today it hard-codes `success: True`.)
+  **Behavior change for MCP consumers:** a run that hits the instruction cap now returns
+  `stop_reason="COUNT"` **with `success: false`** — previously every non-faulting run reported
+  `success: true`. This is intended (a truncated run did not reach its target, so its memory state
+  must not be presented as trustworthy), but existing LLM workflows that lean on the cap will start
+  seeing failures. The `unicorn_run` docstring MUST call this out explicitly: `COUNT` means "ran
+  cleanly but stopped at the instruction budget — raise `count` or set an `until`," distinct from a
+  fault. The CLI `run` output likewise already prints `stop_reason`, so the distinction is visible
+  there.
 - **CLI `ghydra dynamic dump` (`ghydra/cli/dynamic.py`):** after `run()`, if `stop_reason != "DONE"`,
   write `stop_reason` + `last_error` to **stderr** and exit non-zero — do **not** print the hex dump.
   A faulted unpacker must not present its partial/garbage memory as a successful result.
@@ -171,9 +179,12 @@ _unmapped_hook ── provider(page, PAGE)
 
 ## Testing (directly-coupled only)
 
-1. **Provider** (`tests/test_ghidra_provider.py`): real hex → bytes; empty hex → `ProviderError`;
-   `client.get` raising (`GhidraConnectionError`/`GhidraAPIError`) → `ProviderError`; malformed hex
-   → `ProviderError`. Rewrites the current `test_provider_zero_fills_on_miss`.
+1. **Provider** (`tests/test_ghidra_provider.py`): real hex → bytes; **short read returns the real
+   bytes only, NOT zero-padded to `length`**; empty hex → `ProviderError`; `client.get` raising
+   (`GhidraConnectionError`/`GhidraAPIError`) → `ProviderError`; malformed hex → `ProviderError`.
+   Rewrites **both** existing provider tests: `test_provider_zero_fills_on_miss` (now expects
+   `ProviderError`) **and** `test_provider_decodes_hex_to_bytes` (its `assert len(data) == 4` from a
+   3-byte response asserts the old zero-pad behavior and must become `data == b"\x90\x90\xcc"`).
 2. **Lazy hook** (`tests/test_unicorn_engine.py`): a provider that raises (or returns falsy) during a
    run → `stop_reason == "LAZY_FETCH_FAILED"`, `last_error` populated, and the failed page is **not**
    in `_mapped` (assert a subsequent access faults / page absent).
