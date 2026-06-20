@@ -803,13 +803,21 @@ Run Ghidra scripts via the API, for multi-stage or batch operations (mass rename
 
 Dynamic analysis via Ghidra's built-in PCode emulator (`EmulatorHelper`). One stateful
 session is held per program; call **reset** to (re)create it before any other emulation
-call. Pure PCode interpretation — no live OS process is started. Runs are bounded by
-`max_steps` (server hard cap 5,000,000). Register values cross the wire as hex strings
-(e.g. `"0x140075000"`); memory payloads as hex byte strings (e.g. `"9090"`). When no
-session exists, calls return `404 NO_EMULATION_SESSION`.
+call. Pure PCode interpretation — no live OS process is started. Register values cross the
+wire as hex strings (e.g. `"0x140075000"`); memory payloads as hex byte strings (e.g.
+`"9090"`). All calls **except `reset` and `dispose`** require an existing session and return
+`404 NO_EMULATION_SESSION` if none exists (`reset` creates one; `dispose` is a no-op when absent).
 
-`stopReason` is one of `READY`, `STEPPED`, `TARGET_REACHED`, `BREAKPOINT`, `ERROR`,
-`MAX_STEPS`.
+`stopReason` reports why the session is in its current state (it serializes as a string):
+
+| value | set by | meaning |
+|-------|--------|---------|
+| `READY` | `reset` | fresh session, nothing executed yet |
+| `STEPPED` | `step` | completed (possibly fewer than requested — see below) |
+| `TARGET_REACHED` | `run` | reached the `until` address |
+| `BREAKPOINT` | `run`/`step` | halted at a breakpoint that was set on the session |
+| `ERROR` | `run`/`step` | the emulator faulted (unmapped read, bad instruction, …); see `lastError` |
+| `MAX_STEPS` | `run` | hit the step cap without otherwise stopping |
 
 - **`POST /emulation/reset`**: Dispose any prior session, create a fresh emulator, set PC
   to `start`, then apply optional register and memory writes. Returns the initial state.
@@ -829,10 +837,17 @@ session exists, calls return `404 NO_EMULATION_SESSION`.
 - **`POST /emulation/run`**: Step until `until` (optional), a breakpoint, an error, or
   `max_steps`. Returns the final state.
   - Body: `{ "until": "0x140075000", "max_steps": 100000, "trace": true }` (all optional).
+  - `max_steps`: if omitted or ≤ 0, the run is bounded only by the server hard cap of
+    **5,000,000**. (The `100000` default is a client convenience in the bridge/CLI, not the
+    raw endpoint.)
   - When `trace` is true, `result.trace` holds executed instruction addresses (cap 100,000).
-- **`POST /emulation/step`**: Single-step `count` times (default 1).
+- **`POST /emulation/step`**: Single-step `count` times (default 1). Stops early (with
+  `stopReason` `BREAKPOINT` or `ERROR`) if a breakpoint is hit or a fault occurs before
+  `count` is reached — check `steps`/`stopReason`.
   - Body: `{ "count": 5, "trace": false }`.
 - **`GET /emulation/state`**: Current session state (no execution); `trace` is included.
+  `registers` lists **base registers only** (sub-registers like `EAX`/`AX` and
+  processor-context registers are excluded).
 - **`GET /emulation/registers/{name}`**: Read one register (hex).
   ```json
   // Example Response for GET /emulation/registers/RAX
@@ -841,7 +856,9 @@ session exists, calls return `404 NO_EMULATION_SESSION`.
 - **`POST /emulation/registers`**: Write one register; returns the new state.
   - Body: `{ "name": "RAX", "value": "0xdeadbeef" }`.
 - **`GET /emulation/memory/{address}`**: Read emulated memory as hex (e.g. dump decrypted data).
-  - Query Parameters: `?length=[bytes]` (default 256, server caps at 4096).
+  - Query Parameters: `?length=[bytes]` (raw-endpoint default 256, clamped to 4096; the
+    bridge/CLI clients default to 64). `result.length` is the actual byte count returned
+    (after clamping), not the requested value.
   ```json
   // Example Response for GET /emulation/memory/0x140090000?length=4
   "result": { "address": "0x140090000", "length": 4, "hex": "00112233" }

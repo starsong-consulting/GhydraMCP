@@ -170,6 +170,17 @@ ghydra emulation state
 # Read emulated memory as hex (e.g. dump decrypted data)
 ghydra emulation read-mem --address 0x140090000 --length 64
 
+# Read / write a register
+ghydra emulation read-register --name RAX
+ghydra emulation write-register --name RAX --value 0xdeadbeef
+
+# Write bytes to emulated memory
+ghydra emulation write-mem --address 0x140090000 --hex 9090
+
+# Set / clear a breakpoint
+ghydra emulation set-breakpoint --address 0x140075000
+ghydra emulation clear-breakpoint --address 0x140075000
+
 # Dispose the session
 ghydra emulation dispose
 ```

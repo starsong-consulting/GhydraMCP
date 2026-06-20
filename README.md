@@ -271,7 +271,7 @@ Tools are grouped into namespaces:
 - `emulation_state`: Current state without executing (params: port [optional])
 - `emulation_read_register` / `emulation_write_register`: Read/write a register as hex (params: name, value [write], port [optional])
 - `emulation_read_memory` / `emulation_write_memory`: Read/write emulated memory as hex (params: address, length [read]/hex_bytes [write], port [optional])
-- `emulation_set_breakpoint`: Set an emulation breakpoint (params: address, port [optional])
+- `emulation_set_breakpoint` / `emulation_clear_breakpoint`: Set/clear an emulation breakpoint (params: address, port [optional])
 - `emulation_dispose`: Dispose the session (params: port [optional])
 
 **Comment Management** (`comments_*`):

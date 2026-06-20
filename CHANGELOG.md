@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- **PCode emulation (dynamic analysis):** drive Ghidra's built-in `EmulatorHelper` over the API — `/emulation/*` REST endpoints, `emulation_*` MCP tools, and a `ghydra emulation` CLI group. Reset a session at an address, run/step (with optional instruction-address tracing), set/read registers and memory, and set breakpoints — e.g. to run a function and read back the emulated output (unpacking, decryption). One session per program; pure PCode interpretation bounded by `max_steps` (no live OS process). Adds the Ghidra `Emulation` module jar to the build.
+- **PCode emulation (dynamic analysis):** drive Ghidra's built-in `EmulatorHelper` over the API — `/emulation/*` REST endpoints, `emulation_*` MCP tools, and a `ghydra emulation` CLI group. Reset a session at an address, run/step (with optional instruction-address tracing), read/write registers and memory, and set/clear breakpoints — e.g. to run a function and read back the emulated output (unpacking, decryption). One session per program; pure PCode interpretation bounded by `max_steps` (no live OS process); sessions are freed on plugin teardown. Adds the Ghidra `Emulation` module jar to the build. Plugin → `v3.1.0-rc.1`, bridge → `v3.1.0-rc.1` (API_VERSION unchanged — additive).
 
 ## [3.0.0-rc.1] - 2026-06-18
 
