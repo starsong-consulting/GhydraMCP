@@ -327,6 +327,37 @@ def _get_unicorn_session(port: int):
     return session
 
 
+def _unicorn_run_result(state: dict) -> dict:
+    """Shape an engine run() state dict into a bridge response.
+
+    success is true only for stop_reason DONE. Non-DONE returns an error
+    envelope so text_output surfaces the cause (stop_reason + last_error).
+    """
+    stop = state["stop_reason"]
+    payload = {
+        "pc": hex(state["pc"]),
+        "steps": state["steps"],
+        "stop_reason": stop,
+        "last_error": state["last_error"],
+        "timestamp": int(time.time() * 1000),
+    }
+    if stop == "DONE":
+        payload["success"] = True
+        payload["registers"] = {k: hex(v) for k, v in state["registers"].items()}
+        payload["trace"] = [hex(a) for a in state["trace"]]
+        payload["mem_writes"] = [{"address": hex(w["address"]), "size": w["size"],
+                                  "value": hex(w["value"])} for w in state["mem_writes"]]
+        return payload
+    if stop == "COUNT":
+        message = (state["last_error"]
+                   or f"instruction cap reached after {state['steps']} steps; raise count or set until")
+    else:
+        message = state["last_error"] or stop
+    payload["success"] = False
+    payload["error"] = {"code": stop, "message": message}
+    return payload
+
+
 # ================= Text Formatters =================
 # Format API responses as plain text for efficient LLM consumption
 
@@ -3068,6 +3099,14 @@ def unicorn_run(until: str, count: int = 100000, trace: bool = False,
                 port: int | None = None) -> dict:
     """Run the Unicorn session until an address, instruction count, or fault.
 
+    success is true only when the target address is reached (stop_reason DONE).
+    A run that hits the instruction cap returns stop_reason "COUNT" with
+    success=false: it ran cleanly but stopped at the budget without reaching the
+    target -- raise `count` or set a closer `until`; it is NOT a fault. A
+    failed lazy byte fetch from Ghidra returns "LAZY_FETCH_FAILED" with the cause
+    in last_error; any other emulator fault returns "ERROR". On any non-DONE stop
+    the emulated memory must not be treated as a trustworthy result.
+
     Args:
         until: Stop address in hex (required; emulation runs begin..until)
         count: Instruction cap (default 100000)
@@ -3081,15 +3120,7 @@ def unicorn_run(until: str, count: int = 100000, trace: bool = False,
         return _unicorn_error(str(e))
     begin = session.get_register("RIP")
     state = session.run(begin=begin, until=int(until, 16), count=count, trace=trace)
-    return {"success": True,
-            "pc": hex(state["pc"]),
-            "steps": state["steps"],
-            "stop_reason": state["stop_reason"],
-            "registers": {k: hex(v) for k, v in state["registers"].items()},
-            "trace": [hex(a) for a in state["trace"]],
-            "mem_writes": [{"address": hex(w["address"]), "size": w["size"],
-                            "value": hex(w["value"])} for w in state["mem_writes"]],
-            "timestamp": int(time.time() * 1000)}
+    return _unicorn_run_result(state)
 
 
 @mcp.tool()
