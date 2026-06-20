@@ -41,6 +41,7 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
 
     private GhydraServer server;
     private eu.starsong.ghidra.service.DecompilerService decompilerService;
+    private EmulationResource emulationResource;
     private int port;
     private boolean isBaseInstance = false;
 
@@ -76,6 +77,9 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
             var functionService = new eu.starsong.ghidra.service.FunctionService();
             decompilerService = new eu.starsong.ghidra.service.DecompilerService(functionService);
 
+            // Held so its emulator sessions can be disposed on teardown (dispose()).
+            emulationResource = new EmulationResource();
+
             server.register(
                 new RootResource(isBaseInstance),
                 new FunctionResource(functionService, decompilerService),
@@ -87,7 +91,7 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
                 new ProgramResource(),
                 new InstanceResource(),
                 new AnalysisResource(),
-                new EmulationResource(),
+                emulationResource,
                 new StructResource(),
                 new DataTypeResource(),
                 new ScalarResource(new eu.starsong.ghidra.service.ScalarService()),
@@ -131,6 +135,11 @@ public class GhydraPlugin extends Plugin implements ApplicationLevelPlugin {
             // Kills the native decompiler process and removes the program listener.
             decompilerService.dispose();
             decompilerService = null;
+        }
+        if (emulationResource != null) {
+            // Frees any live EmulatorHelper sessions so they don't leak on teardown.
+            emulationResource.dispose();
+            emulationResource = null;
         }
         super.dispose();
     }

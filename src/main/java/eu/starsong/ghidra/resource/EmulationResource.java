@@ -19,6 +19,11 @@ public class EmulationResource implements Resource {
 
     private final EmulationService service = new EmulationService();
 
+    /** Free all emulator sessions; called on plugin teardown to avoid leaking EmulatorHelpers. */
+    public void dispose() {
+        service.disposeAll();
+    }
+
     @Override
     public void register(Javalin app, Function<Context, GhidraContext> contextFactory) {
         app.post("/emulation/reset", ctx -> reset(contextFactory.apply(ctx)));
@@ -65,7 +70,8 @@ public class EmulationResource implements Resource {
         var program = ctx.requireProgram();
         StepRequest req = ctx.bodyAsClass(StepRequest.class);
         if (req == null) req = new StepRequest();
-        respond(ctx, service.step(program, req.count <= 0 ? 1 : req.count, req.trace));
+        // The service owns the count<=0 -> 1 clamp; don't duplicate it here.
+        respond(ctx, service.step(program, req.count, req.trace));
     }
 
     private void state(GhidraContext ctx) {
@@ -95,10 +101,12 @@ public class EmulationResource implements Resource {
         var program = ctx.requireProgram();
         String address = ctx.pathParam("address");
         int length = ctx.queryParamAsInt("length", 256);
+        String hex = service.readMemory(program, address, length);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("address", address);
-        data.put("length", length);
-        data.put("hex", service.readMemory(program, address, length));
+        // Report the actual byte count returned (the service clamps to 4096), not the request.
+        data.put("length", hex.length() / 2);
+        data.put("hex", hex);
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), data).self("/emulation/memory/{}", address).build());
     }
 
