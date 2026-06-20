@@ -274,6 +274,14 @@ Tools are grouped into namespaces:
 - `emulation_set_breakpoint` / `emulation_clear_breakpoint`: Set/clear an emulation breakpoint (params: address, port [optional])
 - `emulation_dispose`: Dispose the session (params: port [optional])
 
+**Unicorn dynamic emulation** (`unicorn_*`) — Python-side [Unicorn Engine](https://www.unicorn-engine.org/) x86-64 emulation that lazily pulls bytes from the Ghidra static image (no live debugger). Optional dependency: `pip install ghydramcp[unicorn]`.
+- `unicorn_reset`: Start a fresh session at an address; unmapped pages are fetched from Ghidra on demand (params: start, registers [optional], port [optional])
+- `unicorn_run`: Run begin..until, an instruction count, or until a fault (params: until, count [optional], trace [optional], port [optional])
+- `unicorn_read_memory`: Read emulated memory as hex, e.g. dump a decrypted payload (params: address, length [optional], port [optional])
+- `unicorn_set_register`: Set a register as hex (params: name, value, port [optional])
+- `unicorn_get_state`: Current register state without executing (params: port [optional])
+- `unicorn_dispose`: Dispose the session (params: port [optional])
+
 **Comment Management** (`comments_*`):
 - `comments_set`: Set memory comment (params: address, comment [optional], comment_type [optional], port [optional])
 - `comments_get`: Get memory comment (params: address, comment_type [optional], port [optional])
