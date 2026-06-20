@@ -65,3 +65,40 @@ def test_lazy_maps_code_page_from_provider():
     state = s.run(begin=base, until=base + 2, count=10, trace=True)
     assert state["steps"] == 2
     assert state["stop_reason"] == "DONE"
+
+
+def test_clean_run_has_no_last_error():
+    s = UnicornSession()
+    base = 0x140075000
+    s.map_bytes(base, b"\x90\x90")             # nop; nop
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + 2, count=10)
+    assert state["stop_reason"] == "DONE"
+    assert state["last_error"] is None
+
+
+def test_lazy_fetch_failure_faults_with_reason_and_leaves_page_unmapped():
+    from ghydra.dynamic.exceptions import ProviderError
+    base = 0x140075000
+
+    def provider(address, length):
+        raise ProviderError(f"no image bytes at {hex(address)}")
+
+    s = UnicornSession(byte_provider=provider)
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + 2, count=10)
+    assert state["stop_reason"] == "LAZY_FETCH_FAILED"
+    assert state["last_error"] and hex(base) in state["last_error"]
+    assert (base & ~(UnicornSession.PAGE - 1)) not in s._mapped   # page NOT mapped
+
+
+def test_lazy_fetch_empty_data_also_faults():
+    base = 0x140075000
+
+    def provider(address, length):
+        return b""                              # provider returns nothing (no raise)
+
+    s = UnicornSession(byte_provider=provider)
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + 2, count=10)
+    assert state["stop_reason"] == "LAZY_FETCH_FAILED"

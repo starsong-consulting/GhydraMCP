@@ -64,16 +64,23 @@ class UnicornSession:
                 mem_writes.append({"address": address, "size": size, "value": value})
 
         lazy = {"n": 0}
+        lazy_fail = {"msg": None}
 
         def _unmapped_hook(uc, access, address, size, value, _user):
             page = address & ~(self.PAGE - 1)
             if page in self._mapped or lazy["n"] >= max_lazy_pages or self.byte_provider is None:
                 return False  # cannot satisfy -> let Unicorn fault
+            try:
+                data = self.byte_provider(page, self.PAGE)
+            except Exception as e:  # boundary catch: must not cross emu_start
+                lazy_fail["msg"] = f"lazy fetch failed at {hex(page)}: {e}"
+                return False
+            if not data:
+                lazy_fail["msg"] = f"no image bytes at {hex(page)}"
+                return False
             uc.mem_map(page, self.PAGE)
             self._mapped.add(page)
-            data = self.byte_provider(page, self.PAGE)
-            if data:
-                uc.mem_write(page, data[:self.PAGE])
+            uc.mem_write(page, data[:self.PAGE])
             lazy["n"] += 1
             return True  # retry the faulting access
 
@@ -82,14 +89,19 @@ class UnicornSession:
         h_unmapped = (self.uc.hook_add(UC_HOOK_MEM_UNMAPPED, _unmapped_hook)
                       if self.byte_provider is not None else None)
         stop_reason = "DONE"
+        last_error = None
         cap = min(count if count > 0 else 5_000_000, 5_000_000)
         try:
             self.uc.emu_start(begin, until, timeout=timeout, count=cap)
             if steps["n"] >= cap:
                 stop_reason = "COUNT"
         except UcError as e:
-            stop_reason = "ERROR"
-            self._last_error = str(e)
+            if lazy_fail["msg"] is not None:
+                stop_reason = "LAZY_FETCH_FAILED"
+                last_error = lazy_fail["msg"]
+            else:
+                stop_reason = "ERROR"
+                last_error = str(e)
         finally:
             self.uc.hook_del(h_code)
             if h_write is not None:
@@ -101,6 +113,7 @@ class UnicornSession:
             "pc": self.get_register("RIP"),
             "steps": steps["n"],
             "stop_reason": stop_reason,
+            "last_error": last_error,
             "registers": {r: self.get_register(r) for r in _ALL_REGS},
             "trace": executed if trace else [],
             "mem_writes": mem_writes if trace else [],
