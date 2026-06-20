@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Unicorn dynamic emulation:** Python-side [Unicorn Engine](https://www.unicorn-engine.org/) x86-64 emulation (`unicorn_*` MCP tools, `ghydra dynamic` CLI) with lazy page mapping from the Ghidra image — unmapped pages are fetched on demand over the existing `/memory` API, so an agent can emulate code (e.g. an in-binary unpacker) and read back the decrypted bytes without a live debugger. Engine talks to Ghidra through an injected byte-provider, so it is unit-testable with a fake client (no Ghidra required). Optional extra: `pip install ghydramcp[unicorn]`.
 - **PCode emulation (dynamic analysis):** drive Ghidra's built-in `EmulatorHelper` over the API — `/emulation/*` REST endpoints, `emulation_*` MCP tools, and a `ghydra emulation` CLI group. Reset a session at an address, run/step (with optional instruction-address tracing), read/write registers and memory, and set/clear breakpoints — e.g. to run a function and read back the emulated output (unpacking, decryption). One session per program; pure PCode interpretation bounded by `max_steps` (no live OS process); sessions are freed on plugin teardown. Adds the Ghidra `Emulation` module jar to the build. Plugin → `v3.1.0-rc.1`, bridge → `v3.1.0-rc.1` (API_VERSION unchanged — additive).
 
 ## [3.0.0-rc.1] - 2026-06-18
