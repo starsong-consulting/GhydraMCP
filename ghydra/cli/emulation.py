@@ -90,6 +90,75 @@ def read_mem(ctx, address, length):
         ctx.exit(1)
 
 
+@emulation.command('read-register')
+@click.option('--name', '-n', required=True, help='Register name (e.g. RAX)')
+@click.pass_context
+def read_register(ctx, name):
+    """Read an emulated register value (hex)."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.get(f'emulation/registers/{name}'))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('write-register')
+@click.option('--name', '-n', required=True, help='Register name (e.g. RAX)')
+@click.option('--value', '-v', required=True, help='Value (hex, e.g. 0xdeadbeef)')
+@click.pass_context
+def write_register(ctx, name, value):
+    """Write an emulated register value."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.post('emulation/registers', json_data={'name': name, 'value': value}))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('write-mem')
+@click.option('--address', '-a', required=True, help='Address (hex)')
+@click.option('--hex', '-x', 'hex_bytes', required=True, help='Hex byte string (e.g. 9090)')
+@click.pass_context
+def write_mem(ctx, address, hex_bytes):
+    """Write bytes to emulated memory."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.post('emulation/memory',
+                               json_data={'address': validate_address(address), 'hex': hex_bytes}))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('set-breakpoint')
+@click.option('--address', '-a', required=True, help='Address (hex)')
+@click.pass_context
+def set_breakpoint(ctx, address):
+    """Set an emulation breakpoint."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.post('emulation/breakpoints',
+                               json_data={'address': validate_address(address)}))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('clear-breakpoint')
+@click.option('--address', '-a', required=True, help='Address (hex)')
+@click.pass_context
+def clear_breakpoint(ctx, address):
+    """Clear an emulation breakpoint."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.delete(f'emulation/breakpoints/{validate_address(address)}'))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
 @emulation.command('dispose')
 @click.pass_context
 def dispose(ctx):

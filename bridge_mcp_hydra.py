@@ -33,7 +33,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v3.0.0-rc.1"
+BRIDGE_VERSION = "v3.1.0-rc.1"
 REQUIRED_API_VERSION = 3000
 
 DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
@@ -2981,6 +2981,20 @@ def emulation_set_breakpoint(address: str, port: int | None = None) -> dict:
     """
     port = _get_instance_port(port)
     return simplify_response(safe_post(port, "emulation/breakpoints", {"address": address}))
+
+
+@mcp.tool()
+@text_output
+def emulation_clear_breakpoint(address: str, port: int | None = None) -> dict:
+    """Clear an emulation breakpoint previously set at an address.
+
+    Args:
+        address: Address in hex
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(
+        safe_delete(port, f"emulation/breakpoints/{quote(address, safe=':')}"))
 
 
 @mcp.tool()
