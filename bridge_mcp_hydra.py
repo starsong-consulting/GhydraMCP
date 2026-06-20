@@ -310,6 +310,23 @@ def safe_delete(port: int, endpoint: str) -> dict:
     return _make_request("DELETE", port, endpoint)
 
 
+# ================= Unicorn dynamic emulation =================
+# Per-port stateful Unicorn sessions (optional dependency: ghydramcp[unicorn]).
+_UNICORN_SESSIONS: dict[int, "object"] = {}
+
+
+def _unicorn_error(message: str) -> dict:
+    return {"success": False, "error": {"code": "UNICORN", "message": message},
+            "timestamp": int(time.time() * 1000)}
+
+
+def _get_unicorn_session(port: int):
+    session = _UNICORN_SESSIONS.get(port)
+    if session is None:
+        raise KeyError("No Unicorn session; call unicorn_reset first")
+    return session
+
+
 # ================= Text Formatters =================
 # Format API responses as plain text for efficient LLM consumption
 
@@ -3007,6 +3024,145 @@ def emulation_dispose(port: int | None = None) -> dict:
     """
     port = _get_instance_port(port)
     return simplify_response(safe_delete(port, "emulation"))
+
+
+@mcp.tool()
+@text_output
+def unicorn_reset(start: str, registers: dict | None = None, port: int | None = None) -> dict:
+    """Start a fresh Unicorn emulation session that lazily pulls bytes from Ghidra.
+
+    Args:
+        start: Start address in hex (RIP is set here)
+        registers: Optional {register_name: hex_value} initial writes
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        from ghydra.dynamic.unicorn_engine import UnicornSession
+        from ghydra.dynamic.ghidra_provider import make_ghidra_provider
+        from ghydra.client.http_client import GhidraHTTPClient
+    except RuntimeError as e:
+        return _unicorn_error(str(e))
+    except ImportError:
+        return _unicorn_error("unicorn not installed; pip install ghydramcp[unicorn]")
+
+    try:
+        client = GhidraHTTPClient(port=port)
+        session = UnicornSession(byte_provider=make_ghidra_provider(client))
+    except RuntimeError as e:
+        return _unicorn_error(str(e))
+
+    start_int = int(start, 16)
+    session.set_register("RIP", start_int)
+    if registers:
+        for name, value in registers.items():
+            session.set_register(name, int(value, 16))
+    _UNICORN_SESSIONS[port] = session
+    return {"success": True, "start": hex(start_int), "lazy_mapping": "ghidra",
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_run(until: str, count: int = 100000, trace: bool = False,
+                port: int | None = None) -> dict:
+    """Run the Unicorn session until an address, instruction count, or fault.
+
+    Args:
+        until: Stop address in hex (required; emulation runs begin..until)
+        count: Instruction cap (default 100000)
+        trace: Return executed instruction addresses and memory writes
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    begin = session.get_register("RIP")
+    state = session.run(begin=begin, until=int(until, 16), count=count, trace=trace)
+    return {"success": True,
+            "pc": hex(state["pc"]),
+            "steps": state["steps"],
+            "stop_reason": state["stop_reason"],
+            "registers": {k: hex(v) for k, v in state["registers"].items()},
+            "trace": [hex(a) for a in state["trace"]],
+            "mem_writes": [{"address": hex(w["address"]), "size": w["size"],
+                            "value": hex(w["value"])} for w in state["mem_writes"]],
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_read_memory(address: str, length: int = 64, port: int | None = None) -> dict:
+    """Read bytes from the Unicorn session's memory (e.g. dump decrypted data).
+
+    Args:
+        address: Address in hex
+        length: Number of bytes (default 64)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    data = session.read_memory(int(address, 16), length)
+    return {"success": True, "address": address, "length": length,
+            "hex": data.hex(), "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_set_register(name: str, value: str, port: int | None = None) -> dict:
+    """Set a Unicorn register value.
+
+    Args:
+        name: Register name (e.g. "RAX")
+        value: Hex value
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    session.set_register(name, int(value, 16))
+    return {"success": True, "name": name, "value": value,
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_get_state(port: int | None = None) -> dict:
+    """Get the current Unicorn register state without executing.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    regs = ("RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RSP", "RBP", "RIP",
+            "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15")
+    return {"success": True,
+            "registers": {r: hex(session.get_register(r)) for r in regs},
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_dispose(port: int | None = None) -> dict:
+    """Dispose the Unicorn session for a port.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    _UNICORN_SESSIONS.pop(port, None)
+    return {"success": True, "session": "disposed", "timestamp": int(time.time() * 1000)}
 
 
 @mcp.tool()
