@@ -43,6 +43,8 @@ def run(ctx, start, until, count, trace):
                    f"stop={state['stop_reason']}")
         for name, value in state["registers"].items():
             click.echo(f"  {name}={hex(value)}")
+        if state.get("last_error"):
+            click.echo(f"  error: {state['last_error']}")
         if trace:
             click.echo(f"  trace: {len(state['trace'])} instrs, "
                        f"{len(state['mem_writes'])} writes")
@@ -64,7 +66,14 @@ def dump(ctx, start, until, address, length, count):
         session = _make_session(ctx)
         begin = int(validate_address(start), 16)
         session.set_register("RIP", begin)
-        session.run(begin=begin, until=int(validate_address(until), 16), count=count)
+        state = session.run(begin=begin, until=int(validate_address(until), 16), count=count)
+        if state["stop_reason"] != "DONE":
+            click.echo(
+                f"emulation did not complete: stop={state['stop_reason']} "
+                f"{state.get('last_error') or ''}".rstrip(),
+                err=True,
+            )
+            ctx.exit(1)
         data = session.read_memory(int(validate_address(address), 16), length)
         click.echo(data.hex())
     except GhidraError as e:
