@@ -12,6 +12,12 @@ dependencies = [
     "urllib3>=2.0.0,<3",
 ]
 
+[project.optional-dependencies]
+unicorn = [
+    "unicorn>=2.0,<3",
+    "capstone>=5.0,<6",
+]
+
 [project.scripts]
 ghydramcp = "bridge_mcp_hydra:main"
 ghydra = "ghydra.cli.main:cli"
