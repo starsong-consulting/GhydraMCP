@@ -2,21 +2,31 @@
 
 from typing import Callable
 
+from .exceptions import ProviderError
+
 
 def make_ghidra_provider(client) -> Callable[[int, int], bytes]:
-    """Build an (address, length) -> bytes provider backed by Ghidra's /memory API."""
+    """Build an (address, length) -> bytes provider backed by Ghidra's /memory API.
+
+    The returned provider returns the real bytes Ghidra has (possibly fewer than
+    `length`; never zero-padded) and raises ProviderError when no real image bytes
+    are available -- so genuine fetch failures fault loudly instead of masquerading
+    as zero data.
+    """
 
     def provider(address: int, length: int) -> bytes:
         endpoint = f"memory/{address:x}"
         try:
             resp = client.get(endpoint, params={"length": length, "format": "hex"})
-        except Exception:
-            return b"\x00" * length
+        except Exception as e:
+            raise ProviderError(f"fetch failed at {hex(address)}: {e}") from e
         result = resp.get("result", resp) if isinstance(resp, dict) else {}
         hex_str = (result or {}).get("hex", "") or ""
-        raw = bytes.fromhex(hex_str) if hex_str else b""
-        if len(raw) < length:
-            raw = raw + b"\x00" * (length - len(raw))
-        return raw[:length]
+        if not hex_str:
+            raise ProviderError(f"no image bytes at {hex(address)}")
+        try:
+            return bytes.fromhex(hex_str)
+        except ValueError as e:
+            raise ProviderError(f"malformed hex at {hex(address)}: {e}") from e
 
     return provider
