@@ -48,3 +48,20 @@ def test_run_records_memory_writes():
     state = s.run(begin=base, until=base + len(code), count=10, trace=True)
     writes = [w for w in state["mem_writes"] if w["address"] == 0x140076000]
     assert writes and writes[0]["value"] == 0x41
+
+
+def test_lazy_maps_code_page_from_provider():
+    # Provider serves "nop; nop" for the code page, zero elsewhere.
+    base = 0x140075000
+    def provider(address, length):
+        page = bytearray(length)
+        if address == base:
+            page[0:2] = b"\x90\x90"
+        return bytes(page)
+
+    s = UnicornSession(byte_provider=provider)
+    s.set_register("RIP", base)
+    # NOTE: code page is NOT pre-mapped; the unmapped hook must fetch it.
+    state = s.run(begin=base, until=base + 2, count=10, trace=True)
+    assert state["steps"] == 2
+    assert state["stop_reason"] == "DONE"

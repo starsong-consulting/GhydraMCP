@@ -47,8 +47,9 @@ class UnicornSession:
     def get_register(self, name: str) -> int:
         return self.uc.reg_read(resolve_register(name))
 
-    def run(self, begin, until=0, count=100000, timeout=0, trace=False):
-        from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE
+    def run(self, begin, until=0, count=100000, timeout=0, trace=False,
+            max_lazy_pages=4096):
+        from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_UNMAPPED
         steps = {"n": 0}
         executed: list[int] = []
         mem_writes: list[dict] = []
@@ -62,8 +63,24 @@ class UnicornSession:
             if trace and len(mem_writes) < _TRACE_CAP:
                 mem_writes.append({"address": address, "size": size, "value": value})
 
+        lazy = {"n": 0}
+
+        def _unmapped_hook(uc, access, address, size, value, _user):
+            page = address & ~(self.PAGE - 1)
+            if page in self._mapped or lazy["n"] >= max_lazy_pages or self.byte_provider is None:
+                return False  # cannot satisfy -> let Unicorn fault
+            uc.mem_map(page, self.PAGE)
+            self._mapped.add(page)
+            data = self.byte_provider(page, self.PAGE)
+            if data:
+                uc.mem_write(page, data[:self.PAGE])
+            lazy["n"] += 1
+            return True  # retry the faulting access
+
         h_code = self.uc.hook_add(UC_HOOK_CODE, _code_hook)
         h_write = self.uc.hook_add(UC_HOOK_MEM_WRITE, _write_hook) if trace else None
+        h_unmapped = (self.uc.hook_add(UC_HOOK_MEM_UNMAPPED, _unmapped_hook)
+                      if self.byte_provider is not None else None)
         stop_reason = "DONE"
         cap = min(count if count > 0 else 5_000_000, 5_000_000)
         try:
@@ -77,6 +94,8 @@ class UnicornSession:
             self.uc.hook_del(h_code)
             if h_write is not None:
                 self.uc.hook_del(h_write)
+            if h_unmapped is not None:
+                self.uc.hook_del(h_unmapped)
 
         return {
             "pc": self.get_register("RIP"),
