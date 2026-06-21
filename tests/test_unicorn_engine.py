@@ -102,3 +102,15 @@ def test_lazy_fetch_empty_data_also_faults():
     s.set_register("RIP", base)
     state = s.run(begin=base, until=base + 2, count=10)
     assert state["stop_reason"] == "LAZY_FETCH_FAILED"
+
+
+def test_non_lazy_fault_reports_error_not_lazy_fetch_failed():
+    # No byte_provider -> the unmapped hook is disabled, so an access to an
+    # unmapped page is a plain UcError. This must report "ERROR" (with a
+    # last_error message), NOT "LAZY_FETCH_FAILED".
+    base = 0x140075000
+    s = UnicornSession()                            # byte_provider is None
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + 2, count=10)
+    assert state["stop_reason"] == "ERROR"
+    assert isinstance(state["last_error"], str) and state["last_error"]
