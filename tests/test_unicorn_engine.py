@@ -128,3 +128,9 @@ def test_lazy_cap_reached_faults_with_distinct_reason():
     state = s.run(begin=base, until=base + 2, count=10, max_lazy_pages=0)
     assert state["stop_reason"] == "LAZY_CAP_REACHED"
     assert state["last_error"] and "max_lazy_pages" in state["last_error"]
+
+
+def test_unicorn_handle_is_private():
+    s = UnicornSession()
+    assert hasattr(s, "_uc")
+    assert not hasattr(s, "uc")
