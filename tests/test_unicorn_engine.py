@@ -156,3 +156,11 @@ def test_clean_trace_is_not_truncated():
     s.set_register("RIP", base)
     state = s.run(begin=base, until=base + 2, count=10, trace=True)
     assert state["trace_truncated"] is False
+
+
+def test_session_construction_raises_without_unicorn(monkeypatch):
+    from ghydra.dynamic import unicorn_engine
+    monkeypatch.setattr(unicorn_engine, "_HAVE_UNICORN", False)
+    import pytest
+    with pytest.raises(RuntimeError, match="unicorn not installed"):
+        unicorn_engine.UnicornSession()

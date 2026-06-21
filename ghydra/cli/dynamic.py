@@ -11,13 +11,15 @@ def _make_session(ctx):
     try:
         from ..dynamic.unicorn_engine import UnicornSession
         from ..dynamic.ghidra_provider import make_ghidra_provider
-    except (ImportError, RuntimeError):
+    except ImportError:
         raise click.ClickException("unicorn not installed; pip install ghydramcp[unicorn]")
     client = ctx.obj['client']
     try:
         return UnicornSession(byte_provider=make_ghidra_provider(client))
-    except RuntimeError:
-        raise click.ClickException("unicorn not installed; pip install ghydramcp[unicorn]")
+    except RuntimeError as e:
+        if "unicorn not installed" in str(e):
+            raise click.ClickException("unicorn not installed; pip install ghydramcp[unicorn]")
+        raise   # an unrelated construction failure must not masquerade as a missing dependency
 
 
 @click.group('dynamic')
