@@ -43,3 +43,9 @@ def test_provider_raises_on_malformed_hex():
     provider = make_ghidra_provider(FakeClient({"140076000": "zz"}))   # not valid hex
     with pytest.raises(ProviderError):
         provider(0x140076000, 8)
+
+
+def test_provider_error_is_a_ghidra_error():
+    from ghydra.dynamic.exceptions import ProviderError
+    from ghydra.client.exceptions import GhidraError
+    assert issubclass(ProviderError, GhidraError)
