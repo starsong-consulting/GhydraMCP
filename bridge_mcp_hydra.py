@@ -364,6 +364,25 @@ def _unicorn_run_result(state: dict) -> dict:
     return payload
 
 
+_DEFAULT_STACK_BASE = 0x7ffff0000000
+_DEFAULT_STACK_SIZE = 0x100000          # 1 MiB scratch stack
+
+
+def _apply_default_stack(session) -> tuple[int, int]:
+    """Map a default scratch stack and point RSP/RBP at it.
+
+    Convenience so a freshly reset session can execute stack-using code
+    (push/call) without the caller mapping a stack by hand. Returns the
+    (base, size) of the mapped region. Caller-established scratch memory is
+    allowed by the purist contract; this does not relax lazy mapping.
+    """
+    session.map_bytes(_DEFAULT_STACK_BASE, b"\x00" * _DEFAULT_STACK_SIZE)
+    rsp = _DEFAULT_STACK_BASE + _DEFAULT_STACK_SIZE - 0x1000
+    session.set_register("RSP", rsp)
+    session.set_register("RBP", rsp)
+    return _DEFAULT_STACK_BASE, _DEFAULT_STACK_SIZE
+
+
 # ================= Text Formatters =================
 # Format API responses as plain text for efficient LLM consumption
 
@@ -3065,12 +3084,15 @@ def emulation_dispose(port: int | None = None) -> dict:
 
 @mcp.tool()
 @text_output
-def unicorn_reset(start: str, registers: dict | None = None, port: int | None = None) -> dict:
+def unicorn_reset(start: str, registers: dict | None = None, stack: bool = True,
+                  port: int | None = None) -> dict:
     """Start a fresh Unicorn emulation session that lazily pulls bytes from Ghidra.
 
     Args:
         start: Start address in hex (RIP is set here)
         registers: Optional {register_name: hex_value} initial writes
+        stack: Auto-map a default 1 MiB scratch stack and point RSP/RBP at it
+            (default True; pass False to manage the stack yourself)
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
@@ -3091,12 +3113,16 @@ def unicorn_reset(start: str, registers: dict | None = None, port: int | None = 
 
     start_int = int(start, 16)
     session.set_register("RIP", start_int)
+    stack_region = None
+    if stack:
+        base, size = _apply_default_stack(session)
+        stack_region = {"base": hex(base), "size": size}
     if registers:
         for name, value in registers.items():
-            session.set_register(name, int(value, 16))
+            session.set_register(name, int(value, 16))   # explicit overrides win (e.g. RSP)
     _UNICORN_SESSIONS[port] = session
     return {"success": True, "start": hex(start_int), "lazy_mapping": "ghidra",
-            "timestamp": int(time.time() * 1000)}
+            "stack": stack_region, "timestamp": int(time.time() * 1000)}
 
 
 @mcp.tool()

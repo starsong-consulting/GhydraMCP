@@ -55,3 +55,15 @@ def test_unicorn_map_zero_fills_a_region():
     finally:
         b._UNICORN_SESSIONS.pop(8192, None)
         b.active_instances.pop(8192, None)
+
+
+def test_apply_default_stack_maps_and_points_rsp():
+    pytest.importorskip("unicorn")
+    from ghydra.dynamic.unicorn_engine import UnicornSession
+    from bridge_mcp_hydra import _apply_default_stack
+    s = UnicornSession()
+    base, size = _apply_default_stack(s)
+    rsp = s.get_register("RSP")
+    assert base <= rsp < base + size
+    assert s.get_register("RBP") == rsp
+    assert s.read_memory(rsp - 8, 8) == b"\x00" * 8   # stack is mapped + zeroed
