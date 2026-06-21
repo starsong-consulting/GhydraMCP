@@ -67,3 +67,9 @@ def test_apply_default_stack_maps_and_points_rsp():
     assert base <= rsp < base + size
     assert s.get_register("RBP") == rsp
     assert s.read_memory(rsp - 8, 8) == b"\x00" * 8   # stack is mapped + zeroed
+
+
+def test_unicorn_registry_has_a_lock():
+    import bridge_mcp_hydra as b
+    from threading import Lock
+    assert isinstance(b._unicorn_lock, type(Lock()))

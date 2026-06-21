@@ -313,6 +313,7 @@ def safe_delete(port: int, endpoint: str) -> dict:
 # ================= Unicorn dynamic emulation =================
 # Per-port stateful Unicorn sessions (optional dependency: ghydramcp[unicorn]).
 _UNICORN_SESSIONS: dict[int, "object"] = {}
+_unicorn_lock = Lock()
 
 
 def _unicorn_error(message: str) -> dict:
@@ -321,7 +322,8 @@ def _unicorn_error(message: str) -> dict:
 
 
 def _get_unicorn_session(port: int):
-    session = _UNICORN_SESSIONS.get(port)
+    with _unicorn_lock:
+        session = _UNICORN_SESSIONS.get(port)
     if session is None:
         raise KeyError("No Unicorn session; call unicorn_reset first")
     return session
@@ -3120,7 +3122,8 @@ def unicorn_reset(start: str, registers: dict | None = None, stack: bool = True,
     if registers:
         for name, value in registers.items():
             session.set_register(name, int(value, 16))   # explicit overrides win (e.g. RSP)
-    _UNICORN_SESSIONS[port] = session
+    with _unicorn_lock:
+        _UNICORN_SESSIONS[port] = session
     return {"success": True, "start": hex(start_int), "lazy_mapping": "ghidra",
             "stack": stack_region, "timestamp": int(time.time() * 1000)}
 
@@ -3254,7 +3257,8 @@ def unicorn_dispose(port: int | None = None) -> dict:
         port: Specific Ghidra instance port (optional)
     """
     port = _get_instance_port(port)
-    _UNICORN_SESSIONS.pop(port, None)
+    with _unicorn_lock:
+        _UNICORN_SESSIONS.pop(port, None)
     return {"success": True, "session": "disposed", "timestamp": int(time.time() * 1000)}
 
 
