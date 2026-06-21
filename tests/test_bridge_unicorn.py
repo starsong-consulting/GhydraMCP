@@ -28,3 +28,11 @@ def test_count_is_failure_with_cap_message():
     assert r["success"] is False
     assert r["error"]["code"] == "COUNT"
     assert "cap" in r["error"]["message"].lower()
+
+
+def test_lazy_cap_reached_is_failure_with_budget_hint():
+    r = _unicorn_run_result(_state("LAZY_CAP_REACHED",
+                                   "lazy page cap (4096) reached at 0x140075000; raise max_lazy_pages"))
+    assert r["success"] is False
+    assert r["error"]["code"] == "LAZY_CAP_REACHED"
+    assert "max_lazy_pages" in r["error"]["message"]

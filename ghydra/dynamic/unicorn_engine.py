@@ -27,6 +27,7 @@ class StopReason:
     COUNT = "COUNT"
     ERROR = "ERROR"
     LAZY_FETCH_FAILED = "LAZY_FETCH_FAILED"
+    LAZY_CAP_REACHED = "LAZY_CAP_REACHED"
 
 
 class UnicornSession:
@@ -77,18 +78,25 @@ class UnicornSession:
                 mem_writes.append({"address": address, "size": size, "value": value})
 
         lazy = {"n": 0}
-        lazy_fail = {"msg": None}
+        lazy_fail = {"msg": None, "reason": None}
 
         def _unmapped_hook(uc, access, address, size, value, _user):
             page = address & ~(self.PAGE - 1)
-            if page in self._mapped or lazy["n"] >= max_lazy_pages or self.byte_provider is None:
-                return False  # cannot satisfy -> let Unicorn fault
+            if page in self._mapped or self.byte_provider is None:
+                return False  # already mapped, or no provider -> plain unmapped fault (ERROR)
+            if lazy["n"] >= max_lazy_pages:
+                lazy_fail["reason"] = StopReason.LAZY_CAP_REACHED
+                lazy_fail["msg"] = (f"lazy page cap ({max_lazy_pages}) reached at "
+                                    f"{hex(page)}; raise max_lazy_pages")
+                return False
             try:
                 data = self.byte_provider(page, self.PAGE)
             except Exception as e:  # boundary catch: must not cross emu_start
+                lazy_fail["reason"] = StopReason.LAZY_FETCH_FAILED
                 lazy_fail["msg"] = f"lazy fetch failed at {hex(page)}: {e}"
                 return False
             if not data:
+                lazy_fail["reason"] = StopReason.LAZY_FETCH_FAILED
                 lazy_fail["msg"] = f"no image bytes at {hex(page)}"
                 return False
             uc.mem_map(page, self.PAGE)
@@ -109,8 +117,8 @@ class UnicornSession:
             if steps["n"] >= cap:
                 stop_reason = StopReason.COUNT
         except UcError as e:
-            if lazy_fail["msg"] is not None:
-                stop_reason = StopReason.LAZY_FETCH_FAILED
+            if lazy_fail["reason"] is not None:
+                stop_reason = lazy_fail["reason"]
                 last_error = lazy_fail["msg"]
             else:
                 stop_reason = StopReason.ERROR

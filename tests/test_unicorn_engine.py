@@ -114,3 +114,17 @@ def test_non_lazy_fault_reports_error_not_lazy_fetch_failed():
     state = s.run(begin=base, until=base + 2, count=10)
     assert state["stop_reason"] == "ERROR"
     assert isinstance(state["last_error"], str) and state["last_error"]
+
+
+def test_lazy_cap_reached_faults_with_distinct_reason():
+    base = 0x140075000
+
+    def provider(address, length):
+        return b"\x90" * length          # real bytes, but the cap forbids mapping
+
+    s = UnicornSession(byte_provider=provider)
+    s.set_register("RIP", base)
+    # max_lazy_pages=0 -> the very first lazy map is already over budget.
+    state = s.run(begin=base, until=base + 2, count=10, max_lazy_pages=0)
+    assert state["stop_reason"] == "LAZY_CAP_REACHED"
+    assert state["last_error"] and "max_lazy_pages" in state["last_error"]

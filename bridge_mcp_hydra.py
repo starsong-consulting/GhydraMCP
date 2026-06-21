@@ -3110,8 +3110,10 @@ def unicorn_run(until: str, count: int = 100000, trace: bool = False,
     target -- raise `count` or set a closer `until`; it is NOT a fault, and the
     emulated memory up to the cap is valid (just incomplete). A failed lazy byte
     fetch from Ghidra returns "LAZY_FETCH_FAILED" with the cause in last_error;
-    any other emulator fault returns "ERROR". On a "LAZY_FETCH_FAILED"/"ERROR"
-    stop the emulated memory may be partial or corrupt and must not be trusted.
+    exhausting the lazy-page budget returns "LAZY_CAP_REACHED" (raise the
+    engine's max_lazy_pages); any other emulator fault returns "ERROR". On a
+    "LAZY_FETCH_FAILED"/"ERROR" stop the emulated memory may be partial or
+    corrupt and must not be trusted.
 
     Args:
         until: Stop address in hex (required; emulation runs begin..until)
