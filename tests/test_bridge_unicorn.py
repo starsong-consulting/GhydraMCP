@@ -1,3 +1,5 @@
+import pytest
+
 from bridge_mcp_hydra import _unicorn_run_result
 
 
@@ -36,3 +38,20 @@ def test_lazy_cap_reached_is_failure_with_budget_hint():
     assert r["success"] is False
     assert r["error"]["code"] == "LAZY_CAP_REACHED"
     assert "max_lazy_pages" in r["error"]["message"]
+
+
+def test_unicorn_map_zero_fills_a_region():
+    pytest.importorskip("unicorn")
+    import bridge_mcp_hydra as b
+    from ghydra.dynamic.unicorn_engine import UnicornSession
+    b._UNICORN_SESSIONS[8192] = UnicornSession()
+    b.active_instances[8192] = {"url": "http://localhost:8192"}   # satisfy _get_instance_port
+    try:
+        # call the undecorated function to inspect the raw dict
+        result = b.unicorn_map.__wrapped__("0x140070000", 0x2000, port=8192)
+        assert result["success"] is True
+        session = b._UNICORN_SESSIONS[8192]
+        assert session.read_memory(0x140070000, 8) == b"\x00" * 8   # mapped + zeroed
+    finally:
+        b._UNICORN_SESSIONS.pop(8192, None)
+        b.active_instances.pop(8192, None)

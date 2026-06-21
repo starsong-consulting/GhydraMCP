@@ -3174,6 +3174,33 @@ def unicorn_set_register(name: str, value: str, port: int | None = None) -> dict
 
 @mcp.tool()
 @text_output
+def unicorn_map(address: str, size: int, port: int | None = None) -> dict:
+    """Map a zero-filled scratch region into the Unicorn session.
+
+    The purist lazy mapper serves only real Ghidra image bytes, so emulated
+    code that touches non-image memory (a stack push, a heap/IO buffer) faults
+    with LAZY_FETCH_FAILED unless that region is mapped first. Use this to set
+    up stack/scratch/output buffers before unicorn_run. Page-aligned by the
+    engine.
+
+    Args:
+        address: Region start in hex
+        size: Region size in bytes
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    addr = int(address, 16)
+    session.map_bytes(addr, b"\x00" * size)
+    return {"success": True, "address": hex(addr), "size": size,
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
 def unicorn_get_state(port: int | None = None) -> dict:
     """Get the current Unicorn register state without executing.
 

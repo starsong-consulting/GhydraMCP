@@ -83,3 +83,19 @@ def dump(ctx, start, until, address, length, count):
     except GhidraError as e:
         rich_echo(ctx.obj['formatter'].format_error(e), err=True)
         ctx.exit(1)
+
+
+@dynamic.command('map')
+@click.option('--address', '-a', required=True, help='Region start (hex)')
+@click.option('--size', '-n', type=int, required=True, help='Region size in bytes')
+@click.pass_context
+def map(ctx, address, size):
+    """Map a zero-filled scratch region (e.g. a stack) before run/dump."""
+    try:
+        session = _make_session(ctx)
+        addr = int(validate_address(address), 16)
+        session.map_bytes(addr, b"\x00" * size)
+        click.echo(f"mapped {hex(addr)} +{size}")
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
