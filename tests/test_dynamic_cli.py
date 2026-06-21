@@ -39,3 +39,4 @@ def test_run_reports_stop_reason_and_error():
         obj=_obj(),
     )
     assert "LAZY_FETCH_FAILED" in result.output
+    assert result.exit_code != 0          # a faulted run is a non-success at the shell level

@@ -16,6 +16,19 @@ _ALL_REGS = ("RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RSP", "RBP", "RIP",
              "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15")
 
 
+class StopReason:
+    """The closed set of ``stop_reason`` values returned by ``UnicornSession.run()``.
+
+    Shared constants (imported by the bridge and CLI consumers) so the four
+    states are compared by name rather than by re-typed string literals, where
+    a typo would be a silent misclassification. ``success`` is only ``DONE``.
+    """
+    DONE = "DONE"
+    COUNT = "COUNT"
+    ERROR = "ERROR"
+    LAZY_FETCH_FAILED = "LAZY_FETCH_FAILED"
+
+
 class UnicornSession:
     PAGE = 0x1000
 
@@ -88,19 +101,19 @@ class UnicornSession:
         h_write = self.uc.hook_add(UC_HOOK_MEM_WRITE, _write_hook) if trace else None
         h_unmapped = (self.uc.hook_add(UC_HOOK_MEM_UNMAPPED, _unmapped_hook)
                       if self.byte_provider is not None else None)
-        stop_reason = "DONE"
+        stop_reason = StopReason.DONE
         last_error = None
         cap = min(count if count > 0 else 5_000_000, 5_000_000)
         try:
             self.uc.emu_start(begin, until, timeout=timeout, count=cap)
             if steps["n"] >= cap:
-                stop_reason = "COUNT"
+                stop_reason = StopReason.COUNT
         except UcError as e:
             if lazy_fail["msg"] is not None:
-                stop_reason = "LAZY_FETCH_FAILED"
+                stop_reason = StopReason.LAZY_FETCH_FAILED
                 last_error = lazy_fail["msg"]
             else:
-                stop_reason = "ERROR"
+                stop_reason = StopReason.ERROR
                 last_error = str(e)
         finally:
             self.uc.hook_del(h_code)

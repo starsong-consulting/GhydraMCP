@@ -6,5 +6,6 @@ class ProviderError(Exception):
 
     Raised when the underlying fetch failed (transport/API error), when the
     source has no bytes for the address, or when the response was malformed.
-    Carries the message surfaced as run()'s ``last_error``.
+    Its message is embedded into run()'s ``last_error`` (wrapped with the
+    faulting page address) when the resulting access faults.
     """

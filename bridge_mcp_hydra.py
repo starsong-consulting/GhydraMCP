@@ -331,8 +331,12 @@ def _unicorn_run_result(state: dict) -> dict:
     """Shape an engine run() state dict into a bridge response.
 
     success is true only for stop_reason DONE. Non-DONE returns an error
-    envelope so text_output surfaces the cause (stop_reason + last_error).
+    envelope (error.code = stop_reason, error.message from last_error) so the
+    last_error message reaches the MCP client via text_output. (format_error
+    renders error.message; the stop_reason code travels in error.code for
+    programmatic callers.)
     """
+    from ghydra.dynamic.unicorn_engine import StopReason
     stop = state["stop_reason"]
     payload = {
         "pc": hex(state["pc"]),
@@ -341,16 +345,17 @@ def _unicorn_run_result(state: dict) -> dict:
         "last_error": state["last_error"],
         "timestamp": int(time.time() * 1000),
     }
-    if stop == "DONE":
+    if stop == StopReason.DONE:
         payload["success"] = True
         payload["registers"] = {k: hex(v) for k, v in state["registers"].items()}
         payload["trace"] = [hex(a) for a in state["trace"]]
         payload["mem_writes"] = [{"address": hex(w["address"]), "size": w["size"],
                                   "value": hex(w["value"])} for w in state["mem_writes"]]
         return payload
-    if stop == "COUNT":
+    if stop == StopReason.COUNT:
         message = (state["last_error"]
-                   or f"instruction cap reached after {state['steps']} steps; raise count or set until")
+                   or f"instruction cap reached after {state['steps']} steps; "
+                   "raise `count` or set a closer `until`")
     else:
         message = state["last_error"] or stop
     payload["success"] = False
@@ -3102,10 +3107,11 @@ def unicorn_run(until: str, count: int = 100000, trace: bool = False,
     success is true only when the target address is reached (stop_reason DONE).
     A run that hits the instruction cap returns stop_reason "COUNT" with
     success=false: it ran cleanly but stopped at the budget without reaching the
-    target -- raise `count` or set a closer `until`; it is NOT a fault. A
-    failed lazy byte fetch from Ghidra returns "LAZY_FETCH_FAILED" with the cause
-    in last_error; any other emulator fault returns "ERROR". On any non-DONE stop
-    the emulated memory must not be treated as a trustworthy result.
+    target -- raise `count` or set a closer `until`; it is NOT a fault, and the
+    emulated memory up to the cap is valid (just incomplete). A failed lazy byte
+    fetch from Ghidra returns "LAZY_FETCH_FAILED" with the cause in last_error;
+    any other emulator fault returns "ERROR". On a "LAZY_FETCH_FAILED"/"ERROR"
+    stop the emulated memory may be partial or corrupt and must not be trusted.
 
     Args:
         until: Stop address in hex (required; emulation runs begin..until)

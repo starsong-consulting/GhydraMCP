@@ -8,10 +8,11 @@ from .exceptions import ProviderError
 def make_ghidra_provider(client) -> Callable[[int, int], bytes]:
     """Build an (address, length) -> bytes provider backed by Ghidra's /memory API.
 
-    The returned provider returns the real bytes Ghidra has (possibly fewer than
-    `length`; never zero-padded) and raises ProviderError when no real image bytes
-    are available -- so genuine fetch failures fault loudly instead of masquerading
-    as zero data.
+    The returned provider returns exactly the bytes Ghidra returned -- neither
+    truncated nor padded to `length`, so the result may be shorter (or, in
+    principle, longer) than requested but is never zero-filled -- and raises
+    ProviderError when no real image bytes are available, so genuine fetch
+    failures fault loudly instead of masquerading as zero data.
     """
 
     def provider(address: int, length: int) -> bytes:

@@ -3,6 +3,7 @@
 import click
 
 from ..client.exceptions import GhidraError
+from ..dynamic.unicorn_engine import StopReason
 from ..utils import rich_echo, validate_address
 
 
@@ -48,6 +49,8 @@ def run(ctx, start, until, count, trace):
         if trace:
             click.echo(f"  trace: {len(state['trace'])} instrs, "
                        f"{len(state['mem_writes'])} writes")
+        if state["stop_reason"] != StopReason.DONE:
+            ctx.exit(1)   # any non-DONE stop is a non-success (matches dump + bridge)
     except GhidraError as e:
         rich_echo(ctx.obj['formatter'].format_error(e), err=True)
         ctx.exit(1)
@@ -67,7 +70,7 @@ def dump(ctx, start, until, address, length, count):
         begin = int(validate_address(start), 16)
         session.set_register("RIP", begin)
         state = session.run(begin=begin, until=int(validate_address(until), 16), count=count)
-        if state["stop_reason"] != "DONE":
+        if state["stop_reason"] != StopReason.DONE:
             click.echo(
                 f"emulation did not complete: stop={state['stop_reason']} "
                 f"{state.get('last_error') or ''}".rstrip(),
