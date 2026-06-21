@@ -164,3 +164,15 @@ def test_session_construction_raises_without_unicorn(monkeypatch):
     import pytest
     with pytest.raises(RuntimeError, match="unicorn not installed"):
         unicorn_engine.UnicornSession()
+
+
+def test_run_hits_instruction_cap_returns_count():
+    s = UnicornSession()
+    base = 0x140075000
+    s.map_bytes(base, b"\xeb\xfe")          # jmp $  -- tight infinite loop
+    s.set_register("RIP", base)
+    # until is never reached; the run must stop at the instruction budget.
+    state = s.run(begin=base, until=base + 0x100, count=5)
+    assert state["stop_reason"] == "COUNT"
+    assert state["last_error"] is None      # COUNT is a clean stop, not a fault
+    assert state["steps"] == 5
