@@ -47,8 +47,9 @@ def run(ctx, start, until, count, trace):
         if state.get("last_error"):
             click.echo(f"  error: {state['last_error']}")
         if trace:
+            suffix = " (truncated)" if state.get("trace_truncated") else ""
             click.echo(f"  trace: {len(state['trace'])} instrs, "
-                       f"{len(state['mem_writes'])} writes")
+                       f"{len(state['mem_writes'])} writes{suffix}")
         if state["stop_reason"] != StopReason.DONE:
             ctx.exit(1)   # any non-DONE stop is a non-success (matches dump + bridge)
     except GhidraError as e:

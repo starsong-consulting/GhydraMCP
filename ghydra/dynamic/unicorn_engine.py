@@ -67,15 +67,22 @@ class UnicornSession:
         steps = {"n": 0}
         executed: list[int] = []
         mem_writes: list[dict] = []
+        trace_trunc = {"hit": False}
 
         def _code_hook(uc, address, size, _user):
             steps["n"] += 1
-            if trace and len(executed) < _TRACE_CAP:
-                executed.append(address)
+            if trace:
+                if len(executed) < _TRACE_CAP:
+                    executed.append(address)
+                else:
+                    trace_trunc["hit"] = True
 
         def _write_hook(uc, access, address, size, value, _user):
-            if trace and len(mem_writes) < _TRACE_CAP:
-                mem_writes.append({"address": address, "size": size, "value": value})
+            if trace:
+                if len(mem_writes) < _TRACE_CAP:
+                    mem_writes.append({"address": address, "size": size, "value": value})
+                else:
+                    trace_trunc["hit"] = True
 
         lazy = {"n": 0}
         lazy_fail = {"msg": None, "reason": None}
@@ -137,4 +144,5 @@ class UnicornSession:
             "registers": {r: self.get_register(r) for r in _ALL_REGS},
             "trace": executed if trace else [],
             "mem_writes": mem_writes if trace else [],
+            "trace_truncated": trace_trunc["hit"],
         }

@@ -351,6 +351,7 @@ def _unicorn_run_result(state: dict) -> dict:
         payload["trace"] = [hex(a) for a in state["trace"]]
         payload["mem_writes"] = [{"address": hex(w["address"]), "size": w["size"],
                                   "value": hex(w["value"])} for w in state["mem_writes"]]
+        payload["trace_truncated"] = state.get("trace_truncated", False)
         return payload
     if stop == StopReason.COUNT:
         message = (state["last_error"]

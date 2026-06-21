@@ -134,3 +134,25 @@ def test_unicorn_handle_is_private():
     s = UnicornSession()
     assert hasattr(s, "_uc")
     assert not hasattr(s, "uc")
+
+
+def test_trace_truncation_flag(monkeypatch):
+    from ghydra.dynamic import unicorn_engine
+    monkeypatch.setattr(unicorn_engine, "_TRACE_CAP", 2)   # cap the trace at 2 entries
+    s = UnicornSession()
+    base = 0x140075000
+    s.map_bytes(base, b"\x90\x90\x90\x90")                 # four nops
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + 4, count=10, trace=True)
+    assert state["stop_reason"] == "DONE"
+    assert len(state["trace"]) == 2                        # appended only up to the cap
+    assert state["trace_truncated"] is True
+
+
+def test_clean_trace_is_not_truncated():
+    s = UnicornSession()
+    base = 0x140075000
+    s.map_bytes(base, b"\x90\x90")
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + 2, count=10, trace=True)
+    assert state["trace_truncated"] is False
