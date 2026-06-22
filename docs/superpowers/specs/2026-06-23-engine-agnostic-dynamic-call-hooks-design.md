@@ -93,6 +93,17 @@ is preserved in a `detail` field for diagnosis.
 `stop_reason ∈ {COMPLETED, BREAKPOINT, HOOK_TRAP}` (documented; not a stored
 field).
 
+**Where the unified vocabulary lives.** The unified names are a **wire/bridge-
+layer** vocabulary, not a rewrite of the engines' internal enums. The Java
+`StopReason` enum grows exactly one genuinely-new value — `HOOK_TRAP` — and
+otherwise keeps its existing names (`TARGET_REACHED`, `MAX_STEPS`, …); it does
+**not** gain a `COMPLETED` value (a `call` completion stays `TARGET_REACHED`
+internally, since the sentinel is just an `until` target). The bridge formatters
+own the translation to the unified set (`TARGET_REACHED`/sentinel → `COMPLETED`,
+`MAX_STEPS` → `STEP_LIMIT`, etc.). Unicorn similarly keeps its native constants
+and translates at the bridge. The implementation plan must state this mapping
+table explicitly so it is not re-derived.
+
 ## Hook registry (the stub mechanism)
 
 A session carries a registry of hooks keyed by **address**. Symbol/import names
@@ -197,6 +208,9 @@ not yet discovered). **Unsupported architecture ⇒ `call` is rejected**, as are
 - **Bytes-arg scratch layout:** bytes-args bump-allocate from the **bottom** of
   the scratch region (low addresses, growing up); the real stack lives at the
   **top** (growing down), with a defined split point so the two never collide.
+  The cumulative bytes-args allocation is **bounded by the split point** (e.g.
+  256 KiB of a 1 MiB scratch region); a `call` whose `{"bytes"}` args exceed it
+  is rejected with a clear message rather than overrunning into the stack.
 - **16-byte alignment:** the ABI requires `RSP ≡ 0 (mod 16)` at the call site,
   i.e. `RSP ≡ 8 (mod 16)` at callee entry (return address occupies the low 8
   bytes). Since we set PC directly and push the sentinel manually, align
