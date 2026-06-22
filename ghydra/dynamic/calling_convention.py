@@ -41,3 +41,16 @@ def validate_args(args: list) -> None:
         raise ValueError(
             f"arg[{i}]: only int or {{\"bytes\": hex}} args are supported in v1 "
             f"(float/struct args are out of scope)")
+
+
+def aligned_call_frame(rsp: int, convention: str, n_stack_args: int) -> int:
+    """Final RSP after laying out stack args + shadow + sentinel.
+
+    Guarantees callee-entry ABI alignment: rsp % 16 == 8 (the 8-byte sentinel
+    return address occupies the low 8 bytes of a 16-aligned frame).
+    """
+    _check(convention)
+    body = 8 * n_stack_args + (32 if convention == "ms" else 0)
+    target = rsp - body - 8           # tentative sentinel slot
+    final_rsp = target - ((target - 8) % 16)   # round down so final % 16 == 8
+    return final_rsp
