@@ -24,6 +24,7 @@
     <ghidra.decompiler.jar>${project.basedir}/lib/Decompiler.jar</ghidra.decompiler.jar>
     <ghidra.utility.jar>${project.basedir}/lib/Utility.jar</ghidra.utility.jar>
     <ghidra.base.jar>${project.basedir}/lib/Base.jar</ghidra.base.jar>
+    <ghidra.emulation.jar>${project.basedir}/lib/Emulation.jar</ghidra.emulation.jar>
     <maven.deploy.skip>true</maven.deploy.skip>
     <maven.install.skip>true</maven.install.skip>
     <maven.build.timestamp.format>yyyyMMdd-HHmmss</maven.build.timestamp.format>
@@ -105,7 +106,14 @@
       <scope>system</scope>
       <systemPath>${ghidra.base.jar}</systemPath>
     </dependency>
-    
+    <dependency>
+      <groupId>ghidra</groupId>
+      <artifactId>Emulation</artifactId>
+      <version>12.1.2</version>
+      <scope>system</scope>
+      <systemPath>${ghidra.emulation.jar}</systemPath>
+    </dependency>
+
     <!-- Test dependencies -->
     <dependency>
       <groupId>junit</groupId>
@@ -347,6 +355,7 @@
         <ghidra.decompiler.jar>${env.GHIDRA_HOME}/Ghidra/Features/Decompiler/lib/Decompiler.jar</ghidra.decompiler.jar>
         <ghidra.utility.jar>${env.GHIDRA_HOME}/Ghidra/Framework/Utility/lib/Utility.jar</ghidra.utility.jar>
         <ghidra.base.jar>${env.GHIDRA_HOME}/Ghidra/Features/Base/lib/Base.jar</ghidra.base.jar>
+        <ghidra.emulation.jar>${env.GHIDRA_HOME}/Ghidra/Framework/Emulation/lib/Emulation.jar</ghidra.emulation.jar>
       </properties>
     </profile>
 

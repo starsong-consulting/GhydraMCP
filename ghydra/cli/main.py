@@ -102,6 +102,8 @@ from . import (
     namespaces,
     variables,
     datatypes,
+    emulation,
+    dynamic,
 )
 
 cli.add_command(instances.instances)
@@ -122,6 +124,8 @@ cli.add_command(segments.segments)
 cli.add_command(namespaces.namespaces)
 cli.add_command(variables.variables)
 cli.add_command(datatypes.datatypes)
+cli.add_command(emulation.emulation)
+cli.add_command(dynamic.dynamic)
 
 
 @cli.command('version')

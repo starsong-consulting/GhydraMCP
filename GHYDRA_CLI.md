@@ -148,6 +148,61 @@ ghydra functions get-variables --name main
 ghydra functions set-comment --address 0x401000 --comment "Main entry point"
 ```
 
+### Emulation Commands
+
+Dynamic analysis via Ghidra's PCode emulator. Call `reset` first to create the session;
+register/memory values are hex strings. Runs are bounded by `--max-steps`.
+
+```bash
+# Start a session at an address (sets PC there)
+ghydra emulation reset --start 0x140074000
+
+# Run until a target / breakpoint / error / max-steps, optionally tracing executed addrs
+ghydra emulation run --until 0x140075000 --max-steps 100000 --trace
+ghydra emulation run --no-trace
+
+# Single-step
+ghydra emulation step --count 5
+
+# Inspect current state (pc, registers, stopReason, trace)
+ghydra emulation state
+
+# Read emulated memory as hex (e.g. dump decrypted data)
+ghydra emulation read-mem --address 0x140090000 --length 64
+
+# Read / write a register
+ghydra emulation read-register --name RAX
+ghydra emulation write-register --name RAX --value 0xdeadbeef
+
+# Write bytes to emulated memory
+ghydra emulation write-mem --address 0x140090000 --hex 9090
+
+# Set / clear a breakpoint
+ghydra emulation set-breakpoint --address 0x140075000
+ghydra emulation clear-breakpoint --address 0x140075000
+
+# Dispose the session
+ghydra emulation dispose
+```
+
+### Dynamic Emulation Commands (Unicorn)
+
+Python-side [Unicorn Engine](https://www.unicorn-engine.org/) x86-64 emulation that lazily
+pulls bytes from the Ghidra static image — unmapped pages are fetched on demand over the
+`/memory` API, so you can run an in-binary unpacker and read back the decrypted bytes without
+a live debugger. Each command builds a one-shot session (no persistent server-side state).
+
+Optional dependency: `pip install ghydramcp[unicorn]`.
+
+```bash
+# Emulate start..until and print the final register state (optionally with a trace summary)
+ghydra dynamic run --start 0x140074000 --until 0x140075000
+ghydra dynamic run --start 0x140074000 --until 0x140075000 --count 200000 --trace
+
+# Run an unpacker (e.g. mbb.exe's entry), then dump the decrypted payload (.xd) it produced
+ghydra dynamic dump --start 0x140074000 --until 0x140075abc --address 0x140090000 --length 256
+```
+
 ## Remaining Command Groups to Implement
 
 The following command groups follow the same pattern as `instances` and `functions`. Here's how to implement them:

@@ -264,6 +264,24 @@ Tools are grouped into namespaces:
 - `datatypes_create_enum`: Create enum datatype (params: name, size [optional], category [optional], values_json [optional], port [optional]); supports JSON value definitions
 - `datatypes_create_union`: Create union datatype (params: name, category [optional], fields_json [optional], port [optional]); supports JSON field definitions
 
+**Emulation** (`emulation_*`) — PCode dynamic analysis via Ghidra's `EmulatorHelper`:
+- `emulation_reset`: Start a fresh session at an address (params: start, registers [optional], memory [optional], port [optional])
+- `emulation_run`: Run until an address/breakpoint/error/max_steps (params: until [optional], max_steps [optional], trace [optional], port [optional])
+- `emulation_step`: Single-step the session (params: count [optional], trace [optional], port [optional])
+- `emulation_state`: Current state without executing (params: port [optional])
+- `emulation_read_register` / `emulation_write_register`: Read/write a register as hex (params: name, value [write], port [optional])
+- `emulation_read_memory` / `emulation_write_memory`: Read/write emulated memory as hex (params: address, length [read]/hex_bytes [write], port [optional])
+- `emulation_set_breakpoint` / `emulation_clear_breakpoint`: Set/clear an emulation breakpoint (params: address, port [optional])
+- `emulation_dispose`: Dispose the session (params: port [optional])
+
+**Unicorn dynamic emulation** (`unicorn_*`) — Python-side [Unicorn Engine](https://www.unicorn-engine.org/) x86-64 emulation that lazily pulls bytes from the Ghidra static image (no live debugger). Optional dependency: `pip install ghydramcp[unicorn]`.
+- `unicorn_reset`: Start a fresh session at an address; unmapped pages are fetched from Ghidra on demand (params: start, registers [optional], port [optional])
+- `unicorn_run`: Run begin..until, an instruction count, or until a fault (params: until, count [optional], trace [optional], port [optional])
+- `unicorn_read_memory`: Read emulated memory as hex, e.g. dump a decrypted payload (params: address, length [optional], port [optional])
+- `unicorn_set_register`: Set a register as hex (params: name, value, port [optional])
+- `unicorn_get_state`: Current register state without executing (params: port [optional])
+- `unicorn_dispose`: Dispose the session (params: port [optional])
+
 **Comment Management** (`comments_*`):
 - `comments_set`: Set memory comment (params: address, comment [optional], comment_type [optional], port [optional])
 - `comments_get`: Get memory comment (params: address, comment_type [optional], port [optional])

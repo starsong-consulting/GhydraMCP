@@ -12,9 +12,24 @@ dependencies = [
     "urllib3>=2.0.0,<3",
 ]
 
+[project.optional-dependencies]
+unicorn = [
+    "unicorn>=2.0,<3",
+    "capstone>=5.0,<6",
+]
+
 [project.scripts]
 ghydramcp = "bridge_mcp_hydra:main"
 ghydra = "ghydra.cli.main:cli"
+
+[tool.pytest.ini_options]
+# Scope bare `pytest` to the unit-test suite under tests/; the root-level
+# test_*.py files are live-Ghidra integration tests run via run_tests.py.
+testpaths = ["tests"]
+# Unicorn's TCG memory manager raises (and internally handles) first-chance
+# access violations on Windows; pytest's auto-enabled faulthandler would
+# otherwise print alarming-but-benign "Windows fatal exception" tracebacks.
+addopts = "-p no:faulthandler"
 
 [build-system]
 requires = ["hatchling"]

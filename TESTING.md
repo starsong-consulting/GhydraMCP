@@ -85,6 +85,20 @@ The test script will:
   - Function renaming
   - Comment addition/removal
 
+## Dynamic Emulation Tests (Unicorn)
+
+Unlike the suites above, the Unicorn dynamic-emulation tests are **pure unit tests** — they use
+a fake byte-provider/client, so **no running Ghidra is required**. They do need the optional
+Unicorn extra installed (the tests `importorskip` Unicorn and are skipped if it is absent):
+
+```bash
+pip install ghydramcp[unicorn]
+pytest tests/test_unicorn_engine.py tests/test_dynamic_e2e.py
+```
+
+`tests/test_dynamic_registers.py` and `tests/test_ghidra_provider.py` do not need Unicorn at all.
+To run the whole `tests/` unit suite: `pytest` (scoped to `tests/` via `pyproject.toml`).
+
 ## Troubleshooting
 
 ### HTTP API Tests

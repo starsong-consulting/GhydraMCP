@@ -33,7 +33,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v3.0.0-rc.1"
+BRIDGE_VERSION = "v3.1.0-rc.3"
 REQUIRED_API_VERSION = 3000
 
 DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
@@ -308,6 +308,81 @@ def safe_patch(port: int, endpoint: str, data: dict) -> dict:
 def safe_delete(port: int, endpoint: str) -> dict:
     """Perform a DELETE request to a specific Ghidra instance"""
     return _make_request("DELETE", port, endpoint)
+
+
+# ================= Unicorn dynamic emulation =================
+# Per-port stateful Unicorn sessions (optional dependency: ghydramcp[unicorn]).
+_UNICORN_SESSIONS: dict[int, "object"] = {}
+_unicorn_lock = Lock()
+
+
+def _unicorn_error(message: str) -> dict:
+    return {"success": False, "error": {"code": "UNICORN", "message": message},
+            "timestamp": int(time.time() * 1000)}
+
+
+def _get_unicorn_session(port: int):
+    with _unicorn_lock:
+        session = _UNICORN_SESSIONS.get(port)
+    if session is None:
+        raise KeyError("No Unicorn session; call unicorn_reset first")
+    return session
+
+
+def _unicorn_run_result(state: dict) -> dict:
+    """Shape an engine run() state dict into a bridge response.
+
+    success is true only for stop_reason DONE. Non-DONE returns an error
+    envelope (error.code = stop_reason, error.message from last_error) so the
+    last_error message reaches the MCP client via text_output. (format_error
+    renders error.message; the stop_reason code travels in error.code for
+    programmatic callers.)
+    """
+    from ghydra.dynamic.unicorn_engine import StopReason
+    stop = state["stop_reason"]
+    payload = {
+        "pc": hex(state["pc"]),
+        "steps": state["steps"],
+        "stop_reason": stop,
+        "last_error": state["last_error"],
+        "timestamp": int(time.time() * 1000),
+    }
+    if stop == StopReason.DONE:
+        payload["success"] = True
+        payload["registers"] = {k: hex(v) for k, v in state["registers"].items()}
+        payload["trace"] = [hex(a) for a in state["trace"]]
+        payload["mem_writes"] = [{"address": hex(w["address"]), "size": w["size"],
+                                  "value": hex(w["value"])} for w in state["mem_writes"]]
+        payload["trace_truncated"] = state.get("trace_truncated", False)
+        return payload
+    if stop == StopReason.COUNT:
+        message = (state["last_error"]
+                   or f"instruction cap reached after {state['steps']} steps; "
+                   "raise `count` or set a closer `until`")
+    else:
+        message = state["last_error"] or stop
+    payload["success"] = False
+    payload["error"] = {"code": stop, "message": message}
+    return payload
+
+
+_DEFAULT_STACK_BASE = 0x7ffff0000000
+_DEFAULT_STACK_SIZE = 0x100000          # 1 MiB scratch stack
+
+
+def _apply_default_stack(session) -> tuple[int, int]:
+    """Map a default scratch stack and point RSP/RBP at it.
+
+    Convenience so a freshly reset session can execute stack-using code
+    (push/call) without the caller mapping a stack by hand. Returns the
+    (base, size) of the mapped region. Caller-established scratch memory is
+    allowed by the purist contract; this does not relax lazy mapping.
+    """
+    session.map_bytes(_DEFAULT_STACK_BASE, b"\x00" * _DEFAULT_STACK_SIZE)
+    rsp = _DEFAULT_STACK_BASE + _DEFAULT_STACK_SIZE - 0x1000
+    session.set_register("RSP", rsp)
+    session.set_register("RBP", rsp)
+    return _DEFAULT_STACK_BASE, _DEFAULT_STACK_SIZE
 
 
 # ================= Text Formatters =================
@@ -2840,6 +2915,352 @@ def memory_write(address: str, bytes_data: str, format: str = "hex", port: int |
     # Memory write is handled by ProgramEndpoints, not MemoryEndpoints
     response = safe_patch(port, f"programs/current/memory/{address}", payload)
     return simplify_response(response)
+
+
+@mcp.tool()
+@text_output
+def emulation_reset(start: str, registers: dict | None = None,
+                    memory: list | None = None, port: int | None = None) -> dict:
+    """Start a fresh PCode emulation session at an address.
+
+    Args:
+        start: Start address in hex (PC is set here)
+        registers: Optional {register_name: hex_value} initial register writes
+        memory: Optional [{"address": hex, "hex": "ca fe"}] initial memory writes
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: initial emulation state (pc, registers, steps, stopReason)
+    """
+    port = _get_instance_port(port)
+    body: dict = {"start": start}
+    if registers:
+        body["registers"] = registers
+    if memory:
+        body["memory"] = memory
+    return simplify_response(safe_post(port, "emulation/reset", body))
+
+
+@mcp.tool()
+@text_output
+def emulation_run(until: str | None = None, max_steps: int = 100000,
+                  trace: bool = False, port: int | None = None) -> dict:
+    """Run the emulation session until an address, a breakpoint, an error, or max_steps.
+
+    Args:
+        until: Optional stop address in hex
+        max_steps: Hard step cap (default 100000, server caps at 5000000)
+        trace: When true, returns the list of executed instruction addresses
+        port: Specific Ghidra instance port (optional)
+
+    Returns:
+        dict: final emulation state including stopReason and optional trace
+    """
+    port = _get_instance_port(port)
+    body: dict = {"max_steps": max_steps, "trace": trace}
+    if until:
+        body["until"] = until
+    return simplify_response(safe_post(port, "emulation/run", body))
+
+
+@mcp.tool()
+@text_output
+def emulation_step(count: int = 1, trace: bool = False, port: int | None = None) -> dict:
+    """Single-step the emulation session count times.
+
+    Args:
+        count: Number of instructions to step (default 1)
+        trace: When true, returns executed instruction addresses
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/step", {"count": count, "trace": trace}))
+
+
+@mcp.tool()
+@text_output
+def emulation_state(port: int | None = None) -> dict:
+    """Get the current emulation session state without executing.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_get(port, "emulation/state"))
+
+
+@mcp.tool()
+@text_output
+def emulation_read_register(name: str, port: int | None = None) -> dict:
+    """Read an emulated register value (hex).
+
+    Args:
+        name: Register name (e.g. "RAX", "RIP")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_get(port, f"emulation/registers/{quote(name)}"))
+
+
+@mcp.tool()
+@text_output
+def emulation_write_register(name: str, value: str, port: int | None = None) -> dict:
+    """Write an emulated register value.
+
+    Args:
+        name: Register name (e.g. "RAX")
+        value: Hex value (e.g. "0x140075000")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/registers", {"name": name, "value": value}))
+
+
+@mcp.tool()
+@text_output
+def emulation_read_memory(address: str, length: int = 64, port: int | None = None) -> dict:
+    """Read bytes from emulated memory (hex), e.g. to dump decrypted data.
+
+    Args:
+        address: Memory address in hex
+        length: Number of bytes (default 64, server caps at 4096)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(
+        safe_get(port, f"emulation/memory/{quote(address, safe=':')}", {"length": length}))
+
+
+@mcp.tool()
+@text_output
+def emulation_write_memory(address: str, hex_bytes: str, port: int | None = None) -> dict:
+    """Write bytes to emulated memory.
+
+    Args:
+        address: Memory address in hex
+        hex_bytes: Hex byte string (e.g. "9090")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/memory", {"address": address, "hex": hex_bytes}))
+
+
+@mcp.tool()
+@text_output
+def emulation_set_breakpoint(address: str, port: int | None = None) -> dict:
+    """Set an emulation breakpoint at an address.
+
+    Args:
+        address: Address in hex
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_post(port, "emulation/breakpoints", {"address": address}))
+
+
+@mcp.tool()
+@text_output
+def emulation_clear_breakpoint(address: str, port: int | None = None) -> dict:
+    """Clear an emulation breakpoint previously set at an address.
+
+    Args:
+        address: Address in hex
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(
+        safe_delete(port, f"emulation/breakpoints/{quote(address, safe=':')}"))
+
+
+@mcp.tool()
+@text_output
+def emulation_dispose(port: int | None = None) -> dict:
+    """Dispose the emulation session and free the emulator.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_delete(port, "emulation"))
+
+
+@mcp.tool()
+@text_output
+def unicorn_reset(start: str, registers: dict | None = None, stack: bool = True,
+                  port: int | None = None) -> dict:
+    """Start a fresh Unicorn emulation session that lazily pulls bytes from Ghidra.
+
+    Args:
+        start: Start address in hex (RIP is set here)
+        registers: Optional {register_name: hex_value} initial writes
+        stack: Auto-map a default 1 MiB scratch stack and point RSP/RBP at it
+            (default True; pass False to manage the stack yourself)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        from ghydra.dynamic.unicorn_engine import UnicornSession
+        from ghydra.dynamic.ghidra_provider import make_ghidra_provider
+        from ghydra.client.http_client import GhidraHTTPClient
+    except RuntimeError as e:
+        return _unicorn_error(str(e))
+    except ImportError:
+        return _unicorn_error("unicorn not installed; pip install ghydramcp[unicorn]")
+
+    try:
+        client = GhidraHTTPClient(port=port)
+        session = UnicornSession(byte_provider=make_ghidra_provider(client))
+    except RuntimeError as e:
+        return _unicorn_error(str(e))
+
+    start_int = int(start, 16)
+    session.set_register("RIP", start_int)
+    stack_region = None
+    if stack:
+        base, size = _apply_default_stack(session)
+        stack_region = {"base": hex(base), "size": size}
+    if registers:
+        for name, value in registers.items():
+            session.set_register(name, int(value, 16))   # explicit overrides win (e.g. RSP)
+    with _unicorn_lock:
+        _UNICORN_SESSIONS[port] = session
+    return {"success": True, "start": hex(start_int), "lazy_mapping": "ghidra",
+            "stack": stack_region, "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_run(until: str, count: int = 100000, trace: bool = False,
+                port: int | None = None) -> dict:
+    """Run the Unicorn session until an address, instruction count, or fault.
+
+    success is true only when the target address is reached (stop_reason DONE).
+    A run that hits the instruction cap returns stop_reason "COUNT" with
+    success=false: it ran cleanly but stopped at the budget without reaching the
+    target -- raise `count` or set a closer `until`; it is NOT a fault, and the
+    emulated memory up to the cap is valid (just incomplete). A failed lazy byte
+    fetch from Ghidra returns "LAZY_FETCH_FAILED" with the cause in last_error;
+    exhausting the lazy-page budget returns "LAZY_CAP_REACHED" (raise the
+    engine's max_lazy_pages); any other emulator fault returns "ERROR". On a
+    "LAZY_FETCH_FAILED"/"ERROR" stop the emulated memory may be partial or
+    corrupt and must not be trusted.
+
+    Args:
+        until: Stop address in hex (required; emulation runs begin..until)
+        count: Instruction cap (default 100000)
+        trace: Return executed instruction addresses and memory writes
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    begin = session.get_register("RIP")
+    state = session.run(begin=begin, until=int(until, 16), count=count, trace=trace)
+    return _unicorn_run_result(state)
+
+
+@mcp.tool()
+@text_output
+def unicorn_read_memory(address: str, length: int = 64, port: int | None = None) -> dict:
+    """Read bytes from the Unicorn session's memory (e.g. dump decrypted data).
+
+    Args:
+        address: Address in hex
+        length: Number of bytes (default 64)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    data = session.read_memory(int(address, 16), length)
+    return {"success": True, "address": address, "length": length,
+            "hex": data.hex(), "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_set_register(name: str, value: str, port: int | None = None) -> dict:
+    """Set a Unicorn register value.
+
+    Args:
+        name: Register name (e.g. "RAX")
+        value: Hex value
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    session.set_register(name, int(value, 16))
+    return {"success": True, "name": name, "value": value,
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_map(address: str, size: int, port: int | None = None) -> dict:
+    """Map a zero-filled scratch region into the Unicorn session.
+
+    The purist lazy mapper serves only real Ghidra image bytes, so emulated
+    code that touches non-image memory (a stack push, a heap/IO buffer) faults
+    with LAZY_FETCH_FAILED unless that region is mapped first. Use this to set
+    up stack/scratch/output buffers before unicorn_run. Page-aligned by the
+    engine.
+
+    Args:
+        address: Region start in hex
+        size: Region size in bytes
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    addr = int(address, 16)
+    session.map_bytes(addr, b"\x00" * size)
+    return {"success": True, "address": hex(addr), "size": size,
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_get_state(port: int | None = None) -> dict:
+    """Get the current Unicorn register state without executing.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    regs = ("RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RSP", "RBP", "RIP",
+            "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15")
+    return {"success": True,
+            "registers": {r: hex(session.get_register(r)) for r in regs},
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_dispose(port: int | None = None) -> dict:
+    """Dispose the Unicorn session for a port.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    with _unicorn_lock:
+        _UNICORN_SESSIONS.pop(port, None)
+    return {"success": True, "session": "disposed", "timestamp": int(time.time() * 1000)}
+
 
 @mcp.tool()
 @text_output

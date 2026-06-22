@@ -799,6 +799,76 @@ Run Ghidra scripts via the API, for multi-stage or batch operations (mass rename
   }
   ```
 
+### 12. Emulation (PCode)
+
+Dynamic analysis via Ghidra's built-in PCode emulator (`EmulatorHelper`). One stateful
+session is held per program; call **reset** to (re)create it before any other emulation
+call. Pure PCode interpretation — no live OS process is started. Register values cross the
+wire as hex strings (e.g. `"0x140075000"`); memory payloads as hex byte strings (e.g.
+`"9090"`). All calls **except `reset` and `dispose`** require an existing session and return
+`404 NO_EMULATION_SESSION` if none exists (`reset` creates one; `dispose` is a no-op when absent).
+
+`stopReason` reports why the session is in its current state (it serializes as a string):
+
+| value | set by | meaning |
+|-------|--------|---------|
+| `READY` | `reset` | fresh session, nothing executed yet |
+| `STEPPED` | `step` | completed (possibly fewer than requested — see below) |
+| `TARGET_REACHED` | `run` | reached the `until` address |
+| `BREAKPOINT` | `run`/`step` | halted at a breakpoint that was set on the session |
+| `ERROR` | `run`/`step` | the emulator faulted (unmapped read, bad instruction, …); see `lastError` |
+| `MAX_STEPS` | `run` | hit the step cap without otherwise stopping |
+
+- **`POST /emulation/reset`**: Dispose any prior session, create a fresh emulator, set PC
+  to `start`, then apply optional register and memory writes. Returns the initial state.
+  - Body: `{ "start": "0x140074000", "registers": { "RCX": "0x10" }, "memory": [ { "address": "0x140090000", "hex": "00 11 22 33" } ] }`
+    (`registers` and `memory` are optional).
+  ```json
+  // Example Response
+  "result": {
+    "pc": "0x140074000",
+    "stopReason": "READY",
+    "steps": 0,
+    "registers": { "RAX": "0x0", "RCX": "0x10", "RIP": "0x140074000" },
+    "trace": [],
+    "lastError": null
+  }
+  ```
+- **`POST /emulation/run`**: Step until `until` (optional), a breakpoint, an error, or
+  `max_steps`. Returns the final state.
+  - Body: `{ "until": "0x140075000", "max_steps": 100000, "trace": true }` (all optional).
+  - `max_steps`: if omitted or ≤ 0, the run is bounded only by the server hard cap of
+    **5,000,000**. (The `100000` default is a client convenience in the bridge/CLI, not the
+    raw endpoint.)
+  - When `trace` is true, `result.trace` holds executed instruction addresses (cap 100,000).
+- **`POST /emulation/step`**: Single-step `count` times (default 1). Stops early (with
+  `stopReason` `BREAKPOINT` or `ERROR`) if a breakpoint is hit or a fault occurs before
+  `count` is reached — check `steps`/`stopReason`.
+  - Body: `{ "count": 5, "trace": false }`.
+- **`GET /emulation/state`**: Current session state (no execution); `trace` is included.
+  `registers` lists **base registers only** (sub-registers like `EAX`/`AX` and
+  processor-context registers are excluded).
+- **`GET /emulation/registers/{name}`**: Read one register (hex).
+  ```json
+  // Example Response for GET /emulation/registers/RAX
+  "result": { "name": "RAX", "value": "0xdeadbeef" }
+  ```
+- **`POST /emulation/registers`**: Write one register; returns the new state.
+  - Body: `{ "name": "RAX", "value": "0xdeadbeef" }`.
+- **`GET /emulation/memory/{address}`**: Read emulated memory as hex (e.g. dump decrypted data).
+  - Query Parameters: `?length=[bytes]` (raw-endpoint default 256, clamped to 4096; the
+    bridge/CLI clients default to 64). `result.length` is the actual byte count returned
+    (after clamping), not the requested value.
+  ```json
+  // Example Response for GET /emulation/memory/0x140090000?length=4
+  "result": { "address": "0x140090000", "length": 4, "hex": "00112233" }
+  ```
+- **`POST /emulation/memory`**: Write bytes to emulated memory.
+  - Body: `{ "address": "0x140090000", "hex": "9090" }`; returns `{ "address", "written" }`.
+- **`POST /emulation/breakpoints`**: Set a breakpoint. Body: `{ "address": "0x140075000" }`.
+- **`DELETE /emulation/breakpoints/{address}`**: Clear a breakpoint.
+- **`DELETE /emulation`**: Dispose the session and free the emulator.
+
 ## Design Considerations for AI Usage
 
 - **Structured responses**: JSON format ensures predictable parsing by AI agents.
