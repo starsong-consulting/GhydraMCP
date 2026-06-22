@@ -1,8 +1,19 @@
 """Unicorn-based x86-64 emulation session with lazy mapping from Ghidra."""
 
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 from .registers import resolve_register
+
+
+VALID_HOOK_ACTIONS = frozenset({"return_const", "skip", "log", "trap"})
+
+
+@dataclass
+class Hook:
+    action: str
+    return_value: int | None = None
+    mem_writes: list[dict] | None = None
 
 try:
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_64, UcError
@@ -28,6 +39,7 @@ class StopReason:
     ERROR = "ERROR"
     LAZY_FETCH_FAILED = "LAZY_FETCH_FAILED"
     LAZY_CAP_REACHED = "LAZY_CAP_REACHED"
+    HOOK_TRAP = "HOOK_TRAP"
 
 
 class UnicornSession:
@@ -39,6 +51,7 @@ class UnicornSession:
         self._uc = Uc(UC_ARCH_X86, UC_MODE_64)
         self.byte_provider = byte_provider
         self._mapped: set[int] = set()
+        self._hooks: dict[int, Hook] = {}
 
     def _ensure_mapped(self, address: int, length: int) -> None:
         start = address & ~(self.PAGE - 1)
@@ -47,6 +60,20 @@ class UnicornSession:
             if page not in self._mapped:
                 self._uc.mem_map(page, self.PAGE)
                 self._mapped.add(page)
+
+    def set_hook(self, address: int, hook: Hook) -> None:
+        if hook.action not in VALID_HOOK_ACTIONS:
+            raise ValueError(f"unknown hook action: {hook.action!r} "
+                             f"(valid: {sorted(VALID_HOOK_ACTIONS)})")
+        if hook.mem_writes is not None and hook.action != "return_const":
+            raise ValueError("mem_writes are only allowed on the 'return_const' action")
+        self._hooks[address] = hook
+
+    def clear_hook(self, address: int) -> bool:
+        return self._hooks.pop(address, None) is not None
+
+    def list_hooks(self) -> dict:
+        return dict(self._hooks)
 
     def map_bytes(self, address: int, data: bytes) -> None:
         self._ensure_mapped(address, len(data))

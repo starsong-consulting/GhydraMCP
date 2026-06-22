@@ -176,3 +176,39 @@ def test_run_hits_instruction_cap_returns_count():
     assert state["stop_reason"] == "COUNT"
     assert state["last_error"] is None      # COUNT is a clean stop, not a fault
     assert state["steps"] == 5
+
+
+from ghydra.dynamic.unicorn_engine import Hook, VALID_HOOK_ACTIONS, StopReason
+
+
+def test_hook_trap_constant_exists():
+    assert StopReason.HOOK_TRAP == "HOOK_TRAP"
+
+
+def test_set_list_clear_hook():
+    s = UnicornSession()
+    s.set_hook(0x401000, Hook(action="skip"))
+    assert 0x401000 in s.list_hooks()
+    assert s.list_hooks()[0x401000].action == "skip"
+    assert s.clear_hook(0x401000) is True
+    assert s.clear_hook(0x401000) is False
+    assert 0x401000 not in s.list_hooks()
+
+
+def test_set_hook_rejects_unknown_action():
+    s = UnicornSession()
+    with pytest.raises(ValueError, match="action"):
+        s.set_hook(0x401000, Hook(action="explode"))
+
+
+def test_mem_writes_only_on_return_const():
+    s = UnicornSession()
+    with pytest.raises(ValueError, match="mem_writes"):
+        s.set_hook(0x401000, Hook(action="skip", mem_writes=[{"address": 0x1000, "hex": "41"}]))
+    # allowed on return_const
+    s.set_hook(0x402000, Hook(action="return_const", return_value=0,
+                              mem_writes=[{"address": 0x1000, "hex": "41"}]))
+
+
+def test_fresh_session_has_empty_registry():
+    assert UnicornSession().list_hooks() == {}
