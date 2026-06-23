@@ -256,7 +256,6 @@ def test_return_const_hook_stubs_the_call():
     s = UnicornSession()
     base, code = _call_stub_program()
     s.map_bytes(base, code)
-    s._apply_stack_for_test = None  # documentation: stack mapped below
     stack = 0x7ffff0000000
     s.map_bytes(stack, b"\x00" * 0x2000)
     s.set_register("RSP", stack + 0x1000)
@@ -291,3 +290,34 @@ def test_log_hook_records_and_continues():
     state = s.run(begin=base, until=base + 2, count=10)
     assert state["stop_reason"] == "DONE"
     assert any(e["address"] == base for e in state["hook_log"])
+
+
+def test_redirect_storm_is_bounded_by_count():
+    """A return_const hook on A whose simulate_ret always returns to A (stack full of A)
+    must terminate with COUNT rather than looping forever.  The redirect cap equals the
+    instruction cap (``count``), so with count=5 at most 5 redirects fire before the
+    run() guard fires stop_reason=COUNT and breaks out of the loop.
+    """
+    s = UnicornSession()
+    base = 0x140075000
+
+    # One mapped byte at the target address — any opcode; the hook fires before it executes.
+    s.map_bytes(base, b"\x90")
+
+    # Map a stack page and fill it entirely with little-endian copies of `base`
+    # so every simulate_ret pops `base` as the return address, creating an infinite cycle.
+    stack_base = 0x7ffff0000000
+    addr_bytes = base.to_bytes(8, "little")
+    page = addr_bytes * (0x1000 // 8)          # 512 copies of base, fills 0x1000 bytes
+    s.map_bytes(stack_base, page)
+
+    # Point RSP at the start of the fill so the first pop gets base.
+    s.set_register("RSP", stack_base)
+
+    # Hook address A to return 0 — simulate_ret will pop `base` from the pre-filled stack.
+    s.set_hook(base, Hook(action="return_const", return_value=0))
+
+    # Run with count=5: the redirect guard caps at 5 redirects and must not hang.
+    state = s.run(begin=base, until=0, count=5)
+
+    assert state["stop_reason"] == "COUNT"

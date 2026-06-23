@@ -185,6 +185,7 @@ class UnicornSession:
         cap = min(count if count > 0 else 5_000_000, 5_000_000)
         current = begin
         remaining = cap
+        redirects = 0
         try:
             while remaining > 0:
                 ctrl["redirect"] = False
@@ -205,6 +206,10 @@ class UnicornSession:
                     stop_reason = StopReason.HOOK_TRAP
                     break
                 if ctrl["redirect"]:
+                    redirects += 1
+                    if redirects >= cap:
+                        stop_reason = StopReason.COUNT
+                        break
                     current = self.get_register("RIP")
                     continue
                 # clean stop: until reached, or count exhausted
