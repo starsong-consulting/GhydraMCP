@@ -78,3 +78,18 @@ def test_call_hook_parsing_rejects_bad_action():
     )
     assert result.exit_code != 0
     assert "action" in result.output.lower() or "explode" in result.output.lower()
+
+
+def test_call_arg_bytes_leading_zero_not_corrupted():
+    from ghydra.cli.dynamic import call as dyn_call
+    result = CliRunner().invoke(
+        dyn_call,
+        ["--func", "0x140075000", "--arg-bytes", "0x0abc"],
+        obj=_obj(),
+    )
+    # Fixed: "0abc" parses cleanly -> run reaches the engine and faults fetching
+    #   the function bytes (RaisingClient) -> stop_reason LAZY_FETCH_FAILED.
+    # Old (buggy): lstrip('0x') -> "abc" (odd) -> bytes.fromhex raises before the
+    #   run -> a hex/ClickException error, NOT LAZY_FETCH_FAILED.
+    assert result.exit_code != 0
+    assert "LAZY_FETCH_FAILED" in result.output

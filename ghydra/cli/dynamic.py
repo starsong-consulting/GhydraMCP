@@ -124,8 +124,7 @@ def call(ctx, func, int_args, byte_args, hooks, convention, count):
         # Args: --arg ints first, then --arg-bytes pointers, preserving CLI order
         # is not possible across two options; document that ints precede bytes.
         args: list = [int(a, 0) for a in int_args]
-        args += [{"bytes": validate_address(b).lstrip('0x') if b.startswith('0x') else b}
-                 for b in byte_args]
+        args += [{"bytes": validate_address(b)} for b in byte_args]
         for spec in hooks:
             parts = spec.split(":")
             if len(parts) < 2:
