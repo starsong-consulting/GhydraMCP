@@ -104,13 +104,37 @@ class UnicornSession:
 
     def run(self, begin, until=0, count=100000, timeout=0, trace=False,
             max_lazy_pages=4096):
-        from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_UNMAPPED
+        from unicorn import (UC_HOOK_CODE, UC_HOOK_MEM_WRITE,
+                             UC_HOOK_MEM_UNMAPPED, UC_MEM_FETCH_UNMAPPED, UcError)
         steps = {"n": 0}
         executed: list[int] = []
         mem_writes: list[dict] = []
+        hook_log: list[dict] = []
         trace_trunc = {"hit": False}
+        # control signals the code hook raises for the re-entry loop
+        ctrl = {"redirect": False, "trap": False}
 
         def _code_hook(uc, address, size, _user):
+            hook = self._hooks.get(address)
+            if hook is not None:
+                if hook.action == "log":
+                    hook_log.append({"address": address})
+                    # falls through: instruction executes normally
+                elif hook.action == "trap":
+                    ctrl["trap"] = True
+                    uc.emu_stop()
+                    return
+                elif hook.action in ("return_const", "skip"):
+                    if hook.action == "return_const" and hook.mem_writes:
+                        for w in hook.mem_writes:
+                            data = bytes.fromhex(w["hex"])
+                            self._ensure_mapped(w["address"], len(data))
+                            uc.mem_write(w["address"], data)
+                    rv = hook.return_value if hook.action == "return_const" else None
+                    self.simulate_ret(rv)        # rewrites RIP/RSP (and RAX)
+                    ctrl["redirect"] = True
+                    uc.emu_stop()
+                    return
             steps["n"] += 1
             if trace:
                 if len(executed) < _TRACE_CAP:
@@ -131,7 +155,7 @@ class UnicornSession:
         def _unmapped_hook(uc, access, address, size, value, _user):
             page = address & ~(self.PAGE - 1)
             if page in self._mapped or self.byte_provider is None:
-                return False  # already mapped, or no provider -> plain unmapped fault (ERROR)
+                return False
             if lazy["n"] >= max_lazy_pages:
                 lazy_fail["reason"] = StopReason.LAZY_CAP_REACHED
                 lazy_fail["msg"] = (f"lazy page cap ({max_lazy_pages}) reached at "
@@ -139,7 +163,7 @@ class UnicornSession:
                 return False
             try:
                 data = self.byte_provider(page, self.PAGE)
-            except Exception as e:  # boundary catch: must not cross emu_start
+            except Exception as e:
                 lazy_fail["reason"] = StopReason.LAZY_FETCH_FAILED
                 lazy_fail["msg"] = f"lazy fetch failed at {hex(page)}: {e}"
                 return False
@@ -147,10 +171,10 @@ class UnicornSession:
                 lazy_fail["reason"] = StopReason.LAZY_FETCH_FAILED
                 lazy_fail["msg"] = f"no image bytes at {hex(page)}"
                 return False
-            self._ensure_mapped(page, self.PAGE)   # maps the page + records it in _mapped
+            self._ensure_mapped(page, self.PAGE)
             self._uc.mem_write(page, data[:self.PAGE])
             lazy["n"] += 1
-            return True  # retry the faulting access
+            return True
 
         h_code = self._uc.hook_add(UC_HOOK_CODE, _code_hook)
         h_write = self._uc.hook_add(UC_HOOK_MEM_WRITE, _write_hook) if trace else None
@@ -159,17 +183,34 @@ class UnicornSession:
         stop_reason = StopReason.DONE
         last_error = None
         cap = min(count if count > 0 else 5_000_000, 5_000_000)
+        current = begin
+        remaining = cap
         try:
-            self._uc.emu_start(begin, until, timeout=timeout, count=cap)
-            if steps["n"] >= cap:
-                stop_reason = StopReason.COUNT
-        except UcError as e:
-            if lazy_fail["reason"] is not None:
-                stop_reason = lazy_fail["reason"]
-                last_error = lazy_fail["msg"]
-            else:
-                stop_reason = StopReason.ERROR
-                last_error = str(e)
+            while remaining > 0:
+                ctrl["redirect"] = False
+                ctrl["trap"] = False
+                before = steps["n"]
+                try:
+                    self._uc.emu_start(current, until, timeout=timeout, count=remaining)
+                except UcError as e:
+                    if lazy_fail["reason"] is not None:
+                        stop_reason = lazy_fail["reason"]
+                        last_error = lazy_fail["msg"]
+                    else:
+                        stop_reason = StopReason.ERROR
+                        last_error = str(e)
+                    break
+                remaining -= (steps["n"] - before)
+                if ctrl["trap"]:
+                    stop_reason = StopReason.HOOK_TRAP
+                    break
+                if ctrl["redirect"]:
+                    current = self.get_register("RIP")
+                    continue
+                # clean stop: until reached, or count exhausted
+                if steps["n"] >= cap:
+                    stop_reason = StopReason.COUNT
+                break
         finally:
             self._uc.hook_del(h_code)
             if h_write is not None:
@@ -185,5 +226,6 @@ class UnicornSession:
             "registers": {r: self.get_register(r) for r in _ALL_REGS},
             "trace": executed if trace else [],
             "mem_writes": mem_writes if trace else [],
+            "hook_log": hook_log,
             "trace_truncated": trace_trunc["hit"],
         }

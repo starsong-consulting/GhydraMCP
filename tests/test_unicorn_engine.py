@@ -237,3 +237,57 @@ def test_simulate_ret_leaves_rax_untouched_when_none():
     s.simulate_ret()  # no return value
     assert s.get_register("RAX") == 0x1111
     assert s.get_register("RIP") == 0x401234
+
+
+def _call_stub_program():
+    """A program: call <import thunk>; the thunk is at an address we hook.
+
+    code @ base: mov rax, 0 ; call rel32 -> import@base+0x100 ; nop (return site)
+    We hook import@base+0x100 with return_const so the call never executes there.
+    """
+    base = 0x140075000
+    # e8 <rel32> = call ; target = base+0x100 ; instruction at base, len 5 -> next = base+5
+    rel = (0x100 - 5) & 0xffffffff
+    code = b"\xe8" + rel.to_bytes(4, "little") + b"\x90"   # call import ; nop
+    return base, code
+
+
+def test_return_const_hook_stubs_the_call():
+    s = UnicornSession()
+    base, code = _call_stub_program()
+    s.map_bytes(base, code)
+    s._apply_stack_for_test = None  # documentation: stack mapped below
+    stack = 0x7ffff0000000
+    s.map_bytes(stack, b"\x00" * 0x2000)
+    s.set_register("RSP", stack + 0x1000)
+    s.set_register("RIP", base)
+    s.set_hook(base + 0x100, Hook(action="return_const", return_value=0x2a))
+    # run until the return site (the nop after the call)
+    state = s.run(begin=base, until=base + 5, count=50)
+    assert state["stop_reason"] == "DONE"
+    assert s.get_register("RAX") == 0x2a       # return_const set RAX
+
+
+def test_trap_hook_stops_with_hook_trap():
+    s = UnicornSession()
+    base, code = _call_stub_program()
+    s.map_bytes(base, code)
+    stack = 0x7ffff0000000
+    s.map_bytes(stack, b"\x00" * 0x2000)
+    s.set_register("RSP", stack + 0x1000)
+    s.set_register("RIP", base)
+    s.set_hook(base + 0x100, Hook(action="trap"))
+    state = s.run(begin=base, until=base + 5, count=50)
+    assert state["stop_reason"] == "HOOK_TRAP"
+    assert state["pc"] == base + 0x100         # stopped AT the trap target
+
+
+def test_log_hook_records_and_continues():
+    s = UnicornSession()
+    base = 0x140075000
+    s.map_bytes(base, b"\x90\x90")             # nop ; nop
+    s.set_register("RIP", base)
+    s.set_hook(base, Hook(action="log"))
+    state = s.run(begin=base, until=base + 2, count=10)
+    assert state["stop_reason"] == "DONE"
+    assert any(e["address"] == base for e in state["hook_log"])
