@@ -8,8 +8,6 @@ GhydraMCP+ connects [Ghidra](https://ghidra-sre.org/) to AI assistants for rever
 
 ## Overview
 
-> **Note:** The MCP bridge (`bridge_mcp_hydra.py`) is being deprecated in favor of the CLI tool (`ghydra`). The CLI provides the same capabilities with better output formatting, `--json` mode for scripting and AI tool use, and doesn't require an MCP-capable client. The bridge will continue to work but is no longer the recommended integration path.
-
 GhydraMCP+ has four components:
 
 1. **Ghidra plugin**: exposes Ghidra over a HATEOAS REST API
