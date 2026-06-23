@@ -321,3 +321,35 @@ def test_redirect_storm_is_bounded_by_count():
     state = s.run(begin=base, until=0, count=5)
 
     assert state["stop_reason"] == "COUNT"
+
+
+from ghydra.dynamic.unicorn_engine import SENTINEL_ADDR
+
+
+def test_run_to_sentinel_completes_cleanly():
+    s = UnicornSession()
+    base = 0x140075000
+    # ret  (c3)  -> pops return addr (the sentinel) into RIP, then fetch-faults there
+    s.map_bytes(base, b"\xc3")
+    stack = 0x7ffff0000000
+    s.map_bytes(stack, b"\x00" * 0x1000)
+    rsp = stack + 0x100
+    s.set_register("RSP", rsp)
+    # place the sentinel as the return address on the stack
+    s.map_bytes(rsp, SENTINEL_ADDR.to_bytes(8, "little"))
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=0, count=50)
+    assert state["stop_reason"] == "DONE"
+    assert state["last_error"] is None
+
+
+def test_data_fault_on_sentinel_page_is_not_completion():
+    # A *data* read of the sentinel page (not a fetch) must NOT be COMPLETED.
+    s = UnicornSession()
+    base = 0x140075000
+    # mov rax, [SENTINEL_ADDR]  -> 48 a1 <abs64>  (movabs rax, moffs64)
+    code = b"\x48\xa1" + SENTINEL_ADDR.to_bytes(8, "little")
+    s.map_bytes(base, code)
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=base + len(code), count=10)
+    assert state["stop_reason"] == "ERROR"      # wild data read, not completion

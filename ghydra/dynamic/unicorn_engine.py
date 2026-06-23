@@ -26,6 +26,8 @@ _TRACE_CAP = 100000
 _ALL_REGS = ("RAX", "RBX", "RCX", "RDX", "RSI", "RDI", "RSP", "RBP", "RIP",
              "R8", "R9", "R10", "R11", "R12", "R13", "R14", "R15")
 
+SENTINEL_ADDR = 0x0000DEAD0000C0DE      # unmapped; "ran to completion" return target
+
 
 class StopReason:
     """The closed set of ``stop_reason`` values returned by ``UnicornSession.run()``.
@@ -151,8 +153,13 @@ class UnicornSession:
 
         lazy = {"n": 0}
         lazy_fail = {"msg": None, "reason": None}
+        sentinel_done = {"hit": False}
 
         def _unmapped_hook(uc, access, address, size, value, _user):
+            if access == UC_MEM_FETCH_UNMAPPED and \
+                    (address & ~(self.PAGE - 1)) == (SENTINEL_ADDR & ~(self.PAGE - 1)):
+                sentinel_done["hit"] = True
+                return False                     # stop; translated to DONE below
             page = address & ~(self.PAGE - 1)
             if page in self._mapped or self.byte_provider is None:
                 return False
@@ -178,8 +185,7 @@ class UnicornSession:
 
         h_code = self._uc.hook_add(UC_HOOK_CODE, _code_hook)
         h_write = self._uc.hook_add(UC_HOOK_MEM_WRITE, _write_hook) if trace else None
-        h_unmapped = (self._uc.hook_add(UC_HOOK_MEM_UNMAPPED, _unmapped_hook)
-                      if self.byte_provider is not None else None)
+        h_unmapped = self._uc.hook_add(UC_HOOK_MEM_UNMAPPED, _unmapped_hook)
         stop_reason = StopReason.DONE
         last_error = None
         cap = min(count if count > 0 else 5_000_000, 5_000_000)
@@ -194,7 +200,10 @@ class UnicornSession:
                 try:
                     self._uc.emu_start(current, until, timeout=timeout, count=remaining)
                 except UcError as e:
-                    if lazy_fail["reason"] is not None:
+                    if sentinel_done["hit"]:
+                        stop_reason = StopReason.DONE
+                        last_error = None
+                    elif lazy_fail["reason"] is not None:
                         stop_reason = lazy_fail["reason"]
                         last_error = lazy_fail["msg"]
                     else:
@@ -220,8 +229,7 @@ class UnicornSession:
             self._uc.hook_del(h_code)
             if h_write is not None:
                 self._uc.hook_del(h_write)
-            if h_unmapped is not None:
-                self._uc.hook_del(h_unmapped)
+            self._uc.hook_del(h_unmapped)
 
         return {
             "pc": self.get_register("RIP"),
