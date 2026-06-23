@@ -55,7 +55,7 @@ SENTINEL_ADDR = 0x0000DEAD0000C0DE      # unmapped; "ran to completion" return t
 
 _CALL_STACK_BASE = 0x7ffff0000000
 _CALL_STACK_SIZE = 0x100000
-_CALL_ARGS_SPLIT = 0x40000         # 256 KiB at the bottom reserved for bytes-args
+_CALL_ARGS_SPLIT = 0x40000  # low 256 KiB of scratch region for bytes-args; stack frame lives above
 
 
 _REDIRECT_CAP = 10_000
@@ -121,9 +121,9 @@ class UnicornSession:
     def simulate_ret(self, return_value: int | None = None) -> None:
         """Pop the return address off the stack into RIP (and optionally set RAX).
 
-        Mirrors a `ret`: RIP = [RSP]; RSP += 8. Used by return_const/skip hooks
-        and by call() teardown. The stack memory must be mapped; an unmapped RSP
-        surfaces as the underlying UcError.
+        Mirrors a ret: RIP = [RSP]; RSP += 8. Used by return_const/skip hooks.
+        The stack memory must be mapped; an unmapped RSP surfaces as the
+        underlying UcError.
         """
         rsp = self.get_register("RSP")
         ret_addr = int.from_bytes(self.read_memory(rsp, 8), "little")
@@ -200,7 +200,6 @@ class UnicornSession:
         mem_writes: list[dict] = []
         hook_log: list[dict] = []
         trace_trunc = {"hit": False}
-        # control signals the code hook raises for the re-entry loop
         ctrl = {"redirect": False, "trap": False, "hook_error": None}
 
         def _code_hook(uc, address, size, _user):
@@ -208,7 +207,6 @@ class UnicornSession:
             if hook is not None:
                 if hook.action == "log":
                     hook_log.append({"address": address})
-                    # falls through: instruction executes normally
                 elif hook.action == "trap":
                     ctrl["trap"] = True
                     uc.emu_stop()
