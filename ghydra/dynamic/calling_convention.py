@@ -1,7 +1,8 @@
 """Pure x86-64 calling-convention logic (no unicorn dependency).
 
 Arg-register order, return register, stack-arg layout, and 16-byte stack
-alignment for the high-level call() primitive. Unit-tested directly.
+alignment for the high-level call() primitive. Isolated from unicorn so this
+module is importable in environments without it.
 """
 
 SUPPORTED_CONVENTIONS = {"sysv", "ms"}
@@ -30,24 +31,31 @@ def return_register(convention: str) -> str:
 
 
 def validate_args(args: list) -> None:
-    """Reject any arg that is not an int or a {"bytes": hex} dict (v1 scope)."""
+    """Reject any arg that is not an int or a {"bytes": hex} dict."""
     for i, arg in enumerate(args):
         if isinstance(arg, bool):
             raise ValueError(f"arg[{i}]: bool is not a valid integer arg")
         if isinstance(arg, int):
             continue
         if isinstance(arg, dict) and set(arg) == {"bytes"} and isinstance(arg["bytes"], str):
+            try:
+                bytes.fromhex(arg["bytes"])
+            except ValueError:
+                raise ValueError(
+                    f'arg[{i}]: "bytes" value is not valid hex: {arg["bytes"]!r}')
             continue
         raise ValueError(
-            f"arg[{i}]: only int or {{\"bytes\": hex}} args are supported in v1 "
+            f'arg[{i}]: only int or {{"bytes": hex}} args are supported '
             f"(float/struct args are out of scope)")
 
 
 def aligned_call_frame(rsp: int, convention: str, n_stack_args: int) -> int:
-    """Final RSP after laying out stack args + shadow + sentinel.
+    """Final RSP after laying out stack args, MS shadow space (if applicable),
+    and the sentinel return address.
 
     Guarantees callee-entry ABI alignment: rsp % 16 == 8 (the 8-byte sentinel
-    return address occupies the low 8 bytes of a 16-aligned frame).
+    return address occupies the low 8 bytes of a 16-aligned frame). The MS ABI
+    requires 32 bytes of shadow space above RSP that the caller allocates.
     """
     _check(convention)
     body = 8 * n_stack_args + (32 if convention == "ms" else 0)

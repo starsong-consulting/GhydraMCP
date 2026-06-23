@@ -78,3 +78,17 @@ def test_alignment_from_unaligned_rsp():
     # A non-16-aligned starting RSP must still yield entry rsp % 16 == 8.
     for start in (0x7ffffffff000, 0x7fffffffeff8, 0x7fffffffefe0, 0x7fffffffefe9):
         assert cc.aligned_call_frame(start, "sysv", 2) % 16 == 8
+
+
+def test_validate_rejects_bad_hex_in_bytes_arg():
+    with pytest.raises(ValueError, match="not valid hex"):
+        cc.validate_args([{"bytes": "ZZ"}])
+
+
+def test_validate_rejects_odd_length_hex_in_bytes_arg():
+    with pytest.raises(ValueError, match="not valid hex"):
+        cc.validate_args([{"bytes": "4"}])   # odd-length hex fails fromhex
+
+
+def test_validate_accepts_valid_bytes_arg_passes():
+    cc.validate_args([{"bytes": "deadbeef"}])  # must not raise
