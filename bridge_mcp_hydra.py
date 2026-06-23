@@ -33,7 +33,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v3.1.0-rc.3"
+BRIDGE_VERSION = "v3.1.0-rc.4"
 REQUIRED_API_VERSION = 3000
 
 DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
@@ -3260,6 +3260,133 @@ def unicorn_dispose(port: int | None = None) -> dict:
     with _unicorn_lock:
         _UNICORN_SESSIONS.pop(port, None)
     return {"success": True, "session": "disposed", "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_hook_set(address: str, action: str, return_value: str | None = None,
+                     mem_writes: list | None = None, port: int | None = None) -> dict:
+    """Register a hook on an address to stub a call/import during emulation.
+
+    action is one of: "return_const" (set RAX to return_value and simulate ret;
+    may carry mem_writes side-effects), "skip" (simulate ret, RAX untouched),
+    "log" (record the hit and continue), "trap" (stop with stop_reason HOOK_TRAP).
+    mem_writes (list of {"address": hex, "hex": bytes}) are allowed only with
+    return_const. Hooks persist across unicorn_run/unicorn_call until cleared or
+    the session is reset.
+
+    Args:
+        address: Hook address in hex
+        action: return_const | skip | log | trap
+        return_value: Hex value for return_const (optional)
+        mem_writes: [{"address": hex, "hex": hexbytes}] for return_const (optional)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    from ghydra.dynamic.unicorn_engine import Hook
+    rv = int(return_value, 16) if return_value is not None else None
+    mw = ([{"address": int(w["address"], 16), "hex": w["hex"]} for w in mem_writes]
+          if mem_writes else None)
+    try:
+        session.set_hook(int(address, 16), Hook(action=action, return_value=rv, mem_writes=mw))
+    except ValueError as e:
+        return _unicorn_error(str(e))
+    return {"success": True, "address": hex(int(address, 16)), "action": action,
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_hook_clear(address: str, port: int | None = None) -> dict:
+    """Remove a Unicorn hook previously set at an address.
+
+    Args:
+        address: Hook address in hex
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    removed = session.clear_hook(int(address, 16))
+    return {"success": True, "address": hex(int(address, 16)), "removed": removed,
+            "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_hook_list(port: int | None = None) -> dict:
+    """List the hooks registered on the current Unicorn session.
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    hooks = [{"address": hex(a), "action": h.action,
+              "return_value": (hex(h.return_value) if h.return_value is not None else None)}
+             for a, h in session.list_hooks().items()]
+    return {"success": True, "hooks": hooks, "timestamp": int(time.time() * 1000)}
+
+
+@mcp.tool()
+@text_output
+def unicorn_call(func: str, args: list | None = None, convention: str = "sysv",
+                 trace: bool = False, port: int | None = None) -> dict:
+    """Call a function in the Unicorn session and report its return value.
+
+    Sets up the x86-64 calling convention (sysv default, or ms), runs the
+    function to a synthetic return address, and returns the return register.
+    args is a list of ints and/or {"bytes": hex} pointer args; floats and
+    by-value structs are not supported. Register hooks first (unicorn_hook_set)
+    so inner calls into imports are stubbed rather than faulting.
+
+    success is true only when the function returned cleanly (stop_reason DONE).
+    A HOOK_TRAP / LAZY_FETCH_FAILED / ERROR stop returns success=false with the
+    partial state so you can add a missing hook and retry.
+
+    Args:
+        func: Function entry address in hex
+        args: List of int args and/or {"bytes": "hex"} pointer args (optional)
+        convention: "sysv" (default) or "ms"
+        trace: Collect executed-instruction trace + memory writes
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    try:
+        session = _get_unicorn_session(port)
+    except KeyError as e:
+        return _unicorn_error(str(e))
+    from ghydra.dynamic.unicorn_engine import StopReason
+    try:
+        state = session.call(int(func, 16), args or [], convention, trace=trace)
+    except ValueError as e:
+        return _unicorn_error(str(e))
+    payload = {
+        "pc": hex(state["pc"]),
+        "stop_reason": state["stop_reason"],
+        "convention": state["convention"],
+        "return_value": hex(state["return_value"]),
+        "args_passed": [hex(a) for a in state["args_passed"]],
+        "last_error": state["last_error"],
+        "timestamp": int(time.time() * 1000),
+    }
+    if state["stop_reason"] == StopReason.DONE:
+        payload["success"] = True
+        payload["registers"] = {k: hex(v) for k, v in state["registers"].items()}
+    else:
+        payload["success"] = False
+        payload["error"] = {"code": state["stop_reason"],
+                            "message": state["last_error"] or state["stop_reason"]}
+    return payload
 
 
 @mcp.tool()
