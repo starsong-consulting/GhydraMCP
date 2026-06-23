@@ -353,3 +353,54 @@ def test_data_fault_on_sentinel_page_is_not_completion():
     s.set_register("RIP", base)
     state = s.run(begin=base, until=base + len(code), count=10)
     assert state["stop_reason"] == "ERROR"      # wild data read, not completion
+
+
+def test_call_runs_function_and_returns_rax():
+    # Function: mov eax, 7 ; ret   (b8 07 00 00 00 c3)
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, b"\xb8\x07\x00\x00\x00\xc3")
+    out = s.call(func, args=[], convention="sysv")
+    assert out["stop_reason"] == "DONE"
+    assert out["return_value"] == 7
+
+
+def test_call_passes_int_args_in_sysv_registers():
+    # Function: mov rax, rdi ; add rax, rsi ; ret
+    #   48 89 f8   mov rax, rdi
+    #   48 01 f0   add rax, rsi
+    #   c3         ret
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, bytes.fromhex("4889f8" "4801f0" "c3"))
+    out = s.call(func, args=[20, 22], convention="sysv")
+    assert out["return_value"] == 42
+    assert out["args_passed"] == [20, 22]
+
+
+def test_call_passes_bytes_arg_as_pointer():
+    # Function: mov al, [rdi] ; movzx eax, al ; ret
+    #   8a 07            mov al, [rdi]
+    #   0f b6 c0         movzx eax, al
+    #   c3               ret
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, bytes.fromhex("8a07" "0fb6c0" "c3"))
+    out = s.call(func, args=[{"bytes": "41"}], convention="sysv")
+    assert out["return_value"] == 0x41        # read the first byte of the buffer
+
+
+def test_call_rejects_float_arg():
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, b"\xc3")
+    with pytest.raises(ValueError, match=r"arg\[0\]"):
+        s.call(func, args=[1.5], convention="sysv")
+
+
+def test_call_rejects_unsupported_convention():
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, b"\xc3")
+    with pytest.raises(ValueError, match="convention"):
+        s.call(func, args=[], convention="aapcs")
