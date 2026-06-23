@@ -3288,10 +3288,10 @@ def unicorn_hook_set(address: str, action: str, return_value: str | None = None,
     except KeyError as e:
         return _unicorn_error(str(e))
     from ghydra.dynamic.unicorn_engine import Hook
-    rv = int(return_value, 16) if return_value is not None else None
-    mw = ([{"address": int(w["address"], 16), "hex": w["hex"]} for w in mem_writes]
-          if mem_writes else None)
     try:
+        rv = int(return_value, 16) if return_value is not None else None
+        mw = ([{"address": int(w["address"], 16), "hex": w["hex"]} for w in mem_writes]
+              if mem_writes else None)
         session.set_hook(int(address, 16), Hook(action=action, return_value=rv, mem_writes=mw))
     except ValueError as e:
         return _unicorn_error(str(e))

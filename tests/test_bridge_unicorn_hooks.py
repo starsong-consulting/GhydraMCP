@@ -49,3 +49,8 @@ def test_unicorn_call_without_session_errors(monkeypatch):
     monkeypatch.setattr(bridge, "_get_instance_port", lambda p=None: 19999)
     r = bridge.unicorn_call.__wrapped__("0x140075000", args=[], convention="sysv")
     assert r["success"] is False
+
+
+def test_hook_set_rejects_bad_hex(session_on_port):
+    r = bridge.unicorn_hook_set.__wrapped__("0x401000", "return_const", return_value="0xZZ")
+    assert r["success"] is False
