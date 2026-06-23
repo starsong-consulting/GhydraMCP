@@ -438,3 +438,37 @@ def test_hook_callback_error_surfaces_as_error_stop():
     assert state["stop_reason"] == "ERROR"
     assert state["last_error"] is not None
     assert "hook" in state["last_error"].lower()
+
+
+def test_call_budget_overflow_does_not_map_scratch():
+    """Budget overflow must be caught before touching the emulator."""
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, b"\xc3")
+    too_many = "41" * (0x40001)     # 256 KiB + 1 byte
+    with pytest.raises(ValueError, match="scratch budget"):
+        s.call(func, args=[{"bytes": too_many}], convention="sysv")
+    # scratch stack page must NOT be mapped
+    assert (_CALL_STACK_BASE & ~(UnicornSession.PAGE - 1)) not in s._mapped
+
+
+def test_call_returns_trace_key():
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, b"\xb8\x01\x00\x00\x00\xc3")  # mov eax,1 ; ret
+    out = s.call(func, args=[], convention="sysv")
+    assert "trace" in out      # always present, even when trace=False
+
+
+def test_instruction_fetch_near_sentinel_is_error_not_done():
+    """A fetch fault at SENTINEL_ADDR+1 (same page, different address) must be
+    ERROR, not DONE — ensures the sentinel check is exact, not page-aligned."""
+    s = UnicornSession()
+    base = 0x140075000
+    target = SENTINEL_ADDR + 1
+    # mov rax, target  (10 bytes)  ;  jmp rax  (2 bytes)
+    code = b"\x48\xb8" + target.to_bytes(8, "little") + b"\xff\xe0"
+    s.map_bytes(base, code)
+    s.set_register("RIP", base)
+    state = s.run(begin=base, until=0, count=5)
+    assert state["stop_reason"] == "ERROR"   # not DONE; wrong address on sentinel page

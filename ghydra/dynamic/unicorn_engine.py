@@ -136,45 +136,45 @@ class UnicornSession:
              count: int = 1000000, trace: bool = False) -> dict:
         from . import calling_convention as cc
         cc.validate_args(args)
-        reg_names = cc.arg_registers(convention)     # raises ValueError if unsupported
+        reg_names = cc.arg_registers(convention)
         ret_reg = cc.return_register(convention)
 
-        # 1. scratch stack
+        # Pre-resolve bytes args (validate_args already verified hex is valid).
+        bytes_data = [bytes.fromhex(arg["bytes"]) for arg in args if isinstance(arg, dict)]
+        aligned_sizes = [(len(d) + 15) & ~15 for d in bytes_data]
+        if sum(aligned_sizes) > _CALL_ARGS_SPLIT:
+            raise ValueError(
+                f"bytes args exceed scratch budget ({_CALL_ARGS_SPLIT} bytes)")
+
+        # All validation done; safe to mutate emulator state from here.
         self.map_bytes(_CALL_STACK_BASE, b"\x00" * _CALL_STACK_SIZE)
 
-        # 2. materialise bytes-args low, growing up; replace with pointers
         args_cursor = _CALL_STACK_BASE
         resolved: list[int] = []
+        bytes_iter = iter(zip(bytes_data, aligned_sizes))
         for arg in args:
             if isinstance(arg, dict):
-                data = bytes.fromhex(arg["bytes"])
-                aligned_size = (len(data) + 15) & ~15
-                if args_cursor + aligned_size > _CALL_STACK_BASE + _CALL_ARGS_SPLIT:
-                    raise ValueError("bytes args exceed scratch budget "
-                                     f"({_CALL_ARGS_SPLIT} bytes)")
+                data, aligned_size = next(bytes_iter)
                 self._uc.mem_write(args_cursor, data)
                 resolved.append(args_cursor)
                 args_cursor += aligned_size
             else:
                 resolved.append(arg)
 
-        # 3. split into register vs stack args
         reg_args = resolved[:len(reg_names)]
         stack_args = resolved[len(reg_names):]
 
-        # 4. lay out the stack frame
         rsp_top = _CALL_STACK_BASE + _CALL_STACK_SIZE - 0x1000
         final_rsp = cc.aligned_call_frame(rsp_top, convention, len(stack_args))
         for i, val in enumerate(stack_args):
-            self._uc.mem_write(final_rsp + 8 + i * 8, int(val).to_bytes(8, "little", signed=val < 0))
+            self._uc.mem_write(final_rsp + 8 + i * 8,
+                               int(val).to_bytes(8, "little", signed=val < 0))
         self._uc.mem_write(final_rsp, SENTINEL_ADDR.to_bytes(8, "little"))
         self.set_register("RSP", final_rsp)
 
-        # 5. register args
         for name, val in zip(reg_names, reg_args):
             self.set_register(name, val & 0xffffffffffffffff)
 
-        # 6. run to the sentinel
         self.set_register("RIP", func_addr)
         state = self.run(begin=func_addr, until=0, count=count, trace=trace)
 
@@ -185,6 +185,7 @@ class UnicornSession:
             "stop_reason": state["stop_reason"],
             "last_error": state["last_error"],
             "registers": state["registers"],
+            "trace": state["trace"],
             "mem_writes": state["mem_writes"],
             "hook_log": state["hook_log"],
             "pc": state["pc"],
@@ -252,10 +253,11 @@ class UnicornSession:
         sentinel_done = {"hit": False}
 
         def _unmapped_hook(uc, access, address, size, value, _user):
-            if access == UC_MEM_FETCH_UNMAPPED and \
-                    (address & ~(self.PAGE - 1)) == (SENTINEL_ADDR & ~(self.PAGE - 1)):
+            if access == UC_MEM_FETCH_UNMAPPED and address == SENTINEL_ADDR:
                 sentinel_done["hit"] = True
-                return False                     # stop; translated to DONE below
+                # return False causes UcError; sentinel_done flag disambiguates
+                # this intentional stop from a real fault in the outer handler.
+                return False
             page = address & ~(self.PAGE - 1)
             if page in self._mapped or self.byte_provider is None:
                 return False
