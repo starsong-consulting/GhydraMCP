@@ -178,7 +178,7 @@ def test_run_hits_instruction_cap_returns_count():
     assert state["steps"] == 5
 
 
-from ghydra.dynamic.unicorn_engine import Hook, VALID_HOOK_ACTIONS, StopReason
+from ghydra.dynamic.unicorn_engine import Hook, VALID_HOOK_ACTIONS, StopReason, _CALL_STACK_BASE
 
 
 def test_hook_trap_constant_exists():
@@ -396,6 +396,7 @@ def test_call_rejects_float_arg():
     s.map_bytes(func, b"\xc3")
     with pytest.raises(ValueError, match=r"arg\[0\]"):
         s.call(func, args=[1.5], convention="sysv")
+    assert (_CALL_STACK_BASE & ~(UnicornSession.PAGE - 1)) not in s._mapped
 
 
 def test_call_rejects_unsupported_convention():
@@ -404,3 +405,15 @@ def test_call_rejects_unsupported_convention():
     s.map_bytes(func, b"\xc3")
     with pytest.raises(ValueError, match="convention"):
         s.call(func, args=[], convention="aapcs")
+    assert (_CALL_STACK_BASE & ~(UnicornSession.PAGE - 1)) not in s._mapped
+
+
+def test_call_spills_seventh_sysv_arg_to_stack():
+    # mov rax, [rsp+8] ; ret   -> returns the first stack-spilled arg (the 7th)
+    s = UnicornSession()
+    func = 0x140075000
+    s.map_bytes(func, bytes.fromhex("488b442408" "c3"))  # mov rax,[rsp+8]; ret
+    out = s.call(func, args=[1, 2, 3, 4, 5, 6, 7], convention="sysv")
+    assert out["stop_reason"] == "DONE"
+    assert out["return_value"] == 7
+    assert out["args_passed"] == [1, 2, 3, 4, 5, 6, 7]

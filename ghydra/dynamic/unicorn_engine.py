@@ -124,12 +124,13 @@ class UnicornSession:
         for arg in args:
             if isinstance(arg, dict):
                 data = bytes.fromhex(arg["bytes"])
-                if args_cursor + len(data) > _CALL_STACK_BASE + _CALL_ARGS_SPLIT:
+                aligned_size = (len(data) + 15) & ~15
+                if args_cursor + aligned_size > _CALL_STACK_BASE + _CALL_ARGS_SPLIT:
                     raise ValueError("bytes args exceed scratch budget "
                                      f"({_CALL_ARGS_SPLIT} bytes)")
                 self._uc.mem_write(args_cursor, data)
                 resolved.append(args_cursor)
-                args_cursor += (len(data) + 15) & ~15      # keep 16-aligned
+                args_cursor += aligned_size
             else:
                 resolved.append(arg)
 
