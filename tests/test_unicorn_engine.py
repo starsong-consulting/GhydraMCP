@@ -292,35 +292,24 @@ def test_log_hook_records_and_continues():
     assert any(e["address"] == base for e in state["hook_log"])
 
 
-def test_redirect_storm_is_bounded_by_count():
+def test_redirect_storm_is_bounded_by_redirect_cap():
     """A return_const hook on A whose simulate_ret always returns to A (stack full of A)
-    must terminate with COUNT rather than looping forever.  The redirect cap equals the
-    instruction cap (``count``), so with count=5 at most 5 redirects fire before the
-    run() guard fires stop_reason=COUNT and breaks out of the loop.
+    must terminate with REDIRECT_STORM rather than looping forever.
+    The redirect cap is independent of the instruction count.
     """
     s = UnicornSession()
     base = 0x140075000
-
-    # One mapped byte at the target address — any opcode; the hook fires before it executes.
     s.map_bytes(base, b"\x90")
-
-    # Map a stack page and fill it entirely with little-endian copies of `base`
-    # so every simulate_ret pops `base` as the return address, creating an infinite cycle.
     stack_base = 0x7ffff0000000
     addr_bytes = base.to_bytes(8, "little")
-    page = addr_bytes * (0x1000 // 8)          # 512 copies of base, fills 0x1000 bytes
-    s.map_bytes(stack_base, page)
-
-    # Point RSP at the start of the fill so the first pop gets base.
+    # 20 pages = 10 240 entries — enough to sustain 10 000+ redirects before the cap fires
+    stack_pages = addr_bytes * (0x1000 // 8) * 20
+    s.map_bytes(stack_base, stack_pages)
     s.set_register("RSP", stack_base)
-
-    # Hook address A to return 0 — simulate_ret will pop `base` from the pre-filled stack.
     s.set_hook(base, Hook(action="return_const", return_value=0))
-
-    # Run with count=5: the redirect guard caps at 5 redirects and must not hang.
-    state = s.run(begin=base, until=0, count=5)
-
-    assert state["stop_reason"] == "COUNT"
+    state = s.run(begin=base, until=0, count=1_000_000)
+    assert state["stop_reason"] == "REDIRECT_STORM"
+    assert state["steps"] == 0    # no instructions executed; only redirects
 
 
 from ghydra.dynamic.unicorn_engine import SENTINEL_ADDR

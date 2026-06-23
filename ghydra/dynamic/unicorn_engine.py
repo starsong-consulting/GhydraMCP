@@ -1,6 +1,7 @@
 """Unicorn-based x86-64 emulation session with lazy mapping from Ghidra."""
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Callable, Optional
 
 from .registers import resolve_register
@@ -57,12 +58,15 @@ _CALL_STACK_SIZE = 0x100000
 _CALL_ARGS_SPLIT = 0x40000         # 256 KiB at the bottom reserved for bytes-args
 
 
-class StopReason:
-    """The closed set of ``stop_reason`` values returned by ``UnicornSession.run()``.
+_REDIRECT_CAP = 10_000
 
-    Shared constants (imported by the bridge and CLI consumers) so the four
+
+class StopReason(str, Enum):
+    """The closed set of stop_reason values returned by UnicornSession.run().
+
+    Shared constants (imported by the bridge and CLI consumers) so the six
     states are compared by name rather than by re-typed string literals, where
-    a typo would be a silent misclassification. ``success`` is only ``DONE``.
+    a typo would be a silent misclassification. success is only DONE.
     """
     DONE = "DONE"
     COUNT = "COUNT"
@@ -70,6 +74,7 @@ class StopReason:
     LAZY_FETCH_FAILED = "LAZY_FETCH_FAILED"
     LAZY_CAP_REACHED = "LAZY_CAP_REACHED"
     HOOK_TRAP = "HOOK_TRAP"
+    REDIRECT_STORM = "REDIRECT_STORM"
 
 
 class UnicornSession:
@@ -297,8 +302,11 @@ class UnicornSession:
                     break
                 if ctrl["redirect"]:
                     redirects += 1
-                    if redirects >= cap:
-                        stop_reason = StopReason.COUNT
+                    if redirects >= _REDIRECT_CAP:
+                        stop_reason = StopReason.REDIRECT_STORM
+                        last_error = (
+                            f"redirect storm: {redirects} hook redirects without progress "
+                            f"(last RIP={hex(self.get_register('RIP'))})")
                         break
                     current = self.get_register("RIP")
                     continue
