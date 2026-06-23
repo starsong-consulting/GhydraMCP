@@ -423,3 +423,18 @@ def test_hook_rejects_wrong_mem_writes_structure():
     with pytest.raises(ValueError, match="mem_writes"):
         Hook(action="return_const", return_value=0,
              mem_writes=[{"ptr": 0x1000, "data": "41"}])
+
+
+def test_hook_callback_error_surfaces_as_error_stop():
+    """simulate_ret raises UcError when RSP is unmapped; must surface as ERROR,
+    not loop forever or return a corrupt DONE."""
+    s = UnicornSession()
+    base = 0x140075000
+    s.map_bytes(base, b"\x90")
+    # Do NOT map a stack; RSP = 0x0 (unmapped) — simulate_ret will fault
+    s.set_register("RSP", 0)
+    s.set_hook(base, Hook(action="return_const", return_value=0))
+    state = s.run(begin=base, until=0, count=10)
+    assert state["stop_reason"] == "ERROR"
+    assert state["last_error"] is not None
+    assert "hook" in state["last_error"].lower()

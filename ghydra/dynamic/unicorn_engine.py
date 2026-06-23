@@ -200,7 +200,7 @@ class UnicornSession:
         hook_log: list[dict] = []
         trace_trunc = {"hit": False}
         # control signals the code hook raises for the re-entry loop
-        ctrl = {"redirect": False, "trap": False}
+        ctrl = {"redirect": False, "trap": False, "hook_error": None}
 
         def _code_hook(uc, address, size, _user):
             hook = self._hooks.get(address)
@@ -213,14 +213,24 @@ class UnicornSession:
                     uc.emu_stop()
                     return
                 elif hook.action in ("return_const", "skip"):
-                    if hook.action == "return_const" and hook.mem_writes:
-                        for w in hook.mem_writes:
-                            data = bytes.fromhex(w["hex"])
-                            self._ensure_mapped(w["address"], len(data))
-                            uc.mem_write(w["address"], data)
-                    rv = hook.return_value if hook.action == "return_const" else None
-                    self.simulate_ret(rv)        # rewrites RIP/RSP (and RAX)
+                    try:
+                        if hook.action == "return_const" and hook.mem_writes:
+                            for w in hook.mem_writes:
+                                data = bytes.fromhex(w["hex"])
+                                self._ensure_mapped(w["address"], len(data))
+                                uc.mem_write(w["address"], data)
+                        rv = hook.return_value if hook.action == "return_const" else None
+                        self.simulate_ret(rv)
+                    except (UcError, ValueError) as e:
+                        ctrl["hook_error"] = str(e)
+                        uc.emu_stop()
+                        return
                     ctrl["redirect"] = True
+                    uc.emu_stop()
+                    return
+                else:
+                    # Hook.__post_init__ prevents unknown actions; guard against future regressions.
+                    ctrl["hook_error"] = f"unhandled hook action: {hook.action!r}"
                     uc.emu_stop()
                     return
             steps["n"] += 1
@@ -282,6 +292,7 @@ class UnicornSession:
             while remaining > 0:
                 ctrl["redirect"] = False
                 ctrl["trap"] = False
+                ctrl["hook_error"] = None
                 before = steps["n"]
                 try:
                     self._uc.emu_start(current, until, timeout=timeout, count=remaining)
@@ -297,6 +308,10 @@ class UnicornSession:
                         last_error = str(e)
                     break
                 remaining -= (steps["n"] - before)
+                if ctrl["hook_error"]:
+                    stop_reason = StopReason.ERROR
+                    last_error = f"hook callback error: {ctrl['hook_error']}"
+                    break
                 if ctrl["trap"]:
                     stop_reason = StopReason.HOOK_TRAP
                     break
