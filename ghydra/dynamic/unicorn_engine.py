@@ -15,6 +15,30 @@ class Hook:
     return_value: int | None = None
     mem_writes: list[dict] | None = None
 
+    def __post_init__(self):
+        if self.action not in VALID_HOOK_ACTIONS:
+            raise ValueError(
+                f"unknown hook action: {self.action!r} "
+                f"(valid: {sorted(VALID_HOOK_ACTIONS)})")
+        if self.mem_writes is not None and self.action != "return_const":
+            raise ValueError("mem_writes are only allowed on the 'return_const' action")
+        if self.return_value is not None and self.action != "return_const":
+            raise ValueError(
+                f"return_value has no effect on action={self.action!r}")
+        if self.mem_writes:
+            for i, w in enumerate(self.mem_writes):
+                if not (isinstance(w.get("address"), int)
+                        and isinstance(w.get("hex"), str)
+                        and len(w) == 2):
+                    raise ValueError(
+                        f"mem_writes[{i}]: expected {{address: int, hex: str}}, "
+                        f"got keys {set(w)!r}")
+                try:
+                    bytes.fromhex(w["hex"])
+                except ValueError:
+                    raise ValueError(
+                        f'mem_writes[{i}]: "hex" is not valid hex: {w["hex"]!r}')
+
 try:
     from unicorn import Uc, UC_ARCH_X86, UC_MODE_64, UcError
     _HAVE_UNICORN = True
@@ -68,11 +92,6 @@ class UnicornSession:
                 self._mapped.add(page)
 
     def set_hook(self, address: int, hook: Hook) -> None:
-        if hook.action not in VALID_HOOK_ACTIONS:
-            raise ValueError(f"unknown hook action: {hook.action!r} "
-                             f"(valid: {sorted(VALID_HOOK_ACTIONS)})")
-        if hook.mem_writes is not None and hook.action != "return_const":
-            raise ValueError("mem_writes are only allowed on the 'return_const' action")
         self._hooks[address] = hook
 
     def clear_hook(self, address: int) -> bool:

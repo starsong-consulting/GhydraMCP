@@ -417,3 +417,20 @@ def test_call_spills_seventh_sysv_arg_to_stack():
     assert out["stop_reason"] == "DONE"
     assert out["return_value"] == 7
     assert out["args_passed"] == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_hook_rejects_return_value_on_non_return_const():
+    with pytest.raises(ValueError, match="return_value"):
+        Hook(action="skip", return_value=0xdead)
+
+
+def test_hook_rejects_bad_hex_in_mem_writes():
+    with pytest.raises(ValueError, match="not valid hex"):
+        Hook(action="return_const", return_value=0,
+             mem_writes=[{"address": 0x1000, "hex": "ZZ"}])
+
+
+def test_hook_rejects_wrong_mem_writes_structure():
+    with pytest.raises(ValueError, match="mem_writes"):
+        Hook(action="return_const", return_value=0,
+             mem_writes=[{"ptr": 0x1000, "data": "41"}])
