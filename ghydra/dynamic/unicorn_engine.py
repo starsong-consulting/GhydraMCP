@@ -88,6 +88,20 @@ class UnicornSession:
     def get_register(self, name: str) -> int:
         return self._uc.reg_read(resolve_register(name))
 
+    def simulate_ret(self, return_value: int | None = None) -> None:
+        """Pop the return address off the stack into RIP (and optionally set RAX).
+
+        Mirrors a `ret`: RIP = [RSP]; RSP += 8. Used by return_const/skip hooks
+        and by call() teardown. The stack memory must be mapped; an unmapped RSP
+        surfaces as the underlying UcError.
+        """
+        rsp = self.get_register("RSP")
+        ret_addr = int.from_bytes(self.read_memory(rsp, 8), "little")
+        self.set_register("RIP", ret_addr)
+        self.set_register("RSP", rsp + 8)
+        if return_value is not None:
+            self.set_register("RAX", return_value)
+
     def run(self, begin, until=0, count=100000, timeout=0, trace=False,
             max_lazy_pages=4096):
         from unicorn import UC_HOOK_CODE, UC_HOOK_MEM_WRITE, UC_HOOK_MEM_UNMAPPED

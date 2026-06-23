@@ -212,3 +212,28 @@ def test_mem_writes_only_on_return_const():
 
 def test_fresh_session_has_empty_registry():
     assert UnicornSession().list_hooks() == {}
+
+
+def test_simulate_ret_pops_return_address_and_sets_rax():
+    s = UnicornSession()
+    stack = 0x7ffff0000000
+    s.map_bytes(stack, b"\x00" * 0x1000)
+    ret_addr = 0x401234
+    s.set_register("RSP", stack + 0x100)
+    s.map_bytes(stack + 0x100, ret_addr.to_bytes(8, "little"))  # return addr on stack
+    s.simulate_ret(return_value=0xcafe)
+    assert s.get_register("RIP") == ret_addr
+    assert s.get_register("RSP") == stack + 0x108
+    assert s.get_register("RAX") == 0xcafe
+
+
+def test_simulate_ret_leaves_rax_untouched_when_none():
+    s = UnicornSession()
+    stack = 0x7ffff0000000
+    s.map_bytes(stack, b"\x00" * 0x1000)
+    s.set_register("RSP", stack + 0x100)
+    s.set_register("RAX", 0x1111)
+    s.map_bytes(stack + 0x100, (0x401234).to_bytes(8, "little"))
+    s.simulate_ret()  # no return value
+    assert s.get_register("RAX") == 0x1111
+    assert s.get_register("RIP") == 0x401234
