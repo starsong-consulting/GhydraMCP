@@ -121,8 +121,7 @@ def call(ctx, func, int_args, byte_args, hooks, convention, count):
     from ..dynamic.unicorn_engine import Hook, StopReason
     try:
         session = _make_session(ctx)
-        # Args: --arg ints first, then --arg-bytes pointers, preserving CLI order
-        # is not possible across two options; document that ints precede bytes.
+        # Click cannot interleave two multiple=True options; ints always precede bytes-args.
         args: list = [int(a, 0) for a in int_args]
         args += [{"bytes": validate_address(b)} for b in byte_args]
         for spec in hooks:
@@ -140,8 +139,8 @@ def call(ctx, func, int_args, byte_args, hooks, convention, count):
             click.echo(f"  error: {out['last_error']}")
         if out["stop_reason"] != StopReason.DONE:
             ctx.exit(1)
-    except (ValueError, click.ClickException) as e:
-        raise click.ClickException(str(e)) if not isinstance(e, click.ClickException) else e
+    except ValueError as e:
+        raise click.ClickException(str(e))
     except GhidraError as e:
         rich_echo(ctx.obj['formatter'].format_error(e), err=True)
         ctx.exit(1)
