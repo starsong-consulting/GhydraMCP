@@ -472,3 +472,66 @@ def test_instruction_fetch_near_sentinel_is_error_not_done():
     s.set_register("RIP", base)
     state = s.run(begin=base, until=0, count=5)
     assert state["stop_reason"] == "ERROR"   # not DONE; wrong address on sentinel page
+
+
+def test_skip_hook_leaves_rax_unchanged():
+    """skip simulates ret without modifying RAX; a regression setting RAX=0
+    on skip would be caught here."""
+    s = UnicornSession()
+    base = 0x140075000
+    import_addr = base + 0x100
+
+    # Function body:
+    #   mov eax, 0x2a   (b8 2a 00 00 00)
+    #   call import     (e8 <rel>)
+    #   ret             (c3)
+    rel = (import_addr - (base + 5) - 5) & 0xffffffff
+    code = (b"\xb8\x2a\x00\x00\x00"
+            + b"\xe8" + rel.to_bytes(4, "little")
+            + b"\xc3")
+    s.map_bytes(base, code)
+    s.map_bytes(import_addr, b"\x90")   # one byte at import target
+    s.set_hook(import_addr, Hook(action="skip"))
+
+    out = s.call(func_addr=base, args=[], convention="sysv")
+    assert out["stop_reason"] == "DONE"
+    assert out["return_value"] == 0x2a  # skip left RAX as set by mov eax,0x2a
+
+
+def test_return_const_mem_writes_are_applied():
+    """The mem_writes side-effect of return_const must actually write to the
+    target address; this is the emulation-level contract, not just the bridge
+    precondition check."""
+    s = UnicornSession()
+    base = 0x140075000
+    import_addr = base + 0x100
+    target_addr = 0x140076000
+
+    rel = (import_addr - (base + 5)) & 0xffffffff
+    code = b"\xe8" + rel.to_bytes(4, "little") + b"\xc3"
+    s.map_bytes(base, code)
+    s.map_bytes(import_addr, b"\x90")
+    s.map_bytes(target_addr, b"\x00" * 4)
+
+    stack = 0x7ffff0000000
+    s.map_bytes(stack, b"\x00" * 0x2000)
+    s.set_register("RSP", stack + 0x1000)
+
+    hook = Hook(action="return_const", return_value=0,
+                mem_writes=[{"address": target_addr, "hex": "41424344"}])
+    s.set_hook(import_addr, hook)
+
+    state = s.run(begin=base, until=0, count=50)
+    assert state["stop_reason"] == "DONE"
+    assert s.read_memory(target_addr, 4) == b"\x41\x42\x43\x44"
+
+
+def test_call_passes_args_in_ms_registers():
+    """MS convention passes first arg in RCX, not RDI (SysV)."""
+    s = UnicornSession()
+    base = 0x140075000
+    # mov rax, rcx ; ret   (48 8b c1 ; c3)
+    s.map_bytes(base, bytes.fromhex("488bc1c3"))
+    out = s.call(func_addr=base, args=[0xbeef], convention="ms")
+    assert out["stop_reason"] == "DONE"
+    assert out["return_value"] == 0xbeef
