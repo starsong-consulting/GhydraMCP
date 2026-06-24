@@ -52,3 +52,4 @@ replay_pid*
 /__pycache__
 **/__pycache__/
 *.pyc
+handoff.md
