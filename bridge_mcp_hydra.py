@@ -3336,7 +3336,8 @@ def unicorn_hook_list(port: int | None = None) -> dict:
     except KeyError as e:
         return _unicorn_error(str(e), code="NO_SESSION")
     hooks = [{"address": hex(a), "action": h.action,
-              "return_value": (hex(h.return_value) if h.return_value is not None else None)}
+              "return_value": (hex(h.return_value) if h.return_value is not None else None),
+              "mem_writes": h.mem_writes}
              for a, h in session.list_hooks().items()]
     return {"success": True, "hooks": hooks, "timestamp": int(time.time() * 1000)}
 

@@ -59,6 +59,7 @@ def test_hook_set_rejects_bad_hex(session_on_port):
 def test_hook_clear_rejects_bad_address(session_on_port):
     r = bridge.unicorn_hook_clear.__wrapped__("not_hex")
     assert r["success"] is False
+    assert r["error"]["code"] == "VALIDATION"
 
 
 def test_hook_set_without_session_errors(monkeypatch):
