@@ -316,8 +316,8 @@ _UNICORN_SESSIONS: dict[int, "object"] = {}
 _unicorn_lock = Lock()
 
 
-def _unicorn_error(message: str) -> dict:
-    return {"success": False, "error": {"code": "UNICORN", "message": message},
+def _unicorn_error(message: str, code: str = "UNICORN") -> dict:
+    return {"success": False, "error": {"code": code, "message": message},
             "timestamp": int(time.time() * 1000)}
 
 
@@ -3286,7 +3286,7 @@ def unicorn_hook_set(address: str, action: str, return_value: str | None = None,
     try:
         session = _get_unicorn_session(port)
     except KeyError as e:
-        return _unicorn_error(str(e))
+        return _unicorn_error(str(e), code="NO_SESSION")
     from ghydra.dynamic.unicorn_engine import Hook
     try:
         rv = int(return_value, 16) if return_value is not None else None
@@ -3312,9 +3312,13 @@ def unicorn_hook_clear(address: str, port: int | None = None) -> dict:
     try:
         session = _get_unicorn_session(port)
     except KeyError as e:
-        return _unicorn_error(str(e))
-    removed = session.clear_hook(int(address, 16))
-    return {"success": True, "address": hex(int(address, 16)), "removed": removed,
+        return _unicorn_error(str(e), code="NO_SESSION")
+    try:
+        addr_int = int(address, 16)
+    except ValueError:
+        return _unicorn_error(f"invalid address: {address!r}", code="VALIDATION")
+    removed = session.clear_hook(addr_int)
+    return {"success": True, "address": hex(addr_int), "removed": removed,
             "timestamp": int(time.time() * 1000)}
 
 
@@ -3330,7 +3334,7 @@ def unicorn_hook_list(port: int | None = None) -> dict:
     try:
         session = _get_unicorn_session(port)
     except KeyError as e:
-        return _unicorn_error(str(e))
+        return _unicorn_error(str(e), code="NO_SESSION")
     hooks = [{"address": hex(a), "action": h.action,
               "return_value": (hex(h.return_value) if h.return_value is not None else None)}
              for a, h in session.list_hooks().items()]
@@ -3340,23 +3344,28 @@ def unicorn_hook_list(port: int | None = None) -> dict:
 @mcp.tool()
 @text_output
 def unicorn_call(func: str, args: list | None = None, convention: str = "sysv",
-                 trace: bool = False, port: int | None = None) -> dict:
+                 count: int = 1_000_000, trace: bool = False,
+                 port: int | None = None) -> dict:
     """Call a function in the Unicorn session and report its return value.
+
+    Precondition: use unicorn_hook_set to stub any imports the function will
+    call, or they will fault. Hooks persist until cleared or the session is
+    reset.
 
     Sets up the x86-64 calling convention (sysv default, or ms), runs the
     function to a synthetic return address, and returns the return register.
     args is a list of ints and/or {"bytes": hex} pointer args; floats and
-    by-value structs are not supported. Register hooks first (unicorn_hook_set)
-    so inner calls into imports are stubbed rather than faulting.
+    by-value structs are not supported.
 
     success is true only when the function returned cleanly (stop_reason DONE).
-    A HOOK_TRAP / LAZY_FETCH_FAILED / ERROR stop returns success=false with the
-    partial state so you can add a missing hook and retry.
+    A HOOK_TRAP / REDIRECT_STORM / LAZY_FETCH_FAILED / ERROR stop returns
+    success=false with the partial state so you can add a missing hook and retry.
 
     Args:
         func: Function entry address in hex
         args: List of int args and/or {"bytes": "hex"} pointer args (optional)
         convention: "sysv" (default) or "ms"
+        count: Instruction budget (default 1_000_000)
         trace: Collect executed-instruction trace + memory writes
         port: Specific Ghidra instance port (optional)
     """
@@ -3364,10 +3373,11 @@ def unicorn_call(func: str, args: list | None = None, convention: str = "sysv",
     try:
         session = _get_unicorn_session(port)
     except KeyError as e:
-        return _unicorn_error(str(e))
+        return _unicorn_error(str(e), code="NO_SESSION")
     from ghydra.dynamic.unicorn_engine import StopReason
     try:
-        state = session.call(int(func, 16), args or [], convention, trace=trace)
+        state = session.call(int(func, 16), args or [], convention,
+                             count=count, trace=trace)
     except ValueError as e:
         return _unicorn_error(str(e))
     payload = {

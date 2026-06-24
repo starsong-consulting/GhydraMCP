@@ -54,3 +54,38 @@ def test_unicorn_call_without_session_errors(monkeypatch):
 def test_hook_set_rejects_bad_hex(session_on_port):
     r = bridge.unicorn_hook_set.__wrapped__("0x401000", "return_const", return_value="0xZZ")
     assert r["success"] is False
+
+
+def test_hook_clear_rejects_bad_address(session_on_port):
+    r = bridge.unicorn_hook_clear.__wrapped__("not_hex")
+    assert r["success"] is False
+
+
+def test_hook_set_without_session_errors(monkeypatch):
+    monkeypatch.setattr(bridge, "_get_instance_port", lambda p=None: 19999)
+    r = bridge.unicorn_hook_set.__wrapped__("0x401000", "return_const", return_value="0x1")
+    assert r["success"] is False
+    assert r["error"]["code"] == "NO_SESSION"
+
+
+def test_hook_clear_without_session_errors(monkeypatch):
+    monkeypatch.setattr(bridge, "_get_instance_port", lambda p=None: 19999)
+    r = bridge.unicorn_hook_clear.__wrapped__("0x401000")
+    assert r["success"] is False
+    assert r["error"]["code"] == "NO_SESSION"
+
+
+def test_hook_list_without_session_errors(monkeypatch):
+    monkeypatch.setattr(bridge, "_get_instance_port", lambda p=None: 19999)
+    r = bridge.unicorn_hook_list.__wrapped__()
+    assert r["success"] is False
+    assert r["error"]["code"] == "NO_SESSION"
+
+
+def test_unicorn_call_with_count(session_on_port):
+    port, session = session_on_port
+    func = 0x140075000
+    session.map_bytes(func, b"\xb8\x07\x00\x00\x00\xc3")  # mov eax,7 ; ret
+    r = bridge.unicorn_call.__wrapped__(hex(func), args=[], count=500_000)
+    assert r["success"] is True
+    assert r["return_value"] == "0x7"
