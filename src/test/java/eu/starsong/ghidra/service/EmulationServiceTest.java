@@ -51,4 +51,28 @@ public class EmulationServiceTest {
     public void parseBigRejectsEmpty() {
         EmulationService.parseBig("   ");
     }
+
+    @Test
+    public void parseReturnAddressHandlesLittleEndian() {
+        byte[] mem = new byte[] {
+            (byte)0xef, (byte)0xbe, (byte)0xad, (byte)0xde,
+            (byte)0x00, (byte)0x00, (byte)0x00, (byte)0x00
+        };
+        assertEquals(new BigInteger("deadbeef", 16), EmulationService.parseReturnAddress(mem));
+    }
+
+    @Test
+    public void parseReturnAddressHandlesTopBitSet() {
+        byte[] mem = new byte[] {
+            (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff,
+            (byte)0xff, (byte)0xff, (byte)0xff, (byte)0xff
+        };
+        // Unsigned 64-bit max value, but BigInteger handles it as positive
+        assertEquals(new BigInteger("1", 16).shiftLeft(64).subtract(BigInteger.ONE), EmulationService.parseReturnAddress(mem));
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void parseReturnAddressRejectsShortArray() {
+        EmulationService.parseReturnAddress(new byte[7]);
+    }
 }

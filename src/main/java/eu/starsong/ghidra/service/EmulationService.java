@@ -77,6 +77,45 @@ public class EmulationService {
         catch (NumberFormatException e) { return new BigInteger(v, 16); }
     }
 
+    /** Pure function: parse little-endian 8-byte array to BigInteger */
+    public static BigInteger parseReturnAddress(byte[] memoryAtRsp) {
+        if (memoryAtRsp == null || memoryAtRsp.length < 8) {
+            throw new IllegalArgumentException("memory array must be at least 8 bytes");
+        }
+        byte[] reversed = new byte[8];
+        for (int i = 0; i < 8; i++) {
+            reversed[7 - i] = memoryAtRsp[i];
+        }
+        return new BigInteger(1, reversed);
+    }
+
+    /**
+     * Simulate a return instruction (x86-64).
+     */
+    public static void simulateRet(EmulatorHelper emu, BigInteger returnValue) {
+        Register rspReg = emu.getLanguage().getRegister("RSP");
+        if (rspReg == null) throw new IllegalStateException("RSP register not found");
+        BigInteger rsp = emu.readRegister(rspReg);
+        // We need an address space to build an address from the integer.
+        // Assuming the PC is in the default RAM space.
+        Address rspAddr = emu.getExecutionAddress().getNewAddress(rsp.longValue());
+        byte[] retBytes = emu.readMemory(rspAddr, 8);
+        if (retBytes == null || retBytes.length < 8) {
+            throw new IllegalStateException("Failed to read return address from RSP " + toHex(rsp));
+        }
+        
+        BigInteger retAddr = parseReturnAddress(retBytes);
+        emu.writeRegister(emu.getPCRegister(), retAddr);
+        emu.writeRegister(rspReg, rsp.add(BigInteger.valueOf(8)));
+        
+        if (returnValue != null) {
+            Register raxReg = emu.getLanguage().getRegister("RAX");
+            if (raxReg != null) {
+                emu.writeRegister(raxReg, returnValue);
+            }
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Session lifecycle and emulation control
     // -------------------------------------------------------------------------

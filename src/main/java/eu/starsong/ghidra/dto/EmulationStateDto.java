@@ -10,7 +10,8 @@ public record EmulationStateDto(
         long steps,
         Map<String, String> registers,
         List<String> trace,
-        String lastError) {
+        String lastError,
+        String detail) {
 
     /**
      * Why an emulation session is in its current state. Serializes to its enum name
@@ -28,11 +29,20 @@ public record EmulationStateDto(
         /** The emulator faulted (unmapped read, unimplemented instruction, etc.); see {@code lastError}. */
         ERROR,
         /** {@code run} hit its step cap without otherwise stopping. */
-        MAX_STEPS
+        MAX_STEPS,
+        /** Execution stopped due to a hook trap */
+        HOOK_TRAP,
+        /** Unmapped memory access */
+        UNMAPPED
     }
 
     public static EmulationStateDto of(String pc, StopReason stopReason, long steps,
             Map<String, String> registers, List<String> trace, String lastError) {
-        return new EmulationStateDto(pc, stopReason, steps, registers, trace, lastError);
+        return new EmulationStateDto(pc, stopReason, steps, registers, trace, lastError, null);
+    }
+
+    public static EmulationStateDto of(String pc, StopReason stopReason, long steps,
+            Map<String, String> registers, List<String> trace, String lastError, String detail) {
+        return new EmulationStateDto(pc, stopReason, steps, registers, trace, lastError, detail);
     }
 }
