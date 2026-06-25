@@ -681,6 +681,65 @@ class TableFormatter(BaseFormatter):
         body = self._capture(table)
         return f"{header_text}\n{body}".strip()
 
+    def format_call_paths(self, data: Dict[str, Any]) -> str:
+        """Format call paths as a table (one row per path, arrow chain of functions)."""
+        result = data.get("result", {})
+        if not isinstance(result, dict):
+            return self._capture("[yellow]No call path data available[/yellow]")
+
+        paths = result.get("paths", []) or []
+        header = self._capture(
+            f"[cyan]Call paths[/cyan] {result.get('from', '?')} -> {result.get('to', '?')} "
+            f"({len(paths)} found"
+            + (", truncated" if result.get("truncated") else "") + ")"
+        )
+        if not paths:
+            return f"{header}\n" + self._capture("[yellow]No paths found[/yellow]")
+
+        table = Table(show_lines=False)
+        table.add_column("#", style="cyan", justify="right")
+        table.add_column("Len", style="dim", justify="right")
+        table.add_column("Path", style="green", overflow="fold")
+        for i, p in enumerate(paths, start=1):
+            fns = p.get("functions", []) if isinstance(p, dict) else []
+            chain = " -> ".join(f"{f.get('name', '?')}" for f in fns)
+            table.add_row(str(i), str(p.get("length", len(fns))), chain)
+        return f"{header}\n" + self._capture(table)
+
+    def format_string_usage(self, data: Dict[str, Any]) -> str:
+        """Format string usage: matched strings, direct users, and flat callers with depth."""
+        result = data.get("result", {})
+        if not isinstance(result, dict):
+            return self._capture("[yellow]No string usage data available[/yellow]")
+
+        matches = result.get("matches", []) or []
+        header = self._capture(
+            f"[cyan]String usage[/cyan] value={result.get('value', '?')} "
+            f"match={result.get('match', '?')} caller_depth={result.get('caller_depth', 0)} "
+            f"(size={result.get('size', 0)}"
+            + (", truncated" if result.get("truncated") else "") + ")"
+        )
+        if not matches:
+            return f"{header}\n" + self._capture("[yellow]No matches[/yellow]")
+
+        table = Table(show_lines=True)
+        table.add_column("String @", style="green", no_wrap=True)
+        table.add_column("Value", style="white", overflow="fold")
+        table.add_column("Direct users", style="cyan", overflow="fold")
+        table.add_column("Callers (depth)", style="yellow", overflow="fold")
+        for m in matches:
+            if not isinstance(m, dict):
+                continue
+            s = m.get("string", {})
+            users = ", ".join(f.get("name", "?") for f in m.get("directUsers", []))
+            callers = ", ".join(
+                f"{c.get('function', {}).get('name', '?')}({c.get('depth', '?')})"
+                for c in m.get("callers", [])
+            )
+            table.add_row(str(s.get("address", "?")), str(s.get("value", "")),
+                          users or "-", callers or "-")
+        return f"{header}\n" + self._capture(table)
+
     def format_error(self, error: Exception) -> str:
         """Format error message."""
         from ..client.exceptions import GhidraAPIError

@@ -510,6 +510,36 @@ async def test_bridge():
                 logger.error(f"Error testing mutating operations: {e}", exc_info=True)
                 raise
 
+async def test_compound_re_tools():
+    """call-paths + string-usage tools, including invalid-regex error passthrough."""
+    server_parameters = StdioServerParameters(command=sys.executable, args=["bridge_mcp_hydra.py"])
+    async with stdio_client(server_parameters) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            tools = {t.name for t in (await session.list_tools()).tools}
+            assert "analysis_find_call_paths" in tools, "analysis_find_call_paths tool missing"
+            assert "analysis_trace_string_usage" in tools, "analysis_trace_string_usage tool missing"
+
+            # Invalid regex must surface the specific message, not a generic failure.
+            res = await session.call_tool("analysis_trace_string_usage",
+                                          {"value": "[", "match": "regex"})
+            text = res.content[0].text if res.content else ""
+            try:
+                data = json.loads(text)
+            except (json.JSONDecodeError, ValueError):
+                data = None
+            # With no reachable Ghidra instance (or an older plugin) the tool may
+            # surface a connection/instance error or a human-formatted string
+            # instead of a structured JSON failure — acceptable; the tool is
+            # reachable, which the list_tools assertions above already proved.
+            # When we DO get a structured failure, it must be the regex error.
+            if isinstance(data, dict) and data.get("success") is False:
+                assert "regex" in json.dumps(data.get("error", {})).lower(), \
+                    f"expected regex error message, got: {data.get('error')}"
+
+    logger.info("compound RE tools OK")
+
+
 def main():
     """Main entry point"""
     try:

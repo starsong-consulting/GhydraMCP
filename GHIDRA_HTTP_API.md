@@ -776,6 +776,87 @@ Provides access to Ghidra's analysis results.
   }
   ```
 
+- **`GET /analysis/callpaths`**: Discover bounded call-paths between two functions (DFS).
+  - Query Parameters:
+    - `?from=[function_name_or_address]`: Starting function (required).
+    - `?to=[function_name_or_address]`: Destination function (required).
+    - `?max_depth=[int]`: Maximum path depth (default: 5, cap: 15).
+    - `?max_paths=[int]`: Maximum number of paths to return (default: 50, cap: 500).
+    - `?max_visited_edges=[int]`: Maximum edges explored in DFS (default: 10000, cap: 100000).
+  - `truncated` is `true` when a cap (`max_paths`, `max_depth`, or `max_visited_edges`) was reached and more paths may exist; the returned path count is always exact (the search stops at, never exceeds, `max_paths`).
+  ```json
+  // Example Response
+  "result": {
+    "from": "main",
+    "to": "fopen",
+    "max_depth": 5,
+    "max_paths": 50,
+    "truncated": false,
+    "paths": [
+      {
+        "length": 3,
+        "functions": ["main", "open_file", "fopen"]
+      },
+      {
+        "length": 4,
+        "functions": ["main", "init", "load_config", "fopen"]
+      }
+    ]
+  }
+  ```
+  - Errors:
+    - `400 BAD_REQUEST`: Missing `from` or `to` parameter.
+    - `404 NOT_FOUND`: Unknown function in `from` or `to`.
+
+- **`GET /analysis/strings/usage`**: Trace string usage with optional reverse-call-graph walk.
+  - Query Parameters:
+    - `?value=[string]`: String value to search for (required); matched as substring or regex depending on `match`.
+    - `?match=[substring|regex]`: Match mode (default: substring).
+    - `?caller_depth=[int]`: Reverse-call-graph depth to walk from direct users (default: 0, cap: 5).
+    - `?max_strings=[int]`: Maximum distinct strings to scan/return (default: 200, cap: 1000). `size` in the response is the matched-string total *after* this cap, so `next` links stop at the cap.
+    - `?max_functions=[int]`: Maximum functions in caller chains (default: 500, cap: 5000).
+    - `?offset=[int]`: Pagination offset (default: 0).
+    - `?limit=[int]`: Pagination limit (default: 100).
+  ```json
+  // Example Response
+  "result": {
+    "value": "error: %s",
+    "match": "regex",
+    "caller_depth": 2,
+    "size": 5,
+    "offset": 0,
+    "limit": 100,
+    "truncated": false,
+    "matches": [
+      {
+        "string": {
+          "address": "0x402000",
+          "value": "error: %s"
+        },
+        "directUsers": [
+          {
+            "address": "0x401100",
+            "name": "log_error"
+          }
+        ],
+        "callers": [
+          {
+            "function": "main",
+            "depth": 1
+          },
+          {
+            "function": "process_data",
+            "depth": 2
+          }
+        ]
+      }
+    ]
+  }
+  ```
+  - Errors:
+    - `400 BAD_REQUEST`: Missing `value` parameter, invalid `match` mode, or invalid regex pattern.
+  - No matches is not an error: the endpoint returns `200` with `size: 0` and an empty `matches` list.
+
 ### 11. Scripts (gated)
 
 Run Ghidra scripts via the API, for multi-stage or batch operations (mass rename, signature transfer, etc.).
