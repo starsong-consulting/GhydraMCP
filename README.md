@@ -238,6 +238,8 @@ Tools are grouped into namespaces:
 - `analysis_status`: Check analysis status (params: port [optional])
 - `analysis_get_callgraph`: Get function call graph (params: name or address, max_depth, port [optional])
 - `analysis_get_dataflow`: Perform reference-flow traversal from an address (params: address, direction, max_steps, port [optional])
+- `analysis_find_call_paths`: Discover bounded call-paths between two functions (params: from, to, max_depth [optional], max_paths [optional], max_visited_edges [optional], port [optional])
+- `analysis_trace_string_usage`: Trace string usage with optional reverse-call-graph walk (params: value, match [optional], caller_depth [optional], max_strings [optional], max_functions [optional], offset [optional], limit [optional], port [optional])
 
 **Project Management** (`project_*`):
 - `project_info`: Get current project information (params: port [optional])

@@ -396,6 +396,22 @@ def analysis():
 # Options: --address, --direction (forward/backward), --max-steps
 # Endpoint: GET /analysis/dataflow/{address}
 
+@analysis.command('call-paths')
+# Options: --from (function name or address, required), --to (function name or address, required), --max-depth (default 5, cap 15), --max-paths (default 50, cap 500)
+# Endpoint: GET /analysis/callpaths
+# Examples:
+#   ghydra analysis call-paths --from main --to fopen
+#   ghydra analysis call-paths --from 0x401000 --to CreateFileW --max-depth 10 --max-paths 100
+
+@analysis.command('string-usage')
+# Argument: VALUE (string value to search for, required)
+# Options: --match (substring|regex, default substring), --caller-depth (default 0, cap 5), --limit (default 20), --offset (default 0)
+# Endpoint: GET /analysis/strings/usage
+# Examples:
+#   ghydra analysis string-usage CreateFileW
+#   ghydra analysis string-usage "error: %s" --match regex --caller-depth 2
+#   ghydra analysis string-usage password --limit 50
+
 @analysis.command('status')
 # Endpoint: GET /analysis/status
 ```
