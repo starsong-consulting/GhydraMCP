@@ -405,7 +405,7 @@ def analysis():
 
 @analysis.command('string-usage')
 # Argument: VALUE (string value to search for, required)
-# Options: --match (substring|regex, default substring), --caller-depth (default 0, cap 5), --limit (default 20), --offset (default 0)
+# Options: --match (substring|regex, default substring), --caller-depth (default 0, cap 5), --limit (default 50), --offset (default 0)
 # Endpoint: GET /analysis/strings/usage
 # Examples:
 #   ghydra analysis string-usage CreateFileW
