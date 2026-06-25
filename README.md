@@ -1,10 +1,10 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://www.apache.org/licenses/LICENSE-2.0)
 
-# GhydraMCP
+# GhydraMCP+
 
-GhydraMCP connects [Ghidra](https://ghidra-sre.org/) to AI assistants for reverse engineering, over the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp) or a command-line tool.
+GhydraMCP+ connects [Ghidra](https://ghidra-sre.org/) to AI assistants for reverse engineering, over the [Model Context Protocol (MCP)](https://github.com/modelcontextprotocol/mcp) or a command-line tool.
 
-![GhydraMCP logo](https://github.com/user-attachments/assets/86b9b2de-767c-4ed5-b082-510b8109f00f)
+![GhydraMCP+ logo](https://github.com/user-attachments/assets/86b9b2de-767c-4ed5-b082-510b8109f00f)
 
 ## Overview
 
@@ -25,7 +25,7 @@ Through it, an assistant can:
 - Read and write memory
 - Follow HATEOAS links between resources
 
-GhydraMCP started as a fork of [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/) and added multi-instance support, data manipulation, and a HATEOAS REST API.
+GhydraMCP+ started as a fork of [GhidraMCP by Laurie Wired](https://github.com/LaurieWired/GhidraMCP/) and added multi-instance support, data manipulation, and a HATEOAS REST API. Subsequent refinements to the fork resulted in GhydraMCP+, which adds debugger and emulation support and utilizes the external **Unicorn** reverse engineering engine. Future plans include creating a plugin with powerful reverse engineering skills for AI agent.
 
 # Features
 
@@ -121,7 +121,7 @@ GhydraMCP started as a fork of [GhidraMCP by Laurie Wired](https://github.com/La
 - MCP [SDK](https://github.com/modelcontextprotocol/python-sdk)
 
 ## Ghidra
-First, download the latest [release](https://github.com/starsong-consulting/GhydraMCP/releases) from this repository. The "Complete" artifact contains the zipped Ghidra plugin and the Python MCP bridge. Unpack the outer archive, then, add the plugin to Ghidra:
+First, download the latest [release](https://github.com/starsong-consulting/GhydraMCP+/releases) from this repository. The "Complete" artifact contains the zipped Ghidra plugin and the Python MCP bridge. Unpack the outer archive, then, add the plugin to Ghidra:
 
 1. Run Ghidra
 2. Select `File` -> `Install Extensions`
@@ -132,11 +132,11 @@ First, download the latest [release](https://github.com/starsong-consulting/Ghyd
 
 > **Note:** By default, the first CodeBrowser opened in Ghidra gets port 8192, the second gets 8193, and so on. You can check which ports are being used by looking at the Console in the Ghidra main (project) window - click the computer icon in the bottom right to "Open Console". Look for log entries like:
 > ```
-> (GhydraPlugin) GhydraMCP loaded on port 8193
-> (GhydraServer) GhydraMCP HTTP server started on port 8193
+> (GhydraPlugin) GhydraMCP+ loaded on port 8193
+> (GhydraServer) GhydraMCP+ HTTP server started on port 8193
 > ```
 >
-> GhydraMCP now includes auto-discovery of running Ghidra instances, so manually registering each instance is typically not necessary. The MCP bridge will automatically discover and register instances on startup and periodically check for new ones.
+> GhydraMCP+ now includes auto-discovery of running Ghidra instances, so manually registering each instance is typically not necessary. The MCP bridge will automatically discover and register instances on startup and periodically check for new ones.
 
 Video Installation Guide:
 
@@ -144,7 +144,7 @@ https://github.com/user-attachments/assets/75f0c176-6da1-48dc-ad96-c182eb4648c3
 
 ## CLI Tool
 
-GhydraMCP includes `ghydra`, a command-line tool for interacting with Ghidra directly from the terminal. It works standalone, no MCP client needed.
+GhydraMCP+ includes `ghydra`, a command-line tool for interacting with Ghidra directly from the terminal. It works standalone, no MCP client needed.
 
 ```bash
 # Install
@@ -175,7 +175,7 @@ Timeout defaults are intentionally high for large binaries:
 
 ## MCP Clients
 
-GhydraMCP works with any MCP-compatible client using **stdio transport**. It has been tested and confirmed working with:
+GhydraMCP+ works with any MCP-compatible client using **stdio transport**. It has been tested and confirmed working with:
 
 - **Claude Desktop** - Anthropic's official desktop application
 - **Claude Code** - Anthropic's VS Code extension and CLI tool
@@ -268,7 +268,7 @@ Tools are grouped into namespaces:
 - `emulation_set_breakpoint` / `emulation_clear_breakpoint`: Set/clear an emulation breakpoint (params: address, port [optional])
 - `emulation_dispose`: Dispose the session (params: port [optional])
 
-**Unicorn dynamic emulation** (`unicorn_*`) — Python-side [Unicorn Engine](https://www.unicorn-engine.org/) x86-64 emulation that lazily pulls bytes from the Ghidra static image (no live debugger). Optional dependency: `pip install ghydramcp[unicorn]`.
+**Unicorn dynamic emulation** (`unicorn_*`) — Python-side [Unicorn Engine](https://www.unicorn-engine.org/) x86-64 emulation that lazily pulls bytes from the Ghidra static image (no live debugger). Optional dependency: `pip install GhydraMCP+[unicorn]`.
 - `unicorn_reset`: Start a fresh session at an address; unmapped pages are fetched from Ghidra on demand (params: start, registers [optional], port [optional])
 - `unicorn_run`: Run begin..until, an instruction count, or until a fault (params: until, count [optional], trace [optional], port [optional])
 - `unicorn_read_memory`: Read emulated memory as hex, e.g. dump a decrypted payload (params: address, length [optional], port [optional])
@@ -359,13 +359,13 @@ client.use_tool("ghydra", "project_open_file", {"path": "/malware_samples/sample
 
 ## Client Setup
 
-GhydraMCP works with any MCP-compatible client. Below are configuration examples for popular AI coding assistants.
+GhydraMCP+ works with any MCP-compatible client. Below are configuration examples for popular AI coding assistants.
 
 ### Installation Methods
 
 #### Recommended: Local Installation from Release
 
-Download the latest [release](https://github.com/starsong-consulting/GhydraMCP/releases) to ensure the bridge and plugin versions are in sync.
+Download the latest [release](https://github.com/starsong-consulting/GhydraMCP+/releases) to ensure the bridge and plugin versions are in sync.
 
 ```json
 {
@@ -399,8 +399,8 @@ If you want to use the latest development version, you can run directly from the
       "command": "uvx",
       "args": [
         "--from",
-        "git+https://github.com/starsong-consulting/GhydraMCP",
-        "ghydramcp"
+        "git+https://github.com/starsong-consulting/GhydraMCP+",
+        "GhydraMCP+"
       ],
       "env": {
         "GHIDRA_HYDRA_HOST": "localhost"
@@ -420,13 +420,13 @@ Add your chosen configuration method to your Claude Desktop configuration file:
 
 ### Claude Code Configuration
 
-Claude Code automatically discovers MCP servers configured in Claude Desktop. If you've set up the configuration above, Claude Code will have access to GhydraMCP tools immediately.
+Claude Code automatically discovers MCP servers configured in Claude Desktop. If you've set up the configuration above, Claude Code will have access to GhydraMCP+ tools immediately.
 
 Alternatively, you can configure Claude Code separately by adding the same configuration to the MCP settings in Claude Code's configuration.
 
 ### Cline Configuration
 
-Cline (VS Code extension) uses a separate configuration file. To set up GhydraMCP with Cline:
+Cline (VS Code extension) uses a separate configuration file. To set up GhydraMCP+ with Cline:
 
 1. Open VS Code with Cline installed
 2. Click the "MCP Servers" icon in Cline's interface
@@ -472,19 +472,19 @@ If you prefer to use `python` directly instead of `uv`:
 ```
 
 > **Important:** Replace `/ABSOLUTE_PATH_TO/` with the actual absolute path to your `bridge_mcp_hydra.py` file. For example:
-> - **Linux/macOS**: `/home/username/GhydraMCP/bridge_mcp_hydra.py`
-> - **Windows**: `C:\\Users\\username\\GhydraMCP\\bridge_mcp_hydra.py`
+> - **Linux/macOS**: `/home/username/GhydraMCP+/bridge_mcp_hydra.py`
+> - **Windows**: `C:\\Users\\username\\GhydraMCP+\\bridge_mcp_hydra.py`
 
-After saving the configuration, restart Cline to load the GhydraMCP server.
+After saving the configuration, restart Cline to load the GhydraMCP+ server.
 
 ### 5ire Configuration
 1. Tool Key: ghydra
-2. Name: GhydraMCP
+2. Name: GhydraMCP+
 3. Command: `uv run /ABSOLUTE_PATH_TO/bridge_mcp_hydra.py`
 
 ## Example Session
 
-An example of an AI assistant driving Ghidra through GhydraMCP:
+An example of an AI assistant driving Ghidra through GhydraMCP+:
 
 **User:**
 ```
@@ -603,7 +603,7 @@ This shows process_packet coordinates validation, parsing, and response transmis
 
 # JSON Communication
 
-GhydraMCP uses JSON for all communication between the bridge or CLI and the Java plugin.
+GhydraMCP+ uses JSON for all communication between the bridge or CLI and the Java plugin.
 
 ## API Architecture
 
@@ -680,7 +680,7 @@ The links let a client discover related resources without hardcoding URLs.
 
 # Testing
 
-GhydraMCP has test suites for the HTTP API and the MCP bridge. See [TESTING.md](TESTING.md) for how to run them.
+GhydraMCP+ has test suites for the HTTP API and the MCP bridge. See [TESTING.md](TESTING.md) for how to run them.
 
 ## HTTP API Tests
 
