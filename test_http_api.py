@@ -885,7 +885,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
             self.skipTest("No usable string value")
 
         # Substring match, direct users only (caller_depth defaults to 0).
-        response = requests.get(f"{BASE_URL}/analysis/strings/usage?value={sample}")
+        response = requests.get(f"{BASE_URL}/analysis/strings/usage", params={"value": sample})
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertStandardSuccessResponse(data)
