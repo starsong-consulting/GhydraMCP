@@ -133,16 +133,23 @@ public class EmulationService {
     /** One emulator session per Program. */
     private final Map<Program, Session> sessions = new ConcurrentHashMap<>();
 
+    public record HookAction(String action, String return_value, List<MemWrite> mem_writes) {}
+
     private static final class Session {
+        final Program program;
         final EmulatorHelper emu;
         final List<String> trace = new ArrayList<>();
         // Breakpoint addresses we installed, so a halted step can be classified as a clean
         // breakpoint stop rather than guessed from getLastError() (which is unreliable).
         final Set<Address> breakpoints = new HashSet<>();
+        final Map<Address, HookAction> hooks = new ConcurrentHashMap<>();
         long steps = 0;
         StopReason stopReason = StopReason.READY;
         String lastError = null;
-        Session(EmulatorHelper emu) { this.emu = emu; }
+        Session(Program program, EmulatorHelper emu) { 
+            this.program = program; 
+            this.emu = emu; 
+        }
     }
 
     private Session require(Program program) {
@@ -155,7 +162,7 @@ public class EmulationService {
     }
 
     public EmulationStateDto reset(Program program, String startStr,
-            Map<String, String> registers, List<MemWrite> memory) {
+            Map<String, String> registers, List<MemWrite> memory, boolean autoStack) {
         Address start = GhidraUtil.resolveAddress(program, startStr);
         if (start == null) throw new IllegalArgumentException("Invalid start address: " + startStr);
         // Resolve memory addresses up front so a bad request fails before we touch any session.
@@ -186,7 +193,20 @@ public class EmulationService {
                 disposeQuietly(emu);
                 throw e;
             }
-            Session prior = sessions.put(program, new Session(emu));
+            if (autoStack) {
+                ghidra.program.model.address.AddressSpace defaultSpace = program.getAddressFactory().getDefaultAddressSpace();
+                long stackBase = 0x10000000L;
+                long stackSize = 0x100000;
+                Address stackBaseAddr = defaultSpace.getAddress(stackBase);
+                byte[] zeroes = new byte[(int)stackSize];
+                emu.writeMemory(stackBaseAddr, zeroes);
+                BigInteger stackMid = BigInteger.valueOf(stackBase + stackSize / 2);
+                Register rspReg = emu.getLanguage().getRegister("RSP");
+                Register rbpReg = emu.getLanguage().getRegister("RBP");
+                if (rspReg != null) emu.writeRegister(rspReg, stackMid);
+                if (rbpReg != null) emu.writeRegister(rbpReg, stackMid);
+            }
+            Session prior = sessions.put(program, new Session(program, emu));
             if (prior != null) disposeQuietly(prior.emu);
             return snapshot(program, sessions.get(program), false);
         });
@@ -231,6 +251,38 @@ public class EmulationService {
      * silently treated as a breakpoint.
      */
     private boolean stepOnce(Session s) {
+        Address pc = s.emu.getExecutionAddress();
+        if (pc != null && s.hooks.containsKey(pc)) {
+            HookAction hook = s.hooks.get(pc);
+            if ("return_const".equals(hook.action())) {
+                if (hook.mem_writes() != null) {
+                    for (MemWrite mw : hook.mem_writes()) {
+                        Address a = GhidraUtil.resolveAddress(s.program, mw.address());
+                        if (a != null) {
+                            s.emu.writeMemory(a, hexToBytes(mw.hex()));
+                        }
+                    }
+                }
+                simulateRet(s.emu, hook.return_value() != null ? parseBig(hook.return_value()) : null);
+                return true;
+            } else if ("skip".equals(hook.action())) {
+                ghidra.program.model.listing.Instruction inst = s.program.getListing().getInstructionAt(pc);
+                if (inst != null && inst.getFlowType().isCall()) {
+                    simulateRet(s.emu, null);
+                } else {
+                    int len = inst != null ? inst.getLength() : 1;
+                    s.emu.writeRegister(s.emu.getPCRegister(), BigInteger.valueOf(pc.getOffset() + len));
+                }
+                return true;
+            } else if ("log".equals(hook.action())) {
+                s.trace.add("HOOK_LOG: " + pc.toString());
+                // fall through to normal execution
+            } else if ("trap".equals(hook.action())) {
+                s.stopReason = StopReason.HOOK_TRAP;
+                return false;
+            }
+        }
+        
         boolean ok;
         try {
             ok = s.emu.step(TaskMonitor.DUMMY);
@@ -312,6 +364,28 @@ public class EmulationService {
         Address a = GhidraUtil.resolveAddress(program, addrStr);
         if (a == null) throw new IllegalArgumentException("Invalid address: " + addrStr);
         GhidraSwing.runRead(() -> { s.emu.clearBreakpoint(a); s.breakpoints.remove(a); return null; });
+    }
+
+    public void setHook(Program program, String addressStr, HookAction action) {
+        Session s = require(program);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address == null) throw new IllegalArgumentException("Invalid hook address: " + addressStr);
+        s.hooks.put(address, action);
+    }
+
+    public void clearHook(Program program, String addressStr) {
+        Session s = require(program);
+        Address address = GhidraUtil.resolveAddress(program, addressStr);
+        if (address != null) {
+            s.hooks.remove(address);
+        }
+    }
+
+    public Map<String, HookAction> listHooks(Program program) {
+        Session s = require(program);
+        Map<String, HookAction> res = new LinkedHashMap<>();
+        s.hooks.forEach((addr, hook) -> res.put(addr.toString(), hook));
+        return res;
     }
 
     public void dispose(Program program) {

@@ -36,6 +36,9 @@ public class EmulationResource implements Resource {
         app.post("/emulation/memory", ctx -> writeMemory(contextFactory.apply(ctx)));
         app.post("/emulation/breakpoints", ctx -> setBreakpoint(contextFactory.apply(ctx)));
         app.delete("/emulation/breakpoints/{address}", ctx -> clearBreakpoint(contextFactory.apply(ctx)));
+        app.post("/emulation/hooks", ctx -> setHook(contextFactory.apply(ctx)));
+        app.delete("/emulation/hooks/{address}", ctx -> clearHook(contextFactory.apply(ctx)));
+        app.get("/emulation/hooks", ctx -> listHooks(contextFactory.apply(ctx)));
         app.delete("/emulation", ctx -> dispose(contextFactory.apply(ctx)));
     }
 
@@ -56,7 +59,7 @@ public class EmulationResource implements Resource {
                 mem.add(new EmulationService.MemWrite(m.get("address"), m.get("hex")));
             }
         }
-        respond(ctx, service.reset(program, req.start, req.registers, mem));
+        respond(ctx, service.reset(program, req.start, req.registers, mem, req.auto_stack));
     }
 
     private void run(GhidraContext ctx) {
@@ -144,6 +147,35 @@ public class EmulationResource implements Resource {
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), data).self("/emulation/breakpoints/{}", address).build());
     }
 
+    private void setHook(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        HookRequest req = ctx.bodyAsClass(HookRequest.class);
+        if (req == null || req.address == null || req.action == null) {
+            throw new IllegalArgumentException("address and action are required");
+        }
+        List<EmulationService.MemWrite> mem = new ArrayList<>();
+        if (req.mem_writes != null) {
+            for (Map<String, String> m : req.mem_writes) {
+                mem.add(new EmulationService.MemWrite(m.get("address"), m.get("hex")));
+            }
+        }
+        service.setHook(program, req.address, new EmulationService.HookAction(req.action, req.return_value, mem));
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of("address", req.address, "hook", "set")).build());
+    }
+
+    private void clearHook(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String address = ctx.pathParam("address");
+        service.clearHook(program, address);
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of("address", address, "hook", "cleared")).build());
+    }
+
+    private void listHooks(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        Map<String, EmulationService.HookAction> hooks = service.listHooks(program);
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of("hooks", hooks)).build());
+    }
+
     private void dispose(GhidraContext ctx) {
         service.dispose(ctx.requireProgram());
         Map<String, Object> data = new LinkedHashMap<>();
@@ -155,10 +187,17 @@ public class EmulationResource implements Resource {
         public String start;
         public Map<String, String> registers;
         public List<Map<String, String>> memory;
+        public boolean auto_stack;
     }
     private static class RunRequest { public String until; public long max_steps; public boolean trace; }
     private static class StepRequest { public long count; public boolean trace; }
     private static class RegisterRequest { public String name; public String value; }
     private static class MemoryRequest { public String address; public String hex; }
     private static class BreakpointRequest { public String address; }
+    private static class HookRequest { 
+        public String address; 
+        public String action; 
+        public String return_value; 
+        public List<Map<String, String>> mem_writes; 
+    }
 }
