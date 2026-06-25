@@ -400,7 +400,7 @@ public class EmulationService {
         }
         s.steps++;
         if (ok) return true;
-        Address pc = s.emu.getExecutionAddress();
+        pc = s.emu.getExecutionAddress();
         if (pc != null && s.breakpoints.contains(pc)) {
             s.stopReason = StopReason.BREAKPOINT;
             s.lastError = null;
