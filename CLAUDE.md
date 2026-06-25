@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A pre-built knowledge graph of this codebase lives in `graphify-out/`. Before exploring
 the source by hand, treat questions about architecture, file relationships, or "where does X
-live" as a **graphify query** — run the `/graphify` skill against it instead of grepping cold.
+live" as a **graphify query**. Instead of grepping cold, ALWAYS run `/graphify` skill in the start of the session to understand the codebase.
 
 - `graphify-out/GRAPH_REPORT.md` — human-readable overview: 1998 nodes / 4532 edges across
   ~112 communities, the **god nodes** (most-connected abstractions, e.g. `rich_echo()`,
