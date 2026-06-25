@@ -13,7 +13,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -179,9 +178,9 @@ public class AnalysisService {
                               List<Function> path, Set<String> onPath,
                               List<CallPathDto> paths, int[] visitedEdges, boolean[] truncated) {
         if (current.getEntryPoint().toString().equals(toAddr)) {
-            List<eu.starsong.ghidra.dto.FunctionSummaryDto> fns = new ArrayList<>();
+            List<FunctionSummaryDto> fns = new ArrayList<>();
             for (Function f : path) {
-                fns.add(eu.starsong.ghidra.dto.FunctionSummaryDto.from(f));
+                fns.add(FunctionSummaryDto.from(f));
             }
             paths.add(CallPathDto.of(fns));
             if (paths.size() >= maxPaths) truncated[0] = true;

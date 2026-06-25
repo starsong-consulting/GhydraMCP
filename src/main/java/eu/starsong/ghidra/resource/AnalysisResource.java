@@ -115,7 +115,7 @@ public class AnalysisResource implements Resource {
         Map<String, Object> result = analysisService.findCallPaths(program, from, to, maxDepth, maxPaths, maxVisitedEdges);
 
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
-            .self("/analysis/callpaths?from={}&to={}", from, to)
+            .self("/analysis/callpaths?from={}&to={}&max_depth={}&max_paths={}", from, to, maxDepth, maxPaths)
             .link("from", "/functions/{}", String.valueOf(result.get("from")))
             .link("to", "/functions/{}", String.valueOf(result.get("to")))
             .build());
