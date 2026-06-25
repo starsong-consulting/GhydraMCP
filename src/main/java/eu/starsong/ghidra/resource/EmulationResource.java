@@ -39,6 +39,7 @@ public class EmulationResource implements Resource {
         app.post("/emulation/hooks", ctx -> setHook(contextFactory.apply(ctx)));
         app.delete("/emulation/hooks/{address}", ctx -> clearHook(contextFactory.apply(ctx)));
         app.get("/emulation/hooks", ctx -> listHooks(contextFactory.apply(ctx)));
+        app.post("/emulation/call", ctx -> call(contextFactory.apply(ctx)));
         app.delete("/emulation", ctx -> dispose(contextFactory.apply(ctx)));
     }
 
@@ -176,6 +177,13 @@ public class EmulationResource implements Resource {
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), Map.of("hooks", hooks)).build());
     }
 
+    private void call(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        CallRequest req = ctx.bodyAsClass(CallRequest.class);
+        if (req == null || req.func == null) throw new IllegalArgumentException("func is required");
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), service.call(program, req.func, req.args, req.convention, req.trace)).build());
+    }
+
     private void dispose(GhidraContext ctx) {
         service.dispose(ctx.requireProgram());
         Map<String, Object> data = new LinkedHashMap<>();
@@ -199,5 +207,11 @@ public class EmulationResource implements Resource {
         public String action; 
         public String return_value; 
         public List<Map<String, String>> mem_writes; 
+    }
+    private static class CallRequest {
+        public String func;
+        public List<Object> args;
+        public String convention;
+        public boolean trace;
     }
 }

@@ -144,6 +144,7 @@ public class EmulationService {
         final Set<Address> breakpoints = new HashSet<>();
         final Map<Address, HookAction> hooks = new ConcurrentHashMap<>();
         long steps = 0;
+        long scratchAlloc = 0x10000000L;
         StopReason stopReason = StopReason.READY;
         String lastError = null;
         Session(Program program, EmulatorHelper emu) { 
@@ -237,10 +238,114 @@ public class EmulationService {
                 Address pc = s.emu.getExecutionAddress();
                 if (trace && s.trace.size() < MAX_TRACE && pc != null) s.trace.add(pc.toString());
                 if (!stepOnce(s)) break;
-                s.stopReason = StopReason.STEPPED;
+                // Don't overwrite stopReason if it's HOOK_TRAP or similar
+                if (s.stopReason == StopReason.READY || s.stopReason == StopReason.STEPPED) {
+                    s.stopReason = StopReason.STEPPED;
+                }
             }
             return snapshot(program, s, trace);
         });
+    }
+
+    private static byte[] bigToLittleEndianBytes(BigInteger val) {
+        byte[] le = new byte[8];
+        long l = val.longValue();
+        for (int i = 0; i < 8; i++) {
+            le[i] = (byte) (l & 0xFF);
+            l >>= 8;
+        }
+        return le;
+    }
+
+    @SuppressWarnings("unchecked")
+    public eu.starsong.ghidra.dto.CallResultDto call(Program program, String func, List<Object> args, String convention, boolean trace) {
+        Session s = require(program);
+        Address target = GhidraUtil.resolveAddress(program, func);
+        if (target == null) {
+            ghidra.program.model.listing.Function f = GhidraSwing.runRead(() -> GhidraUtil.findFunctionByName(program, func));
+            if (f != null) target = f.getEntryPoint();
+        }
+        if (target == null) throw new IllegalArgumentException("Invalid function target: " + func);
+
+        Register rspReg = s.emu.getLanguage().getRegister("RSP");
+        if (rspReg == null) throw new IllegalStateException("Unsupported architecture");
+        BigInteger rsp = GhidraSwing.runRead(() -> s.emu.readRegister(rspReg));
+        if (rsp.equals(BigInteger.ZERO)) throw new IllegalStateException("Stack pointer is not set. Use auto_stack during reset.");
+
+        String cc = convention;
+        if (cc == null || cc.isEmpty()) {
+            cc = program.getCompilerSpec().getCompilerSpecID().getIdAsString();
+        }
+        boolean isMs = cc != null && cc.toLowerCase().contains("windows");
+        List<String> intRegs = isMs ? List.of("RCX", "RDX", "R8", "R9") : List.of("RDI", "RSI", "RDX", "RCX", "R8", "R9");
+
+        Address sentinel = program.getAddressFactory().getDefaultAddressSpace().getAddress(0x40000000L);
+        List<String> argsPassed = new ArrayList<>();
+
+        final Address finalTarget = target;
+        GhidraSwing.runRead(() -> {
+            BigInteger currentRsp = rsp;
+            List<BigInteger> stackArgs = new ArrayList<>();
+            
+            for (int i = 0; i < (args == null ? 0 : args.size()); i++) {
+                Object arg = args.get(i);
+                BigInteger val;
+                if (arg instanceof Map) {
+                    Map<String, String> m = (Map<String, String>) arg;
+                    String hex = m.get("bytes");
+                    if (hex == null) throw new IllegalArgumentException("Map argument must contain 'bytes'");
+                    byte[] data = hexToBytes(hex);
+                    if (s.scratchAlloc + data.length > 0x10080000L) throw new IllegalStateException("Scratch space exhausted");
+                    Address addr = program.getAddressFactory().getDefaultAddressSpace().getAddress(s.scratchAlloc);
+                    s.emu.writeMemory(addr, data);
+                    val = BigInteger.valueOf(s.scratchAlloc);
+                    s.scratchAlloc += data.length;
+                    argsPassed.add("ptr:" + toHex(val));
+                } else if (arg instanceof String) {
+                    val = parseBig((String) arg);
+                    argsPassed.add(toHex(val));
+                } else {
+                    throw new IllegalArgumentException("Invalid arg type");
+                }
+                
+                if (i < intRegs.size()) {
+                    s.emu.writeRegister(intRegs.get(i), val);
+                } else {
+                    stackArgs.add(val);
+                }
+            }
+
+            if (isMs) currentRsp = currentRsp.subtract(BigInteger.valueOf(32));
+            
+            for (int i = stackArgs.size() - 1; i >= 0; i--) {
+                currentRsp = currentRsp.subtract(BigInteger.valueOf(8));
+                s.emu.writeMemory(program.getAddressFactory().getDefaultAddressSpace().getAddress(currentRsp.longValue()), bigToLittleEndianBytes(stackArgs.get(i)));
+            }
+            
+            long rspVal = currentRsp.longValue();
+            rspVal = rspVal & ~15L;
+            rspVal -= 8;
+            s.emu.writeMemory(program.getAddressFactory().getDefaultAddressSpace().getAddress(rspVal), bigToLittleEndianBytes(BigInteger.valueOf(sentinel.getOffset())));
+            s.emu.writeRegister(rspReg, BigInteger.valueOf(rspVal));
+            
+            s.emu.writeRegister(s.emu.getPCRegister(), BigInteger.valueOf(finalTarget.getOffset()));
+            return null;
+        });
+
+        EmulationStateDto state = run(program, sentinel.toString(), 0, trace);
+        
+        eu.starsong.ghidra.dto.CallResultDto res = new eu.starsong.ghidra.dto.CallResultDto();
+        res.convention = isMs ? "x86-64 MS" : "x86-64 SysV";
+        res.args_passed = argsPassed;
+        res.final_registers = state.registers();
+        res.stop_reason = state.stopReason();
+        res.detail = state.detail();
+        if (state.stopReason() == StopReason.TARGET_REACHED) {
+            Register rax = s.emu.getLanguage().getRegister("RAX");
+            res.return_value = rax != null ? GhidraSwing.runRead(() -> toHex(s.emu.readRegister(rax))) : null;
+        }
+        res.mem_writes = trace ? new ArrayList<>() : null;
+        return res;
     }
 
     /**
