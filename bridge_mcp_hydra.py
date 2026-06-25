@@ -33,7 +33,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v3.1.0-rc.4"
+BRIDGE_VERSION = "v3.2.0"
 REQUIRED_API_VERSION = 3000
 
 DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
@@ -3070,6 +3070,74 @@ def emulation_clear_breakpoint(address: str, port: int | None = None) -> dict:
     port = _get_instance_port(port)
     return simplify_response(
         safe_delete(port, f"emulation/breakpoints/{quote(address, safe=':')}"))
+
+
+@mcp.tool()
+@text_output
+def emulation_hook_set(address: str, action: str, return_value: str | None = None,
+                       mem_writes: list | None = None, port: int | None = None) -> dict:
+    """Set an emulation hook at an address (PCode engine).
+
+    Args:
+        address: Hook address (hex)
+        action: Hook action ("return_const", "skip", "log", "trap")
+        return_value: Optional hex return value (only for "return_const")
+        mem_writes: Optional list of {"address": "hex", "hex": "hex_bytes"} (only for "return_const")
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    body = {"address": address, "action": action}
+    if return_value is not None:
+        body["return_value"] = return_value
+    if mem_writes is not None:
+        body["mem_writes"] = mem_writes
+    return simplify_response(safe_post(port, "emulation/hooks", body))
+
+
+@mcp.tool()
+@text_output
+def emulation_hook_clear(address: str, port: int | None = None) -> dict:
+    """Clear an emulation hook at an address (PCode engine).
+
+    Args:
+        address: Hook address (hex)
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(
+        safe_delete(port, f"emulation/hooks/{quote(address, safe=':')}"))
+
+
+@mcp.tool()
+@text_output
+def emulation_hook_list(port: int | None = None) -> dict:
+    """List all emulation hooks currently registered (PCode engine).
+
+    Args:
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    return simplify_response(safe_get(port, "emulation/hooks"))
+
+
+@mcp.tool()
+@text_output
+def emulation_call(func: str, args: list | None = None, convention: str = "sysv",
+                   trace: bool = False, port: int | None = None) -> dict:
+    """Call a function using PCode emulation with calling-convention logic.
+
+    Args:
+        func: Target function name or hex address
+        args: List of arguments (ints, hex strings, or {"bytes": "hex_string"})
+        convention: Calling convention ("sysv" or "ms", default "sysv")
+        trace: Whether to collect an execution trace
+        port: Specific Ghidra instance port (optional)
+    """
+    port = _get_instance_port(port)
+    body = {"func": func, "convention": convention, "trace": trace}
+    if args is not None:
+        body["args"] = args
+    return simplify_response(safe_post(port, "emulation/call", body))
 
 
 @mcp.tool()
