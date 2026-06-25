@@ -159,6 +159,74 @@ def clear_breakpoint(ctx, address):
         ctx.exit(1)
 
 
+@emulation.command('set-hook')
+@click.option('--address', '-a', required=True, help='Address (hex)')
+@click.option('--action', '-A', required=True, type=click.Choice(["return_const", "skip", "log", "trap"]), help='Hook action')
+@click.option('--return-value', '-r', help='Return value (hex, only for return_const)')
+@click.pass_context
+def set_hook(ctx, address, action, return_value):
+    """Set an emulation hook at an address."""
+    client = ctx.obj['client']
+    try:
+        body = {'address': validate_address(address), 'action': action}
+        if return_value:
+            body['return_value'] = return_value
+        _emit(ctx, client.post('emulation/hooks', json_data=body))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('clear-hook')
+@click.option('--address', '-a', required=True, help='Address (hex)')
+@click.pass_context
+def clear_hook(ctx, address):
+    """Clear an emulation hook at an address."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.delete(f'emulation/hooks/{validate_address(address)}'))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('list-hooks')
+@click.pass_context
+def list_hooks(ctx):
+    """List all registered emulation hooks."""
+    client = ctx.obj['client']
+    try:
+        _emit(ctx, client.get('emulation/hooks'))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
+@emulation.command('call')
+@click.option('--func', '-f', required=True, help='Function entry address or name')
+@click.option('--arg', 'int_args', multiple=True, help='Integer arg (decimal or 0xhex); repeatable')
+@click.option('--arg-bytes', 'byte_args', multiple=True,
+              help='Pointer arg: hex bytes parked in scratch, pointer passed; repeatable')
+@click.option('--convention', type=click.Choice(['sysv', 'ms']), default='sysv')
+@click.option('--trace/--no-trace', default=False)
+@click.pass_context
+def call(ctx, func, int_args, byte_args, convention, trace):
+    """Call a function using PCode emulation."""
+    client = ctx.obj['client']
+    try:
+        args = list(int_args)
+        args += [{"bytes": validate_address(b)} for b in byte_args]
+        body = {'func': func, 'convention': convention, 'trace': trace}
+        if args:
+            body['args'] = args
+        _emit(ctx, client.post('emulation/call', json_data=body))
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)
+
+
 @emulation.command('dispose')
 @click.pass_context
 def dispose(ctx):
