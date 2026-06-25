@@ -783,6 +783,7 @@ Provides access to Ghidra's analysis results.
     - `?max_depth=[int]`: Maximum path depth (default: 5, cap: 15).
     - `?max_paths=[int]`: Maximum number of paths to return (default: 50, cap: 500).
     - `?max_visited_edges=[int]`: Maximum edges explored in DFS (default: 10000, cap: 100000).
+  - `truncated` is `true` when a cap (`max_paths`, `max_depth`, or `max_visited_edges`) was reached and more paths may exist; the returned path count is always exact (the search stops at, never exceeds, `max_paths`).
   ```json
   // Example Response
   "result": {
@@ -812,7 +813,7 @@ Provides access to Ghidra's analysis results.
     - `?value=[string]`: String value to search for (required); matched as substring or regex depending on `match`.
     - `?match=[substring|regex]`: Match mode (default: substring).
     - `?caller_depth=[int]`: Reverse-call-graph depth to walk from direct users (default: 0, cap: 5).
-    - `?max_strings=[int]`: Maximum distinct strings to return (default: 200, cap: 1000).
+    - `?max_strings=[int]`: Maximum distinct strings to scan/return (default: 200, cap: 1000). `size` in the response is the matched-string total *after* this cap, so `next` links stop at the cap.
     - `?max_functions=[int]`: Maximum functions in caller chains (default: 500, cap: 5000).
     - `?offset=[int]`: Pagination offset (default: 0).
     - `?limit=[int]`: Pagination limit (default: 100).
