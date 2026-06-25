@@ -101,3 +101,46 @@ def map(ctx, address, size):
     except GhidraError as e:
         rich_echo(ctx.obj['formatter'].format_error(e), err=True)
         ctx.exit(1)
+
+
+@dynamic.command('call')
+@click.option('--func', '-f', required=True, help='Function entry address (hex)')
+@click.option('--arg', 'int_args', multiple=True, help='Integer arg (decimal or 0xhex); repeatable')
+@click.option('--arg-bytes', 'byte_args', multiple=True,
+              help='Pointer arg: hex bytes parked in scratch, pointer passed; repeatable')
+@click.option('--hook', 'hooks', multiple=True,
+              help='address:action[:retval], e.g. 0x401100:return_const:0; repeatable')
+@click.option('--convention', type=click.Choice(['sysv', 'ms']), default='sysv')
+@click.option('--count', type=int, default=1000000, help='Instruction cap')
+@click.pass_context
+def call(ctx, func, int_args, byte_args, hooks, convention, count):
+    """Call a function (set up the ABI, stub imports via --hook) and print the result.
+
+    Hooks are per-invocation: register them inline with --hook in the same call.
+    """
+    from ..dynamic.unicorn_engine import Hook, StopReason
+    try:
+        session = _make_session(ctx)
+        # Click cannot interleave two multiple=True options; ints always precede bytes-args.
+        args: list = [int(a, 0) for a in int_args]
+        args += [{"bytes": validate_address(b)} for b in byte_args]
+        for spec in hooks:
+            parts = spec.split(":")
+            if len(parts) < 2:
+                raise click.ClickException(f"bad --hook {spec!r}; want address:action[:retval]")
+            addr = int(validate_address(parts[0]), 16)
+            action = parts[1]
+            retval = int(parts[2], 16) if len(parts) > 2 else None
+            session.set_hook(addr, Hook(action=action, return_value=retval))
+        out = session.call(int(validate_address(func), 16), args, convention, count=count)
+        click.echo(f"return_value={hex(out['return_value'])} "
+                   f"stop={out['stop_reason']} convention={out['convention']}")
+        if out.get("last_error"):
+            click.echo(f"  error: {out['last_error']}")
+        if out["stop_reason"] != StopReason.DONE:
+            ctx.exit(1)
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    except GhidraError as e:
+        rich_echo(ctx.obj['formatter'].format_error(e), err=True)
+        ctx.exit(1)

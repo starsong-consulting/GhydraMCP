@@ -1,0 +1,64 @@
+"""Pure x86-64 calling-convention logic (no unicorn dependency).
+
+Arg-register order, return register, stack-arg layout, and 16-byte stack
+alignment for the high-level call() primitive. Isolated from unicorn so this
+module is importable in environments without it.
+"""
+
+SUPPORTED_CONVENTIONS = {"sysv", "ms"}
+
+_ARG_REGISTERS = {
+    "sysv": ["RDI", "RSI", "RDX", "RCX", "R8", "R9"],
+    "ms": ["RCX", "RDX", "R8", "R9"],
+}
+
+
+def _check(convention: str) -> str:
+    if convention not in SUPPORTED_CONVENTIONS:
+        raise ValueError(
+            f"unsupported calling convention: {convention!r} "
+            f"(supported: {sorted(SUPPORTED_CONVENTIONS)})")
+    return convention
+
+
+def arg_registers(convention: str) -> list[str]:
+    return list(_ARG_REGISTERS[_check(convention)])
+
+
+def return_register(convention: str) -> str:
+    _check(convention)
+    return "RAX"
+
+
+def validate_args(args: list) -> None:
+    """Reject any arg that is not an int or a {"bytes": hex} dict."""
+    for i, arg in enumerate(args):
+        if isinstance(arg, bool):
+            raise ValueError(f"arg[{i}]: bool is not a valid integer arg")
+        if isinstance(arg, int):
+            continue
+        if isinstance(arg, dict) and set(arg) == {"bytes"} and isinstance(arg["bytes"], str):
+            try:
+                bytes.fromhex(arg["bytes"])
+            except ValueError:
+                raise ValueError(
+                    f'arg[{i}]: "bytes" value is not valid hex: {arg["bytes"]!r}')
+            continue
+        raise ValueError(
+            f'arg[{i}]: only int or {{"bytes": hex}} args are supported '
+            f"(float/struct args are out of scope)")
+
+
+def aligned_call_frame(rsp: int, convention: str, n_stack_args: int) -> int:
+    """Final RSP after laying out stack args, MS shadow space (if applicable),
+    and the sentinel return address.
+
+    Guarantees callee-entry ABI alignment: rsp % 16 == 8 (the 8-byte sentinel
+    return address occupies the low 8 bytes of a 16-aligned frame). The MS ABI
+    requires 32 bytes of shadow space above RSP that the caller allocates.
+    """
+    _check(convention)
+    body = 8 * n_stack_args + (32 if convention == "ms" else 0)
+    target = rsp - body - 8           # tentative sentinel slot
+    final_rsp = target - ((target - 8) % 16)   # round down so final % 16 == 8
+    return final_rsp

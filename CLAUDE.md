@@ -24,8 +24,7 @@ It is **three components that all speak the same HATEOAS REST API**:
 1. **Java Ghidra plugin** (`src/main/java/eu/starsong/ghidra/`) — a Javalin/Jetty HTTP server
    embedded in Ghidra that exposes the program over REST. This is the source of truth.
 2. **Python CLI `ghydra`** (`ghydra/`) — Click + Rich terminal client. **The recommended path.**
-3. **Python MCP bridge** (`bridge_mcp_hydra.py`) — single-file MCP server. **Deprecated** in
-   favor of the CLI, but still maintained and must stay API-compatible with the plugin.
+3. **Python MCP bridge** (`bridge_mcp_hydra.py`) — single-file MCP server.
 
 The CLI and the bridge are two independent clients of the same HTTP API; a feature added to the
 plugin generally needs wiring into both.

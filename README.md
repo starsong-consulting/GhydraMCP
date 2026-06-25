@@ -8,7 +8,9 @@ GhydraMCP+ connects [Ghidra](https://ghidra-sre.org/) to AI assistants for rever
 
 ## Overview
 
-GhydraMCP+ has four components:
+> **Note:** According to the original repository developer, bridge (`bridge_mcp_hydra.py`) is deprecated, but from another perspective, bridge is the best solution for an AI agent. The CLI is positioned as a bridge replacement for humans and scripts, but the MCP bridge exists specifically to provide AI agents with a structured interface with types, schema, and state.
+
+GhydraMCP has four components:
 
 1. **Ghidra plugin**: exposes Ghidra over a HATEOAS REST API
 2. **CLI tool (`ghydra`)**: a standalone terminal client; human-readable tables, plus `--json` for scripting and AI tool use

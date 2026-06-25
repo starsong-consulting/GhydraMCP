@@ -56,3 +56,40 @@ def test_map_command_reports_mapped_region():
     )
     assert result.exit_code == 0
     assert "0x140070000" in result.output
+
+
+def test_call_rejects_float_arg():
+    from ghydra.cli.dynamic import call as dyn_call
+    result = CliRunner().invoke(
+        dyn_call,
+        ["--func", "0x140075000", "--arg", "1.5"],     # int("1.5", 0) -> ValueError
+        obj=_obj(),
+    )
+    assert result.exit_code != 0
+    assert "1.5" in result.output or "invalid" in result.output.lower()
+
+
+def test_call_hook_parsing_rejects_bad_action():
+    from ghydra.cli.dynamic import call as dyn_call
+    result = CliRunner().invoke(
+        dyn_call,
+        ["--func", "0x140075000", "--hook", "0x401100:explode"],
+        obj=_obj(),
+    )
+    assert result.exit_code != 0
+    assert "action" in result.output.lower() or "explode" in result.output.lower()
+
+
+def test_call_arg_bytes_leading_zero_not_corrupted():
+    from ghydra.cli.dynamic import call as dyn_call
+    result = CliRunner().invoke(
+        dyn_call,
+        ["--func", "0x140075000", "--arg-bytes", "0x0abc"],
+        obj=_obj(),
+    )
+    # Fixed: "0abc" parses cleanly -> run reaches the engine and faults fetching
+    #   the function bytes (RaisingClient) -> stop_reason LAZY_FETCH_FAILED.
+    # Old (buggy): lstrip('0x') -> "abc" (odd) -> bytes.fromhex raises before the
+    #   run -> a hex/ClickException error, NOT LAZY_FETCH_FAILED.
+    assert result.exit_code != 0
+    assert "LAZY_FETCH_FAILED" in result.output
