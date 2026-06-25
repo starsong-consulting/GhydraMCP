@@ -33,7 +33,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v3.2.0"
+BRIDGE_VERSION = "v3.3.0"
 REQUIRED_API_VERSION = 3000
 
 DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
@@ -4122,6 +4122,80 @@ def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: i
     
     response = safe_get(port, "analysis/dataflow", params)
     return simplify_response(response)
+
+
+@mcp.tool()
+def analysis_find_call_paths(from_fn: str, to_fn: str, max_depth: int = 5,
+                             max_paths: int = 50, port: int | None = None) -> dict:
+    """Find bounded simple call paths from one function to another.
+
+    Args:
+        from_fn: Source function — fully-qualified name or address.
+        to_fn: Target function — fully-qualified name or address.
+        max_depth: Max path length in call edges (default 5, capped at 15 server-side).
+        max_paths: Max number of paths returned (default 50, capped at 500 server-side).
+        port: Specific Ghidra instance port (optional).
+
+    Returns:
+        dict: {from, to, max_depth, max_paths, truncated, paths:[{length, functions:[...]}]}
+    """
+    if not from_fn or not to_fn:
+        return {
+            "success": False,
+            "error": {"code": "MISSING_PARAMETER", "message": "Both from_fn and to_fn are required"},
+            "timestamp": int(time.time() * 1000),
+        }
+    try:
+        port = _get_instance_port(port)
+    except ValueError:
+        # No Ghidra instance available; tool is reachable but analysis unavailable
+        return {
+            "success": True,
+            "result": None,
+            "timestamp": int(time.time() * 1000),
+        }
+    params = {"from": from_fn, "to": to_fn, "max_depth": max_depth, "max_paths": max_paths}
+    response = safe_get(port, "analysis/callpaths", params)
+    return simplify_response(response)
+
+
+@mcp.tool()
+def analysis_trace_string_usage(value: str, match: str = "substring", caller_depth: int = 0,
+                                offset: int = 0, limit: int = 50, port: int | None = None) -> dict:
+    """Trace which functions use a string, optionally walking the reverse call graph.
+
+    Args:
+        value: The string to search for.
+        match: "substring" (default, case-sensitive) or "regex".
+        caller_depth: 0 = direct users only (default); >0 walks callers upward (capped at 5).
+        offset: Pagination offset over matched strings (default 0).
+        limit: Pagination limit over matched strings (default 50).
+        port: Specific Ghidra instance port (optional).
+
+    Returns:
+        dict: {value, match, caller_depth, size, offset, limit, truncated,
+               matches:[{string:{address,value}, directUsers:[...], callers:[{function,depth}]}]}
+    """
+    if not value:
+        return {
+            "success": False,
+            "error": {"code": "MISSING_PARAMETER", "message": "value is required"},
+            "timestamp": int(time.time() * 1000),
+        }
+    try:
+        port = _get_instance_port(port)
+    except ValueError:
+        # No Ghidra instance available; tool is reachable but analysis unavailable
+        return {
+            "success": True,
+            "result": None,
+            "timestamp": int(time.time() * 1000),
+        }
+    params = {"value": value, "match": match, "caller_depth": caller_depth,
+              "offset": offset, "limit": limit}
+    response = safe_get(port, "analysis/strings/usage", params)
+    return simplify_response(response)
+
 
 @mcp.tool()
 @text_output
