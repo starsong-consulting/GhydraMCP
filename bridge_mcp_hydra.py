@@ -134,8 +134,89 @@ def _extract_requested_decompile_timeout(params: dict | None = None) -> int:
     except (TypeError, ValueError):
         return DEFAULT_DECOMPILATION_TIMEOUT
 
-def _make_request(method: str, port: int, endpoint: str, params: dict | None = None, 
-                 json_data: dict | None = None, data: str | None = None, 
+def _normalize_response(response, endpoint: str) -> dict:
+    """Shape a requests.Response into the bridge's response envelope.
+
+    Pure given the response object and endpoint, so the success/non-JSON/HATEOAS
+    error-reshaping branches are testable without a live Ghidra server.
+    """
+    # Successful empty-body responses (204 No Content from DELETE) are real
+    # successes, not "non-JSON response" errors.
+    if response.ok and not response.text.strip():
+        return {
+            "success": True,
+            "status_code": response.status_code,
+            "timestamp": int(time.time() * 1000)
+        }
+
+    try:
+        parsed_json = response.json()
+
+        # Add timestamp if not present
+        if isinstance(parsed_json, dict) and "timestamp" not in parsed_json:
+            parsed_json["timestamp"] = int(time.time() * 1000)
+
+        # Check for HATEOAS compliant error response format and reformat if needed
+        if not response.ok and isinstance(parsed_json, dict) and "success" in parsed_json and not parsed_json["success"]:
+            # Check if error is in the expected HATEOAS format
+            if "error" in parsed_json and not isinstance(parsed_json["error"], dict):
+                # Convert string error to the proper format
+                error_message = parsed_json["error"]
+                parsed_json["error"] = {
+                    "code": f"HTTP_{response.status_code}",
+                    "message": error_message
+                }
+
+        return parsed_json
+
+    except ValueError:
+        if response.ok:
+            return {
+                "success": False,
+                "error": {
+                    "code": "NON_JSON_RESPONSE",
+                    "message": "Received non-JSON success response from Ghidra plugin"
+                },
+                "status_code": response.status_code,
+                "response_text": response.text[:500],
+                "timestamp": int(time.time() * 1000)
+            }
+        else:
+            return {
+                "success": False,
+                "error": {
+                    "code": f"HTTP_{response.status_code}",
+                    "message": f"Non-JSON error response: {response.text[:100]}..."
+                },
+                "status_code": response.status_code,
+                "response_text": response.text[:500],
+                "timestamp": int(time.time() * 1000)
+            }
+
+
+def _timeout_error_envelope(endpoint: str, request_timeout: int, params: dict | None) -> dict:
+    """Build the REQUEST_TIMEOUT error envelope, adding a retry hint for decompiles."""
+    timeout_message = f"Request to {endpoint} timed out after {request_timeout}s."
+    if "decompile" in endpoint:
+        requested_timeout = _extract_requested_decompile_timeout(params)
+        suggested_timeout = max(requested_timeout * 2, DEFAULT_DECOMPILATION_TIMEOUT)
+        timeout_message += (
+            f" Decompilation can take longer for large functions; retry with a higher timeout "
+            f"(for example timeout={suggested_timeout}) and/or increase GHIDRA_TIMEOUT."
+        )
+    return {
+        "success": False,
+        "error": {
+            "code": "REQUEST_TIMEOUT",
+            "message": timeout_message
+        },
+        "status_code": 408,
+        "timestamp": int(time.time() * 1000)
+    }
+
+
+def _make_request(method: str, port: int, endpoint: str, params: dict | None = None,
+                 json_data: dict | None = None, data: str | None = None,
                  headers: dict | None = None) -> dict:
     """Internal helper to make HTTP requests and handle common errors."""
     url = f"{get_instance_url(port)}/{endpoint}"
@@ -185,77 +266,10 @@ def _make_request(method: str, port: int, endpoint: str, params: dict | None = N
             timeout=request_timeout
         )
 
-        # Successful empty-body responses (204 No Content from DELETE) are real
-        # successes, not "non-JSON response" errors.
-        if response.ok and not response.text.strip():
-            return {
-                "success": True,
-                "status_code": response.status_code,
-                "timestamp": int(time.time() * 1000)
-            }
-
-        try:
-            parsed_json = response.json()
-
-            # Add timestamp if not present
-            if isinstance(parsed_json, dict) and "timestamp" not in parsed_json:
-                parsed_json["timestamp"] = int(time.time() * 1000)
-                
-            # Check for HATEOAS compliant error response format and reformat if needed
-            if not response.ok and isinstance(parsed_json, dict) and "success" in parsed_json and not parsed_json["success"]:
-                # Check if error is in the expected HATEOAS format
-                if "error" in parsed_json and not isinstance(parsed_json["error"], dict):
-                    # Convert string error to the proper format
-                    error_message = parsed_json["error"]
-                    parsed_json["error"] = {
-                        "code": f"HTTP_{response.status_code}",
-                        "message": error_message
-                    }
-            
-            return parsed_json
-            
-        except ValueError:
-            if response.ok:
-                return {
-                    "success": False,
-                    "error": {
-                        "code": "NON_JSON_RESPONSE",
-                        "message": "Received non-JSON success response from Ghidra plugin"
-                    },
-                    "status_code": response.status_code,
-                    "response_text": response.text[:500],
-                    "timestamp": int(time.time() * 1000)
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": {
-                        "code": f"HTTP_{response.status_code}",
-                        "message": f"Non-JSON error response: {response.text[:100]}..."
-                    },
-                    "status_code": response.status_code,
-                    "response_text": response.text[:500],
-                    "timestamp": int(time.time() * 1000)
-                }
+        return _normalize_response(response, endpoint)
 
     except requests.exceptions.Timeout:
-        timeout_message = f"Request to {endpoint} timed out after {request_timeout}s."
-        if "decompile" in endpoint:
-            requested_timeout = _extract_requested_decompile_timeout(params)
-            suggested_timeout = max(requested_timeout * 2, DEFAULT_DECOMPILATION_TIMEOUT)
-            timeout_message += (
-                f" Decompilation can take longer for large functions; retry with a higher timeout "
-                f"(for example timeout={suggested_timeout}) and/or increase GHIDRA_TIMEOUT."
-            )
-        return {
-            "success": False,
-            "error": {
-                "code": "REQUEST_TIMEOUT",
-                "message": timeout_message
-            },
-            "status_code": 408,
-            "timestamp": int(time.time() * 1000)
-        }
+        return _timeout_error_envelope(endpoint, request_timeout, params)
     except requests.exceptions.ConnectionError:
         return {
             "success": False,
