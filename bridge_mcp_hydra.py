@@ -4125,6 +4125,7 @@ def analysis_get_dataflow(address: str, direction: str = "forward", max_steps: i
 
 
 @mcp.tool()
+@text_output
 def analysis_find_call_paths(from_fn: str, to_fn: str, max_depth: int = 5,
                              max_paths: int = 50, port: int | None = None) -> dict:
     """Find bounded simple call paths from one function to another.
@@ -4145,21 +4146,14 @@ def analysis_find_call_paths(from_fn: str, to_fn: str, max_depth: int = 5,
             "error": {"code": "MISSING_PARAMETER", "message": "Both from_fn and to_fn are required"},
             "timestamp": int(time.time() * 1000),
         }
-    try:
-        port = _get_instance_port(port)
-    except ValueError:
-        # No Ghidra instance available; tool is reachable but analysis unavailable
-        return {
-            "success": True,
-            "result": None,
-            "timestamp": int(time.time() * 1000),
-        }
+    port = _get_instance_port(port)
     params = {"from": from_fn, "to": to_fn, "max_depth": max_depth, "max_paths": max_paths}
     response = safe_get(port, "analysis/callpaths", params)
     return simplify_response(response)
 
 
 @mcp.tool()
+@text_output
 def analysis_trace_string_usage(value: str, match: str = "substring", caller_depth: int = 0,
                                 offset: int = 0, limit: int = 50, port: int | None = None) -> dict:
     """Trace which functions use a string, optionally walking the reverse call graph.
@@ -4182,15 +4176,7 @@ def analysis_trace_string_usage(value: str, match: str = "substring", caller_dep
             "error": {"code": "MISSING_PARAMETER", "message": "value is required"},
             "timestamp": int(time.time() * 1000),
         }
-    try:
-        port = _get_instance_port(port)
-    except ValueError:
-        # No Ghidra instance available; tool is reachable but analysis unavailable
-        return {
-            "success": True,
-            "result": None,
-            "timestamp": int(time.time() * 1000),
-        }
+    port = _get_instance_port(port)
     params = {"value": value, "match": match, "caller_depth": caller_depth,
               "offset": offset, "limit": limit}
     response = safe_get(port, "analysis/strings/usage", params)
