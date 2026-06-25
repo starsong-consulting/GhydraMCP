@@ -122,6 +122,14 @@ class JSONFormatter(BaseFormatter):
         """Format dataflow as JSON."""
         return self._format_json(data)
 
+    def format_call_paths(self, data: Dict[str, Any]) -> str:
+        """Format call paths as JSON."""
+        return self._format_json(data)
+
+    def format_string_usage(self, data: Dict[str, Any]) -> str:
+        """Format string usage as JSON."""
+        return self._format_json(data)
+
     def format_error(self, error: Exception) -> str:
         """Format error as JSON."""
         error_dict = {

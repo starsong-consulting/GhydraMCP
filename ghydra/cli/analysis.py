@@ -152,6 +152,77 @@ def get_dataflow(ctx, address, direction, max_steps):
         ctx.exit(1)
 
 
+@analysis.command('call-paths')
+@click.option('--from', 'from_fn', required=True, help='Source function (name or address)')
+@click.option('--to', 'to_fn', required=True, help='Target function (name or address)')
+@click.option('--max-depth', type=int, default=5, help='Max path length in edges (default 5, cap 15)')
+@click.option('--max-paths', type=int, default=50, help='Max number of paths (default 50, cap 500)')
+@click.pass_context
+def call_paths(ctx, from_fn, to_fn, max_depth, max_paths):
+    """Find bounded call paths between two functions.
+
+    \b
+    Examples:
+        ghydra analysis call-paths --from main --to fopen
+        ghydra analysis call-paths --from 0x401000 --to 0x405abc --max-depth 8
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {'from': from_fn, 'to': to_fn, 'max_depth': max_depth, 'max_paths': max_paths}
+        response = client.get('analysis/callpaths', params=params)
+        if hasattr(formatter, "format_call_paths"):
+            output = formatter.format_call_paths(response)
+        else:
+            output = formatter.format_simple_result(response)
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+    except GhidraError as e:
+        rich_echo(formatter.format_error(e), err=True)
+        ctx.exit(1)
+
+
+@analysis.command('string-usage')
+@click.argument('value')
+@click.option('--match', type=click.Choice(['substring', 'regex']), default='substring',
+              help='Match mode (default substring)')
+@click.option('--caller-depth', type=int, default=0, help='Reverse-call-graph depth (default 0, cap 5)')
+@click.option('--limit', type=int, default=50, help='Page size over matched strings')
+@click.option('--offset', type=int, default=0, help='Page offset over matched strings')
+@click.pass_context
+def string_usage(ctx, value, match, caller_depth, limit, offset):
+    """Trace which functions use a string (and optionally their callers).
+
+    \b
+    Examples:
+        ghydra analysis string-usage CreateFileW
+        ghydra analysis string-usage "error: %s" --match regex --caller-depth 2
+    """
+    client = ctx.obj['client']
+    formatter = ctx.obj['formatter']
+    config = ctx.obj['config']
+
+    try:
+        params = {'value': value, 'match': match, 'caller_depth': caller_depth,
+                  'limit': limit, 'offset': offset}
+        response = client.get('analysis/strings/usage', params=params)
+        if hasattr(formatter, "format_string_usage"):
+            output = formatter.format_string_usage(response)
+        else:
+            output = formatter.format_simple_result(response)
+        if should_page(config, ctx.obj['output_json']):
+            page_output(output, use_pager=config.page_output)
+        else:
+            click.echo(output)
+    except GhidraError as e:
+        rich_echo(formatter.format_error(e), err=True)
+        ctx.exit(1)
+
+
 @analysis.command('status')
 @click.pass_context
 def status(ctx):
