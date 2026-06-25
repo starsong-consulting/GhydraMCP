@@ -815,7 +815,7 @@ Provides access to Ghidra's analysis results.
     - `?max_strings=[int]`: Maximum distinct strings to return (default: 200, cap: 1000).
     - `?max_functions=[int]`: Maximum functions in caller chains (default: 500, cap: 5000).
     - `?offset=[int]`: Pagination offset (default: 0).
-    - `?limit=[int]`: Pagination limit (default: 20).
+    - `?limit=[int]`: Pagination limit (default: 100).
   ```json
   // Example Response
   "result": {
@@ -824,7 +824,7 @@ Provides access to Ghidra's analysis results.
     "caller_depth": 2,
     "size": 5,
     "offset": 0,
-    "limit": 20,
+    "limit": 100,
     "truncated": false,
     "matches": [
       {
@@ -854,7 +854,7 @@ Provides access to Ghidra's analysis results.
   ```
   - Errors:
     - `400 BAD_REQUEST`: Missing `value` parameter, invalid `match` mode, or invalid regex pattern.
-    - `404 NOT_FOUND`: No strings match the query.
+  - No matches is not an error: the endpoint returns `200` with `size: 0` and an empty `matches` list.
 
 ### 11. Scripts (gated)
 
