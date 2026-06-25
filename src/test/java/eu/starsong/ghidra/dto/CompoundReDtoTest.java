@@ -16,6 +16,8 @@ public class CompoundReDtoTest {
         assertEquals(3, p.length());
         assertEquals(3, p.functions().size());
         assertEquals("a", p.functions().get(0).name());
+        assertThrows(UnsupportedOperationException.class,
+            () -> p.functions().add(fn("d", "0x4000")));
     }
 
     @Test
