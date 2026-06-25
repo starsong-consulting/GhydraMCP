@@ -41,6 +41,7 @@ public class AnalysisResource implements Resource {
         app.get("/analysis/status", ctx -> status(contextFactory.apply(ctx)));
         app.post("/analysis/run", ctx -> run(contextFactory.apply(ctx)));
         app.get("/analysis/dataflow", ctx -> dataflow(contextFactory.apply(ctx)));
+        app.get("/analysis/callpaths", ctx -> callPaths(contextFactory.apply(ctx)));
     }
 
     private void status(GhidraContext ctx) {
@@ -97,6 +98,26 @@ public class AnalysisResource implements Resource {
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
             .self("/analysis/dataflow?address={}&direction={}&max_steps={}", addressStr, direction, maxSteps)
             .link("program", "/program")
+            .build());
+    }
+
+    private void callPaths(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String from = ctx.queryParam("from");
+        String to = ctx.queryParam("to");
+        if (from == null || from.isEmpty() || to == null || to.isEmpty()) {
+            throw new IllegalArgumentException("Both 'from' and 'to' query parameters are required");
+        }
+        int maxDepth = Math.min(ctx.queryParamAsInt("max_depth", 5), 15);
+        int maxPaths = Math.min(ctx.queryParamAsInt("max_paths", 50), 500);
+        int maxVisitedEdges = Math.min(ctx.queryParamAsInt("max_visited_edges", 10000), 100000);
+
+        Map<String, Object> result = analysisService.findCallPaths(program, from, to, maxDepth, maxPaths, maxVisitedEdges);
+
+        ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
+            .self("/analysis/callpaths?from={}&to={}", from, to)
+            .link("from", "/functions/{}", String.valueOf(result.get("from")))
+            .link("to", "/functions/{}", String.valueOf(result.get("to")))
             .build());
     }
 

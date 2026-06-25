@@ -1,8 +1,11 @@
 package eu.starsong.ghidra.service;
 
+import eu.starsong.ghidra.dto.CallPathDto;
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import eu.starsong.ghidra.dto.XrefDto;
 import eu.starsong.ghidra.util.GhidraSwing;
+import eu.starsong.ghidra.util.GhidraUtil;
+import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 
@@ -10,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,15 +30,18 @@ public class AnalysisService {
 
     private final FunctionService functionService;
     private final XrefService xrefService;
+    private final DataService dataService;
 
     public AnalysisService() {
         this.functionService = new FunctionService();
         this.xrefService = new XrefService();
+        this.dataService = new DataService();
     }
 
-    public AnalysisService(FunctionService functionService, XrefService xrefService) {
+    public AnalysisService(FunctionService functionService, XrefService xrefService, DataService dataService) {
         this.functionService = functionService;
         this.xrefService = xrefService;
+        this.dataService = dataService;
     }
 
     /**
@@ -131,6 +138,84 @@ public class AnalysisService {
             }
             return list;
         });
+    }
+
+    /**
+     * Find bounded, simple (loop-free) call paths from one function to another.
+     * Resolves {@code from}/{@code to} by address first, then by name.
+     */
+    public Map<String, Object> findCallPaths(Program program, String from, String to,
+                                             int maxDepth, int maxPaths, int maxVisitedEdges) {
+        return GhidraSwing.runRead(() -> {
+            Function fromFn = resolveFunction(program, from);
+            Function toFn = resolveFunction(program, to);
+            String toAddr = toFn.getEntryPoint().toString();
+
+            List<CallPathDto> paths = new ArrayList<>();
+            int[] visitedEdges = {0};
+            boolean[] truncated = {false};
+
+            List<Function> current = new ArrayList<>();
+            Set<String> onPath = new HashSet<>();
+            current.add(fromFn);
+            onPath.add(fromFn.getEntryPoint().toString());
+
+            dfsCallPaths(program, fromFn, toAddr, maxDepth, maxPaths, maxVisitedEdges,
+                current, onPath, paths, visitedEdges, truncated);
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("from", fromFn.getEntryPoint().toString());
+            data.put("to", toAddr);
+            data.put("max_depth", maxDepth);
+            data.put("max_paths", maxPaths);
+            data.put("truncated", truncated[0]);
+            data.put("paths", paths);
+            return data;
+        });
+    }
+
+    private void dfsCallPaths(Program program, Function current, String toAddr,
+                              int depth, int maxPaths, int maxVisitedEdges,
+                              List<Function> path, Set<String> onPath,
+                              List<CallPathDto> paths, int[] visitedEdges, boolean[] truncated) {
+        if (current.getEntryPoint().toString().equals(toAddr)) {
+            List<eu.starsong.ghidra.dto.FunctionSummaryDto> fns = new ArrayList<>();
+            for (Function f : path) {
+                fns.add(eu.starsong.ghidra.dto.FunctionSummaryDto.from(f));
+            }
+            paths.add(CallPathDto.of(fns));
+            if (paths.size() >= maxPaths) truncated[0] = true;
+            return;
+        }
+        if (depth <= 0) return;
+
+        for (XrefDto xref : xrefService.getCallsFromFunction(program, current)) {
+            if (paths.size() >= maxPaths) { truncated[0] = true; return; }
+            if (visitedEdges[0] >= maxVisitedEdges) { truncated[0] = true; return; }
+            visitedEdges[0]++;
+
+            String calleeAddr = xref.toFunctionAddress();
+            if (calleeAddr == null || onPath.contains(calleeAddr)) continue;
+            Function callee = functionService.findByAddress(program, calleeAddr);
+            if (callee == null) continue;
+
+            onPath.add(calleeAddr);
+            path.add(callee);
+            dfsCallPaths(program, callee, toAddr, depth - 1, maxPaths, maxVisitedEdges,
+                path, onPath, paths, visitedEdges, truncated);
+            path.remove(path.size() - 1);
+            onPath.remove(calleeAddr);
+        }
+    }
+
+    /** Resolve a function by address (entry point) first, then fall back to name. */
+    private Function resolveFunction(Program program, String lookup) {
+        Address addr = GhidraUtil.resolveAddress(program, lookup);
+        if (addr != null) {
+            Function f = program.getFunctionManager().getFunctionAt(addr);
+            if (f != null) return f;
+        }
+        return functionService.requireFunctionByName(program, lookup);
     }
 
     private List<Map<String, Object>> buildCallTree(Program program, Function fn, int depth, boolean callers, Set<String> visited) {

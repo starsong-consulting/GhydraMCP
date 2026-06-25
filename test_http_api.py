@@ -840,6 +840,36 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         except Exception as e:
             self.fail(f"Data operations test failed: {str(e)}")
 
+    def test_callpaths_endpoint(self):
+        """Test the /analysis/callpaths endpoint."""
+        response = requests.get(f"{BASE_URL}/functions?limit=1")
+        if response.status_code == 404:
+            return
+        self.assertEqual(response.status_code, 200)
+        result = response.json().get("result", [])
+        if not result:
+            self.skipTest("No functions available to test callpaths")
+        func = result[0] if isinstance(result, list) else result
+        addr = func.get("address")
+        if not addr:
+            self.skipTest("No address for callpaths test")
+
+        # Trivial path: from a function to itself must succeed and contain one path.
+        response = requests.get(f"{BASE_URL}/analysis/callpaths?from={addr}&to={addr}&max_depth=3")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertStandardSuccessResponse(data)
+        result = data["result"]
+        for key in ("from", "to", "max_depth", "max_paths", "truncated", "paths"):
+            self.assertIn(key, result, f"callpaths result missing '{key}'")
+        self.assertIsInstance(result["paths"], list)
+        self.assertGreaterEqual(len(result["paths"]), 1, "self->self should yield a path")
+        self.assertEqual(result["paths"][0]["length"], len(result["paths"][0]["functions"]))
+
+        # Missing 'to' must be a 400.
+        response = requests.get(f"{BASE_URL}/analysis/callpaths?from={addr}")
+        self.assertEqual(response.status_code, 400)
+
 def test_all_read_endpoints():
     """Function to exercise all read endpoints and display their responses.
     This is called separately from the unittest framework when requested."""
