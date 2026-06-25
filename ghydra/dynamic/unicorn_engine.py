@@ -75,6 +75,7 @@ class StopReason(str, Enum):
     LAZY_CAP_REACHED = "LAZY_CAP_REACHED"
     HOOK_TRAP = "HOOK_TRAP"
     REDIRECT_STORM = "REDIRECT_STORM"
+    UNMAPPED = "UNMAPPED"
 
 
 class UnicornSession:

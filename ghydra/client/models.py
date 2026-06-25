@@ -1,7 +1,37 @@
 """Data models for GhydraMCP CLI."""
 
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Optional, Any
+
+
+class StopReason(str, Enum):
+    """Unified stop reasons across PCode and Unicorn engines."""
+    DONE = "DONE"
+    COUNT = "COUNT"
+    ERROR = "ERROR"
+    LAZY_FETCH_FAILED = "LAZY_FETCH_FAILED"
+    LAZY_CAP_REACHED = "LAZY_CAP_REACHED"
+    HOOK_TRAP = "HOOK_TRAP"
+    REDIRECT_STORM = "REDIRECT_STORM"
+    UNMAPPED = "UNMAPPED"
+    COMPLETED = "COMPLETED"
+    TARGET_REACHED = "TARGET_REACHED"
+    STEPPED = "STEPPED"
+    READY = "READY"
+    BREAKPOINT = "BREAKPOINT"
+
+
+@dataclass
+class CallResultDto:
+    """Result of a dynamic call."""
+    convention: str
+    args_passed: list[str]
+    final_registers: dict[str, str]
+    stop_reason: str
+    return_value: Optional[str] = None
+    detail: Optional[str] = None
+    mem_writes: Optional[list[dict[str, Any]]] = None
 
 
 @dataclass
