@@ -1,8 +1,12 @@
 package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.CallPathDto;
+import eu.starsong.ghidra.dto.CallerRefDto;
+import eu.starsong.ghidra.dto.DataDto;
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
+import eu.starsong.ghidra.dto.StringUsageDto;
 import eu.starsong.ghidra.dto.XrefDto;
+import eu.starsong.ghidra.server.GhydraServer.BadRequestException;
 import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
 import ghidra.program.model.address.Address;
@@ -13,9 +17,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * Service for advanced analysis operations (call graphs, callers, callees).
@@ -215,6 +222,107 @@ public class AnalysisService {
             if (f != null) return f;
         }
         return functionService.requireFunctionByName(program, lookup);
+    }
+
+    /**
+     * Trace which functions reference strings matching {@code value}, with an optional
+     * bounded walk up the reverse call graph. Paginates the matched-strings list and
+     * resolves users/callers only for the requested page; the {@code max_functions} cap
+     * is global across that page.
+     */
+    public Map<String, Object> traceStringUsage(Program program, String value, String match,
+                                                int callerDepth, int offset, int limit,
+                                                int maxStrings, int maxFunctions) {
+        final Pattern pattern;
+        if ("regex".equals(match)) {
+            try {
+                pattern = Pattern.compile(value);
+            } catch (PatternSyntaxException e) {
+                throw new BadRequestException("Invalid regex pattern: " + e.getMessage(), "INVALID_REGEX");
+            }
+        } else {
+            pattern = null;
+        }
+
+        return GhidraSwing.runRead(() -> {
+            List<DataDto> matched = new ArrayList<>();
+            boolean[] truncated = {false};
+            for (DataDto d : dataService.listStrings(program)) {
+                String v = d.value();
+                if (v == null) continue;
+                boolean hit = pattern != null ? pattern.matcher(v).find() : v.contains(value);
+                if (hit) {
+                    matched.add(d);
+                    if (matched.size() >= maxStrings) { truncated[0] = true; break; }
+                }
+            }
+
+            int total = matched.size();
+            int start = Math.max(0, Math.min(offset, total));
+            int end = Math.min(total, start + limit);
+            List<DataDto> page = start < end ? matched.subList(start, end) : Collections.emptyList();
+
+            int[] fnBudget = {maxFunctions};
+            Set<String> globalVisited = new HashSet<>();
+            List<StringUsageDto> matches = new ArrayList<>();
+            for (DataDto d : page) {
+                matches.add(resolveStringUsage(program, d, callerDepth, fnBudget, globalVisited, truncated));
+            }
+
+            Map<String, Object> data = new LinkedHashMap<>();
+            data.put("value", value);
+            data.put("match", match);
+            data.put("caller_depth", callerDepth);
+            data.put("size", total);
+            data.put("offset", offset);
+            data.put("limit", limit);
+            data.put("truncated", truncated[0]);
+            data.put("matches", matches);
+            return data;
+        });
+    }
+
+    private StringUsageDto resolveStringUsage(Program program, DataDto str, int callerDepth,
+                                              int[] fnBudget, Set<String> globalVisited, boolean[] truncated) {
+        List<FunctionSummaryDto> directUsers = new ArrayList<>();
+        Set<String> directAddrs = new LinkedHashSet<>();
+        for (XrefDto x : xrefService.getReferencesTo(program, str.address())) {
+            Function f = functionService.findContaining(program, x.fromAddress());
+            if (f == null) continue;
+            if (directAddrs.add(f.getEntryPoint().toString())) {
+                directUsers.add(FunctionSummaryDto.from(f));
+            }
+        }
+
+        List<CallerRefDto> callers = new ArrayList<>();
+        if (callerDepth > 0) {
+            Set<String> currentLevel = new LinkedHashSet<>(directAddrs);
+            int depth = 1;
+            while (depth <= callerDepth && !currentLevel.isEmpty()) {
+                Set<String> nextLevel = new LinkedHashSet<>();
+                for (String fnAddr : currentLevel) {
+                    for (XrefDto x : xrefService.getCallsTo(program, fnAddr)) {
+                        Function caller = functionService.findContaining(program, x.fromAddress());
+                        if (caller == null) continue;
+                        String ca = caller.getEntryPoint().toString();
+                        if (directAddrs.contains(ca) || globalVisited.contains(ca)) continue;
+                        if (fnBudget[0] <= 0) {
+                            truncated[0] = true;
+                            return new StringUsageDto(
+                                new StringUsageDto.StringRef(str.address(), str.value()), directUsers, callers);
+                        }
+                        globalVisited.add(ca);
+                        callers.add(new CallerRefDto(FunctionSummaryDto.from(caller), depth));
+                        fnBudget[0]--;
+                        nextLevel.add(ca);
+                    }
+                }
+                currentLevel = nextLevel;
+                depth++;
+            }
+        }
+
+        return new StringUsageDto(new StringUsageDto.StringRef(str.address(), str.value()), directUsers, callers);
     }
 
     private List<Map<String, Object>> buildCallTree(Program program, Function fn, int depth, boolean callers, Set<String> visited) {

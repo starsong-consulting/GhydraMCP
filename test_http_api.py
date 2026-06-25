@@ -870,6 +870,37 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         response = requests.get(f"{BASE_URL}/analysis/callpaths?from={addr}")
         self.assertEqual(response.status_code, 400)
 
+    def test_string_usage_endpoint(self):
+        """Test the /analysis/strings/usage endpoint."""
+        response = requests.get(f"{BASE_URL}/data/strings?limit=1")
+        if response.status_code == 404:
+            return
+        if response.status_code != 200:
+            self.skipTest("strings listing unavailable")
+        result = response.json().get("result", [])
+        if not result:
+            self.skipTest("No strings available to test string-usage")
+        sample = (result[0].get("value") or "")[:4]
+        if not sample:
+            self.skipTest("No usable string value")
+
+        # Substring match, direct users only (caller_depth defaults to 0).
+        response = requests.get(f"{BASE_URL}/analysis/strings/usage?value={sample}")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertStandardSuccessResponse(data)
+        result = data["result"]
+        for key in ("value", "match", "caller_depth", "size", "offset", "limit", "truncated", "matches"):
+            self.assertIn(key, result, f"string-usage result missing '{key}'")
+        self.assertEqual(result["match"], "substring")
+        self.assertEqual(result["caller_depth"], 0)
+        self.assertIsInstance(result["matches"], list)
+
+        # Invalid regex must be a 400 with a descriptive message.
+        response = requests.get(f"{BASE_URL}/analysis/strings/usage?value=%5B&match=regex")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("regex", response.json().get("error", {}).get("message", "").lower())
+
 def test_all_read_endpoints():
     """Function to exercise all read endpoints and display their responses.
     This is called separately from the unittest framework when requested."""

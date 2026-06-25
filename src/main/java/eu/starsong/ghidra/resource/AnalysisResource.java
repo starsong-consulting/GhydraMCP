@@ -15,6 +15,8 @@ import ghidra.util.task.TaskMonitor;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 /**
@@ -42,6 +44,7 @@ public class AnalysisResource implements Resource {
         app.post("/analysis/run", ctx -> run(contextFactory.apply(ctx)));
         app.get("/analysis/dataflow", ctx -> dataflow(contextFactory.apply(ctx)));
         app.get("/analysis/callpaths", ctx -> callPaths(contextFactory.apply(ctx)));
+        app.get("/analysis/strings/usage", ctx -> stringUsage(contextFactory.apply(ctx)));
     }
 
     private void status(GhidraContext ctx) {
@@ -119,6 +122,42 @@ public class AnalysisResource implements Resource {
             .link("from", "/functions/{}", String.valueOf(result.get("from")))
             .link("to", "/functions/{}", String.valueOf(result.get("to")))
             .build());
+    }
+
+    private void stringUsage(GhidraContext ctx) {
+        var program = ctx.requireProgram();
+        String value = ctx.queryParam("value");
+        if (value == null || value.isEmpty()) {
+            throw new IllegalArgumentException("'value' query parameter is required");
+        }
+        String match = ctx.queryParam("match", "substring");
+        if (!"substring".equals(match) && !"regex".equals(match)) {
+            throw new IllegalArgumentException("match must be 'substring' or 'regex'");
+        }
+        int callerDepth = Math.min(Math.max(ctx.queryParamAsInt("caller_depth", 0), 0), 5);
+        int maxStrings = Math.min(ctx.queryParamAsInt("max_strings", 200), 1000);
+        int maxFunctions = Math.min(ctx.queryParamAsInt("max_functions", 500), 5000);
+        var pg = ctx.pagination();
+
+        Map<String, Object> result = analysisService.traceStringUsage(
+            program, value, match, callerDepth, pg.offset(), pg.limit(), maxStrings, maxFunctions);
+
+        int total = (int) result.get("size");
+        int offset = (int) result.get("offset");
+        int limit = (int) result.get("limit");
+        String enc = URLEncoder.encode(value, StandardCharsets.UTF_8);
+        String base = String.format("/analysis/strings/usage?value=%s&match=%s&caller_depth=%d", enc, match, callerDepth);
+
+        Response resp = Response.ok(ctx.ctx(), ctx.port(), result)
+            .self(base + "&offset=" + offset + "&limit=" + limit)
+            .link("program", "/program");
+        if (offset + limit < total) {
+            resp.link("next", base + "&offset=" + (offset + limit) + "&limit=" + limit);
+        }
+        if (offset > 0) {
+            resp.link("prev", base + "&offset=" + Math.max(0, offset - limit) + "&limit=" + limit);
+        }
+        ctx.json(resp.build());
     }
 
     private static class RunRequest {
