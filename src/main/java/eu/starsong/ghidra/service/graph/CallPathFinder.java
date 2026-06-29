@@ -6,6 +6,7 @@ import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -21,6 +22,11 @@ public final class CallPathFinder {
     }
 
     public Result find(String fromEntry, String toEntry, int maxDepth, int maxPaths, int maxVisitedEdges) {
+        Objects.requireNonNull(fromEntry, "fromEntry");
+        Objects.requireNonNull(toEntry, "toEntry");
+        if (maxPaths < 1) throw new IllegalArgumentException("maxPaths must be >= 1, got " + maxPaths);
+        if (maxDepth < 0) throw new IllegalArgumentException("maxDepth must be >= 0, got " + maxDepth);
+        if (maxVisitedEdges < 1) throw new IllegalArgumentException("maxVisitedEdges must be >= 1, got " + maxVisitedEdges);
         List<CallPathDto> paths = new ArrayList<>();
         int[] visitedEdges = {0};
         int[] unresolvedEdges = {0};

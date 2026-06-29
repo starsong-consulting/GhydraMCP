@@ -102,4 +102,18 @@ public class CallPathFinderTest {
         assertEquals(3, r.paths().get(0).length());
         assertEquals(0, r.unresolvedEdges());
     }
+    @Test(expected = IllegalArgumentException.class)
+    public void maxPathsZeroThrows() {
+        finder(new FakeCallGraph()).find("0x1000", "0x2000", 5, 0, 10000);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void maxVisitedEdgesZeroThrows() {
+        finder(new FakeCallGraph()).find("0x1000", "0x2000", 5, 50, 0);
+    }
+
+    @Test(expected = NullPointerException.class)
+    public void nullFromEntryThrows() {
+        finder(new FakeCallGraph()).find(null, "0x2000", 5, 50, 10000);
+    }
 }
