@@ -1,14 +1,18 @@
 package eu.starsong.ghidra.service;
 
 import eu.starsong.ghidra.dto.CallPathDto;
-import eu.starsong.ghidra.dto.CallerRefDto;
 import eu.starsong.ghidra.dto.DataDto;
 import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import eu.starsong.ghidra.dto.StringUsageDto;
 import eu.starsong.ghidra.dto.XrefDto;
 import eu.starsong.ghidra.server.GhydraServer.BadRequestException;
+import eu.starsong.ghidra.service.graph.CallGraph;
+import eu.starsong.ghidra.service.graph.CallPathFinder;
+import eu.starsong.ghidra.service.graph.GhidraCallGraph;
+import eu.starsong.ghidra.service.graph.StringUsageWalker;
 import eu.starsong.ghidra.util.GhidraSwing;
 import eu.starsong.ghidra.util.GhidraUtil;
+import eu.starsong.ghidra.util.Page;
 import ghidra.program.model.address.Address;
 import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
@@ -17,7 +21,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -161,70 +164,23 @@ public class AnalysisService {
         return GhidraSwing.runRead(() -> {
             Function fromFn = resolveFunction(program, from);
             Function toFn = resolveFunction(program, to);
-            String toAddr = toFn.getEntryPoint().toString();
+            String fromEntry = fromFn.getEntryPoint().toString();
+            String toEntry = toFn.getEntryPoint().toString();
 
-            List<CallPathDto> paths = new ArrayList<>();
-            int[] visitedEdges = {0};
-            int[] unresolvedEdges = {0};
-            boolean[] truncated = {false};
-
-            List<Function> current = new ArrayList<>();
-            Set<String> onPath = new HashSet<>();
-            current.add(fromFn);
-            onPath.add(fromFn.getEntryPoint().toString());
-
-            dfsCallPaths(program, fromFn, toAddr, maxDepth, maxPaths, maxVisitedEdges,
-                current, onPath, paths, visitedEdges, unresolvedEdges, truncated);
+            CallGraph graph = new GhidraCallGraph(program, functionService, xrefService);
+            CallPathFinder.Result r =
+                new CallPathFinder(graph).find(fromEntry, toEntry, maxDepth, maxPaths, maxVisitedEdges);
 
             Map<String, Object> data = new LinkedHashMap<>();
-            data.put("from", fromFn.getEntryPoint().toString());
-            data.put("to", toAddr);
+            data.put("from", fromEntry);
+            data.put("to", toEntry);
             data.put("max_depth", maxDepth);
             data.put("max_paths", maxPaths);
-            data.put("truncated", truncated[0]);
-            data.put("unresolved_edges", unresolvedEdges[0]);
-            data.put("paths", paths);
+            data.put("truncated", r.truncated());
+            data.put("unresolved_edges", r.unresolvedEdges());
+            data.put("paths", r.paths());
             return data;
         });
-    }
-
-    private void dfsCallPaths(Program program, Function current, String toAddr,
-                              int depth, int maxPaths, int maxVisitedEdges,
-                              List<Function> path, Set<String> onPath,
-                              List<CallPathDto> paths, int[] visitedEdges,
-                              int[] unresolvedEdges, boolean[] truncated) {
-        if (current.getEntryPoint().toString().equals(toAddr)) {
-            List<FunctionSummaryDto> fns = new ArrayList<>();
-            for (Function f : path) {
-                fns.add(FunctionSummaryDto.from(f));
-            }
-            paths.add(CallPathDto.of(fns));
-            if (paths.size() >= maxPaths) truncated[0] = true;
-            return;
-        }
-        if (depth <= 0) return;
-
-        for (XrefDto xref : xrefService.getCallsFromFunction(program, current)) {
-            if (paths.size() >= maxPaths) { truncated[0] = true; return; }
-            if (visitedEdges[0] >= maxVisitedEdges) { truncated[0] = true; return; }
-            visitedEdges[0]++;
-
-            String calleeAddr = xref.toFunctionAddress();
-            // A call edge whose target is not a defined function entry point (thunk/PLT,
-            // indirect/computed call, non-entry target) cannot be traversed — count it as
-            // lost rather than silently dropping it, so a negative result is trustworthy.
-            if (calleeAddr == null) { unresolvedEdges[0]++; continue; }
-            if (onPath.contains(calleeAddr)) continue;  // cycle: expected, not lost
-            Function callee = functionService.findByAddress(program, calleeAddr);
-            if (callee == null) { unresolvedEdges[0]++; continue; }
-
-            onPath.add(calleeAddr);
-            path.add(callee);
-            dfsCallPaths(program, callee, toAddr, depth - 1, maxPaths, maxVisitedEdges,
-                path, onPath, paths, visitedEdges, unresolvedEdges, truncated);
-            path.remove(path.size() - 1);
-            onPath.remove(calleeAddr);
-        }
     }
 
     /** Resolve a function by address (entry point) first, then fall back to name. */
@@ -263,30 +219,29 @@ public class AnalysisService {
         }
 
         return GhidraSwing.runRead(() -> {
-            List<DataDto> matched = new ArrayList<>();
+            List<StringUsageDto.StringRef> matched = new ArrayList<>();
             boolean[] truncated = {false};
             for (DataDto d : dataService.listStrings(program)) {
                 String v = d.value();
                 if (v == null) continue;
                 boolean hit = pattern != null ? pattern.matcher(v).find() : v.contains(value);
                 if (hit) {
-                    matched.add(d);
+                    matched.add(StringUsageDto.StringRef.from(d));
                     if (matched.size() >= maxStrings) { truncated[0] = true; break; }
                 }
             }
 
             int total = matched.size();
-            int start = Math.max(0, Math.min(offset, total));
-            int end = Math.min(total, start + limit);
-            List<DataDto> page = start < end ? matched.subList(start, end) : Collections.emptyList();
+            List<StringUsageDto.StringRef> page = Page.slice(matched, offset, limit);
 
+            CallGraph graph = new GhidraCallGraph(program, functionService, xrefService);
+            StringUsageWalker walker = new StringUsageWalker(graph);
             int[] fnBudget = {maxFunctions};
             int[] unresolvedRefs = {0};
             Set<String> globalVisited = new HashSet<>();
             List<StringUsageDto> matches = new ArrayList<>();
-            for (DataDto d : page) {
-                matches.add(resolveStringUsage(program, d, callerDepth, fnBudget, globalVisited,
-                    unresolvedRefs, truncated));
+            for (StringUsageDto.StringRef ref : page) {
+                matches.add(walker.resolve(ref, callerDepth, fnBudget, globalVisited, unresolvedRefs, truncated));
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -301,50 +256,6 @@ public class AnalysisService {
             data.put("matches", matches);
             return data;
         });
-    }
-
-    private StringUsageDto resolveStringUsage(Program program, DataDto str, int callerDepth,
-                                              int[] fnBudget, Set<String> globalVisited,
-                                              int[] unresolvedRefs, boolean[] truncated) {
-        List<FunctionSummaryDto> directUsers = new ArrayList<>();
-        Set<String> directAddrs = new LinkedHashSet<>();
-        for (XrefDto x : xrefService.getReferencesTo(program, str.address())) {
-            Function f = functionService.findContaining(program, x.fromAddress());
-            if (f == null) { unresolvedRefs[0]++; continue; }
-            if (directAddrs.add(f.getEntryPoint().toString())) {
-                directUsers.add(FunctionSummaryDto.from(f));
-            }
-        }
-
-        List<CallerRefDto> callers = new ArrayList<>();
-        if (callerDepth > 0) {
-            Set<String> currentLevel = new LinkedHashSet<>(directAddrs);
-            int depth = 1;
-            while (depth <= callerDepth && !currentLevel.isEmpty()) {
-                Set<String> nextLevel = new LinkedHashSet<>();
-                for (String fnAddr : currentLevel) {
-                    for (XrefDto x : xrefService.getCallsTo(program, fnAddr)) {
-                        Function caller = functionService.findContaining(program, x.fromAddress());
-                        if (caller == null) { unresolvedRefs[0]++; continue; }
-                        String ca = caller.getEntryPoint().toString();
-                        if (directAddrs.contains(ca) || globalVisited.contains(ca)) continue;
-                        if (fnBudget[0] <= 0) {
-                            truncated[0] = true;
-                            return new StringUsageDto(
-                                StringUsageDto.StringRef.from(str), directUsers, callers);
-                        }
-                        globalVisited.add(ca);
-                        callers.add(new CallerRefDto(FunctionSummaryDto.from(caller), depth));
-                        fnBudget[0]--;
-                        nextLevel.add(ca);
-                    }
-                }
-                currentLevel = nextLevel;
-                depth++;
-            }
-        }
-
-        return new StringUsageDto(StringUsageDto.StringRef.from(str), directUsers, callers);
     }
 
     private List<Map<String, Object>> buildCallTree(Program program, Function fn, int depth, boolean callers, Set<String> visited) {
