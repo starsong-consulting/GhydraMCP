@@ -63,13 +63,12 @@ def _string_usage_response(matches=None, truncated=False, unresolved=0):
 
 def test_format_call_paths_no_paths_clean():
     out = b.format_call_paths(_call_paths_response())
-    assert "No paths found" in out
-    assert "main" in out and "target" in out
+    assert out == "No paths found from main to target."
 
 
 def test_format_call_paths_no_paths_with_unresolved_hints():
     out = b.format_call_paths(_call_paths_response(unresolved=3))
-    assert "unresolved" in out.lower()
+    assert out == "No paths found from main to target. (some edges unresolved — may still be reachable)"
 
 
 def test_format_call_paths_renders_path_chain():
@@ -78,19 +77,18 @@ def test_format_call_paths_renders_path_chain():
         {"name": "target", "address": "0x2000"},
     ]}]
     out = b.format_call_paths(_call_paths_response(paths=paths))
-    assert "main" in out and "target" in out
-    assert "Path 1" in out
+    assert out == "Call paths: main -> target (1 path(s))\n\n  Path 1 (2 hops): main -> target"
 
 
 def test_format_call_paths_truncated_flag_shown():
     paths = [{"length": 1, "functions": [{"name": "main", "address": "0x1000"}]}]
     out = b.format_call_paths(_call_paths_response(paths=paths, truncated=True))
-    assert "truncated" in out.lower()
+    assert out == "Call paths: main -> target (1 path(s)) [truncated]\n\n  Path 1 (1 hops): main"
 
 
 def test_format_string_usage_no_matches():
     out = b.format_string_usage(_string_usage_response())
-    assert "No strings" in out
+    assert out == 'No strings matching "CreateFileW" found.'
 
 
 def test_format_string_usage_renders_direct_users():
@@ -100,8 +98,7 @@ def test_format_string_usage_renders_direct_users():
         "callers": [],
     }]
     out = b.format_string_usage(_string_usage_response(matches=matches))
-    assert "0x8000" in out
-    assert "open_file" in out
+    assert out == 'String usage: "CreateFileW" — 1 match(es)\n\n  0x8000  \'CreateFileW\'\n    used by: open_file'
 
 
 def test_format_string_usage_renders_callers_with_depth():
@@ -111,8 +108,7 @@ def test_format_string_usage_renders_callers_with_depth():
         "callers": [{"function": {"name": "do_thing", "address": "0x2000"}, "depth": 1}],
     }]
     out = b.format_string_usage(_string_usage_response(matches=matches))
-    assert "do_thing" in out
-    assert "depth 1" in out
+    assert out == 'String usage: "CreateFileW" — 1 match(es)\n\n  0x8000  \'CreateFileW\'\n    used by: open_file\n    caller (depth 1): do_thing'
 
 
 def test_find_call_paths_rejects_max_depth_zero():

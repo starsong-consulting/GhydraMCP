@@ -1352,11 +1352,11 @@ def simplify_response(response: dict) -> dict:
     - Preserves important metadata
     - Converts structured data like disassembly to text for easier consumption
     """
-    if not isinstance(response, dict):
+    if not isinstance(response, dict) and not hasattr(response, "copy"):
         return response
 
     # Make a copy to avoid modifying the original
-    result = response.copy()
+    result = response.copy() if hasattr(response, "copy") else dict(response)
     
     # Store API response metadata
     api_metadata = {}
@@ -1370,7 +1370,7 @@ def simplify_response(response: dict) -> dict:
         if isinstance(result["result"], list):
             simplified_items = []
             for item in result["result"]:
-                if isinstance(item, dict):
+                if hasattr(item, "copy") and hasattr(item, "pop"):
                     # Store but remove HATEOAS links from individual items
                     item_copy = item.copy()
                     links = item_copy.pop("_links", None)
@@ -1388,7 +1388,7 @@ def simplify_response(response: dict) -> dict:
             result["result"] = simplified_items
         
         # Handle object results
-        elif isinstance(result["result"], dict):
+        elif hasattr(result["result"], "copy") and hasattr(result["result"], "pop"):
             result_copy = result["result"].copy()
             
             # Store but remove links from result object
