@@ -117,8 +117,13 @@ public class AnalysisResource implements Resource {
 
         Map<String, Object> result = analysisService.findCallPaths(program, from, to, maxDepth, maxPaths, maxVisitedEdges);
 
+        // URL-encode from/to: per the FQN convention they may contain '::', '&', '?', '+' or
+        // spaces, which would otherwise produce a malformed/ambiguous self link.
+        String encFrom = URLEncoder.encode(from, StandardCharsets.UTF_8);
+        String encTo = URLEncoder.encode(to, StandardCharsets.UTF_8);
         ctx.json(Response.ok(ctx.ctx(), ctx.port(), result)
-            .self("/analysis/callpaths?from={}&to={}&max_depth={}&max_paths={}", from, to, maxDepth, maxPaths)
+            .self("/analysis/callpaths?from=" + encFrom + "&to=" + encTo
+                + "&max_depth=" + maxDepth + "&max_paths=" + maxPaths)
             .link("from", "/functions/{}", String.valueOf(result.get("from")))
             .link("to", "/functions/{}", String.valueOf(result.get("to")))
             .build());

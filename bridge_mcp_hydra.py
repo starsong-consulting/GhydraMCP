@@ -33,7 +33,7 @@ DEFAULT_GHIDRA_HOST = "localhost"
 QUICK_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+10)
 FULL_DISCOVERY_RANGE = range(DEFAULT_GHIDRA_PORT, DEFAULT_GHIDRA_PORT+20)
 
-BRIDGE_VERSION = "v3.3.0"
+BRIDGE_VERSION = "v3.3.1"
 REQUIRED_API_VERSION = 3000
 
 DEFAULT_TIMEOUT = int(os.environ.get("GHIDRA_TIMEOUT", "900"))
@@ -4152,7 +4152,10 @@ def analysis_find_call_paths(from_fn: str, to_fn: str, max_depth: int = 5,
         port: Specific Ghidra instance port (optional).
 
     Returns:
-        dict: {from, to, max_depth, max_paths, truncated, paths:[{length, functions:[...]}]}
+        dict: {from, to, max_depth, max_paths, truncated, unresolved_edges,
+               paths:[{length, functions:[...]}]}. unresolved_edges > 0 means the walk
+               could not traverse some call edges (thunks/indirect calls), so an empty
+               paths list does not prove from cannot reach to.
     """
     if not from_fn or not to_fn:
         return {
@@ -4181,8 +4184,10 @@ def analysis_trace_string_usage(value: str, match: str = "substring", caller_dep
         port: Specific Ghidra instance port (optional).
 
     Returns:
-        dict: {value, match, caller_depth, size, offset, limit, truncated,
-               matches:[{string:{address,value}, directUsers:[...], callers:[{function,depth}]}]}
+        dict: {value, match, caller_depth, size, offset, limit, truncated, unresolved_refs,
+               matches:[{string:{address,value}, directUsers:[...], callers:[{function,depth}]}]}.
+               unresolved_refs > 0 means some references came from outside a defined function,
+               so directUsers/callers under-report who touches the string.
     """
     if not value:
         return {

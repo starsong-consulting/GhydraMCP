@@ -149,6 +149,12 @@ public class AnalysisService {
     /**
      * Find bounded, simple (loop-free) call paths from one function to another.
      * Resolves {@code from}/{@code to} by address first, then by name.
+     *
+     * <p>{@code unresolved_edges} counts call edges the walk could not traverse — targets
+     * outside a defined function (thunks/PLT stubs, indirect/computed calls) or non-entry-point
+     * targets. A non-zero value means the search was lossy: an empty {@code paths} with
+     * {@code unresolved_edges > 0} does not prove {@code from} cannot reach {@code to}. Cycle
+     * skips (revisiting a node already on the current path) are expected and are NOT counted.
      */
     public Map<String, Object> findCallPaths(Program program, String from, String to,
                                              int maxDepth, int maxPaths, int maxVisitedEdges) {
@@ -159,6 +165,7 @@ public class AnalysisService {
 
             List<CallPathDto> paths = new ArrayList<>();
             int[] visitedEdges = {0};
+            int[] unresolvedEdges = {0};
             boolean[] truncated = {false};
 
             List<Function> current = new ArrayList<>();
@@ -167,7 +174,7 @@ public class AnalysisService {
             onPath.add(fromFn.getEntryPoint().toString());
 
             dfsCallPaths(program, fromFn, toAddr, maxDepth, maxPaths, maxVisitedEdges,
-                current, onPath, paths, visitedEdges, truncated);
+                current, onPath, paths, visitedEdges, unresolvedEdges, truncated);
 
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("from", fromFn.getEntryPoint().toString());
@@ -175,6 +182,7 @@ public class AnalysisService {
             data.put("max_depth", maxDepth);
             data.put("max_paths", maxPaths);
             data.put("truncated", truncated[0]);
+            data.put("unresolved_edges", unresolvedEdges[0]);
             data.put("paths", paths);
             return data;
         });
@@ -183,7 +191,8 @@ public class AnalysisService {
     private void dfsCallPaths(Program program, Function current, String toAddr,
                               int depth, int maxPaths, int maxVisitedEdges,
                               List<Function> path, Set<String> onPath,
-                              List<CallPathDto> paths, int[] visitedEdges, boolean[] truncated) {
+                              List<CallPathDto> paths, int[] visitedEdges,
+                              int[] unresolvedEdges, boolean[] truncated) {
         if (current.getEntryPoint().toString().equals(toAddr)) {
             List<FunctionSummaryDto> fns = new ArrayList<>();
             for (Function f : path) {
@@ -201,14 +210,18 @@ public class AnalysisService {
             visitedEdges[0]++;
 
             String calleeAddr = xref.toFunctionAddress();
-            if (calleeAddr == null || onPath.contains(calleeAddr)) continue;
+            // A call edge whose target is not a defined function entry point (thunk/PLT,
+            // indirect/computed call, non-entry target) cannot be traversed — count it as
+            // lost rather than silently dropping it, so a negative result is trustworthy.
+            if (calleeAddr == null) { unresolvedEdges[0]++; continue; }
+            if (onPath.contains(calleeAddr)) continue;  // cycle: expected, not lost
             Function callee = functionService.findByAddress(program, calleeAddr);
-            if (callee == null) continue;
+            if (callee == null) { unresolvedEdges[0]++; continue; }
 
             onPath.add(calleeAddr);
             path.add(callee);
             dfsCallPaths(program, callee, toAddr, depth - 1, maxPaths, maxVisitedEdges,
-                path, onPath, paths, visitedEdges, truncated);
+                path, onPath, paths, visitedEdges, unresolvedEdges, truncated);
             path.remove(path.size() - 1);
             onPath.remove(calleeAddr);
         }
@@ -229,6 +242,11 @@ public class AnalysisService {
      * bounded walk up the reverse call graph. Paginates the matched-strings list and
      * resolves users/callers only for the requested page; the {@code max_functions} cap
      * is global across that page.
+     *
+     * <p>{@code unresolved_refs} counts references (direct or caller) whose source address
+     * is not inside a defined function (data-region references, undisassembled code, jump
+     * tables) and so could not be attributed to a function. A non-zero value means
+     * {@code directUsers}/{@code callers} under-report who touches the string.
      */
     public Map<String, Object> traceStringUsage(Program program, String value, String match,
                                                 int callerDepth, int offset, int limit,
@@ -263,10 +281,12 @@ public class AnalysisService {
             List<DataDto> page = start < end ? matched.subList(start, end) : Collections.emptyList();
 
             int[] fnBudget = {maxFunctions};
+            int[] unresolvedRefs = {0};
             Set<String> globalVisited = new HashSet<>();
             List<StringUsageDto> matches = new ArrayList<>();
             for (DataDto d : page) {
-                matches.add(resolveStringUsage(program, d, callerDepth, fnBudget, globalVisited, truncated));
+                matches.add(resolveStringUsage(program, d, callerDepth, fnBudget, globalVisited,
+                    unresolvedRefs, truncated));
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -277,18 +297,20 @@ public class AnalysisService {
             data.put("offset", offset);
             data.put("limit", limit);
             data.put("truncated", truncated[0]);
+            data.put("unresolved_refs", unresolvedRefs[0]);
             data.put("matches", matches);
             return data;
         });
     }
 
     private StringUsageDto resolveStringUsage(Program program, DataDto str, int callerDepth,
-                                              int[] fnBudget, Set<String> globalVisited, boolean[] truncated) {
+                                              int[] fnBudget, Set<String> globalVisited,
+                                              int[] unresolvedRefs, boolean[] truncated) {
         List<FunctionSummaryDto> directUsers = new ArrayList<>();
         Set<String> directAddrs = new LinkedHashSet<>();
         for (XrefDto x : xrefService.getReferencesTo(program, str.address())) {
             Function f = functionService.findContaining(program, x.fromAddress());
-            if (f == null) continue;
+            if (f == null) { unresolvedRefs[0]++; continue; }
             if (directAddrs.add(f.getEntryPoint().toString())) {
                 directUsers.add(FunctionSummaryDto.from(f));
             }
@@ -303,13 +325,13 @@ public class AnalysisService {
                 for (String fnAddr : currentLevel) {
                     for (XrefDto x : xrefService.getCallsTo(program, fnAddr)) {
                         Function caller = functionService.findContaining(program, x.fromAddress());
-                        if (caller == null) continue;
+                        if (caller == null) { unresolvedRefs[0]++; continue; }
                         String ca = caller.getEntryPoint().toString();
                         if (directAddrs.contains(ca) || globalVisited.contains(ca)) continue;
                         if (fnBudget[0] <= 0) {
                             truncated[0] = true;
                             return new StringUsageDto(
-                                new StringUsageDto.StringRef(str.address(), str.value()), directUsers, callers);
+                                StringUsageDto.StringRef.from(str), directUsers, callers);
                         }
                         globalVisited.add(ca);
                         callers.add(new CallerRefDto(FunctionSummaryDto.from(caller), depth));
@@ -322,7 +344,7 @@ public class AnalysisService {
             }
         }
 
-        return new StringUsageDto(new StringUsageDto.StringRef(str.address(), str.value()), directUsers, callers);
+        return new StringUsageDto(StringUsageDto.StringRef.from(str), directUsers, callers);
     }
 
     private List<Map<String, Object>> buildCallTree(Program program, Function fn, int depth, boolean callers, Set<String> visited) {

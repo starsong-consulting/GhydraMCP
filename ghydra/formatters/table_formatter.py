@@ -688,10 +688,12 @@ class TableFormatter(BaseFormatter):
             return self._capture("[yellow]No call path data available[/yellow]")
 
         paths = result.get("paths", []) or []
+        unresolved = result.get("unresolved_edges", 0) or 0
         header = self._capture(
             f"[cyan]Call paths[/cyan] {result.get('from', '?')} -> {result.get('to', '?')} "
             f"({len(paths)} found"
-            + (", truncated" if result.get("truncated") else "") + ")"
+            + (", truncated" if result.get("truncated") else "")
+            + (f", {unresolved} unresolved edges" if unresolved else "") + ")"
         )
         if not paths:
             return f"{header}\n" + self._capture("[yellow]No paths found[/yellow]")
@@ -713,11 +715,13 @@ class TableFormatter(BaseFormatter):
             return self._capture("[yellow]No string usage data available[/yellow]")
 
         matches = result.get("matches", []) or []
+        unresolved = result.get("unresolved_refs", 0) or 0
         header = self._capture(
             f"[cyan]String usage[/cyan] value={result.get('value', '?')} "
             f"match={result.get('match', '?')} caller_depth={result.get('caller_depth', 0)} "
             f"(size={result.get('size', 0)}"
-            + (", truncated" if result.get("truncated") else "") + ")"
+            + (", truncated" if result.get("truncated") else "")
+            + (f", {unresolved} unresolved refs" if unresolved else "") + ")"
         )
         if not matches:
             return f"{header}\n" + self._capture("[yellow]No matches[/yellow]")

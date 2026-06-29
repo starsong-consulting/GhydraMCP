@@ -783,23 +783,27 @@ Provides access to Ghidra's analysis results.
     - `?max_depth=[int]`: Maximum path depth (default: 5, cap: 15).
     - `?max_paths=[int]`: Maximum number of paths to return (default: 50, cap: 500).
     - `?max_visited_edges=[int]`: Maximum edges explored in DFS (default: 10000, cap: 100000).
-  - `truncated` is `true` when a cap (`max_paths`, `max_depth`, or `max_visited_edges`) was reached and more paths may exist; the returned path count is always exact (the search stops at, never exceeds, `max_paths`).
+  - `truncated` is `true` when the `max_paths` or `max_visited_edges` cap was reached and more paths may exist; the returned path count is always exact (the search stops at, never exceeds, `max_paths`). Note `max_depth` alone does **not** set `truncated`: paths beyond the depth limit are pruned silently.
+  - `unresolved_edges` counts call edges the walk could not traverse (targets outside a defined function: thunks/PLT stubs, indirect/computed calls, or non-entry-point targets). When this is `> 0` the search was lossy — an empty `paths` with `unresolved_edges > 0` does **not** prove `from` cannot reach `to`. Cycle skips are expected and are not counted.
+  - `from`/`to` echo the resolved entry-point addresses of the matched functions, not the raw lookup strings.
+  - `functions` is an array of function-summary objects (`{name, address, signature, returnType, isExternal, isThunk, parameterCount}`), not bare names.
   ```json
   // Example Response
   "result": {
-    "from": "main",
-    "to": "fopen",
+    "from": "0x401000",
+    "to": "0x401abc",
     "max_depth": 5,
     "max_paths": 50,
     "truncated": false,
+    "unresolved_edges": 0,
     "paths": [
       {
         "length": 3,
-        "functions": ["main", "open_file", "fopen"]
-      },
-      {
-        "length": 4,
-        "functions": ["main", "init", "load_config", "fopen"]
+        "functions": [
+          {"name": "main", "address": "0x401000", "signature": "int main(void)", "returnType": "int", "isExternal": false, "isThunk": false, "parameterCount": 0},
+          {"name": "open_file", "address": "0x401300", "signature": "FILE * open_file(char *)", "returnType": "FILE *", "isExternal": false, "isThunk": false, "parameterCount": 1},
+          {"name": "fopen", "address": "0x401abc", "signature": "FILE * fopen(char *, char *)", "returnType": "FILE *", "isExternal": true, "isThunk": false, "parameterCount": 2}
+        ]
       }
     ]
   }
@@ -817,6 +821,8 @@ Provides access to Ghidra's analysis results.
     - `?max_functions=[int]`: Maximum functions in caller chains (default: 500, cap: 5000).
     - `?offset=[int]`: Pagination offset (default: 0).
     - `?limit=[int]`: Pagination limit (default: 100).
+  - `unresolved_refs` counts references (direct or caller) whose source address is not inside a defined function (data-region references, undisassembled code, jump tables) and so could not be attributed to a function. When `> 0`, `directUsers`/`callers` under-report who touches the string.
+  - `directUsers` and `callers[].function` are function-summary objects (`{name, address, signature, returnType, isExternal, isThunk, parameterCount}`), not bare names.
   ```json
   // Example Response
   "result": {
@@ -827,6 +833,7 @@ Provides access to Ghidra's analysis results.
     "offset": 0,
     "limit": 100,
     "truncated": false,
+    "unresolved_refs": 0,
     "matches": [
       {
         "string": {
@@ -834,18 +841,15 @@ Provides access to Ghidra's analysis results.
           "value": "error: %s"
         },
         "directUsers": [
-          {
-            "address": "0x401100",
-            "name": "log_error"
-          }
+          {"name": "log_error", "address": "0x401100", "signature": "void log_error(char *)", "returnType": "void", "isExternal": false, "isThunk": false, "parameterCount": 1}
         ],
         "callers": [
           {
-            "function": "main",
+            "function": {"name": "main", "address": "0x401000", "signature": "int main(void)", "returnType": "int", "isExternal": false, "isThunk": false, "parameterCount": 0},
             "depth": 1
           },
           {
-            "function": "process_data",
+            "function": {"name": "process_data", "address": "0x401500", "signature": "void process_data(void)", "returnType": "void", "isExternal": false, "isThunk": false, "parameterCount": 0},
             "depth": 2
           }
         ]

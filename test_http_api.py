@@ -860,7 +860,7 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         data = response.json()
         self.assertStandardSuccessResponse(data)
         result = data["result"]
-        for key in ("from", "to", "max_depth", "max_paths", "truncated", "paths"):
+        for key in ("from", "to", "max_depth", "max_paths", "truncated", "unresolved_edges", "paths"):
             self.assertIn(key, result, f"callpaths result missing '{key}'")
         self.assertIsInstance(result["paths"], list)
         self.assertGreaterEqual(len(result["paths"]), 1, "self->self should yield a path")
@@ -890,7 +890,8 @@ class GhydraMCPHttpApiTests(unittest.TestCase):
         data = response.json()
         self.assertStandardSuccessResponse(data)
         result = data["result"]
-        for key in ("value", "match", "caller_depth", "size", "offset", "limit", "truncated", "matches"):
+        for key in ("value", "match", "caller_depth", "size", "offset", "limit", "truncated",
+                    "unresolved_refs", "matches"):
             self.assertIn(key, result, f"string-usage result missing '{key}'")
         self.assertEqual(result["match"], "substring")
         self.assertEqual(result["caller_depth"], 0)

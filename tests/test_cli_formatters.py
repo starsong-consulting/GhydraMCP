@@ -94,3 +94,81 @@ def test_table_error_with_code(fmt):
 def test_table_error_plain_exception(fmt):
     out = fmt.format_error(ValueError("bad input"))
     assert "bad input" in out
+
+
+# ---- compound-RE formatters -----------------------------------------------
+
+def _call_paths_response(**overrides):
+    result = {
+        "from": "0x401000", "to": "0x401abc",
+        "max_depth": 5, "max_paths": 50, "truncated": False, "unresolved_edges": 0,
+        "paths": [
+            {"length": 2, "functions": [
+                {"name": "main", "address": "0x401000"},
+                {"name": "fopen", "address": "0x401abc"}]},
+        ],
+    }
+    result.update(overrides)
+    return {"result": result}
+
+
+def test_table_call_paths_renders_arrow_chain(fmt):
+    out = fmt.format_call_paths(_call_paths_response())
+    assert "Call paths" in out and "1 found" in out
+    assert "main -> fopen" in out
+
+
+def test_table_call_paths_empty(fmt):
+    out = fmt.format_call_paths(_call_paths_response(paths=[]))
+    assert "No paths found" in out
+
+
+def test_table_call_paths_flags_truncation_and_unresolved(fmt):
+    out = fmt.format_call_paths(_call_paths_response(truncated=True, unresolved_edges=3))
+    assert "truncated" in out
+    assert "3 unresolved edges" in out
+
+
+def test_table_call_paths_non_dict_result(fmt):
+    out = fmt.format_call_paths({"result": []})
+    assert "No call path data available" in out
+
+
+def _string_usage_response(**overrides):
+    result = {
+        "value": "CreateFileW", "match": "substring", "caller_depth": 1,
+        "size": 1, "offset": 0, "limit": 50, "truncated": False, "unresolved_refs": 0,
+        "matches": [
+            {"string": {"address": "0x402000", "value": "CreateFileW"},
+             "directUsers": [{"name": "open_handle", "address": "0x401100"}],
+             "callers": [{"function": {"name": "main", "address": "0x401000"}, "depth": 1}]},
+        ],
+    }
+    result.update(overrides)
+    return {"result": result}
+
+
+def test_table_string_usage_renders_users_and_callers(fmt):
+    out = fmt.format_string_usage(_string_usage_response())
+    assert "String usage" in out and "CreateFileW" in out
+    assert "open_handle" in out
+    assert "main(1)" in out
+
+
+def test_table_string_usage_empty(fmt):
+    out = fmt.format_string_usage(_string_usage_response(matches=[], size=0))
+    assert "No matches" in out
+
+
+def test_table_string_usage_flags_truncation_and_unresolved(fmt):
+    out = fmt.format_string_usage(_string_usage_response(truncated=True, unresolved_refs=2))
+    assert "truncated" in out
+    assert "2 unresolved refs" in out
+
+
+def test_json_call_paths_and_string_usage_roundtrip():
+    jf = JSONFormatter(pretty=False)
+    cp = _call_paths_response()
+    assert json.loads(jf.format_call_paths(cp)) == cp
+    su = _string_usage_response()
+    assert json.loads(jf.format_string_usage(su)) == su
