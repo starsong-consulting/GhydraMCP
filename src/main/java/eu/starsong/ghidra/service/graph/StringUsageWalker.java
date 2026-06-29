@@ -5,6 +5,7 @@ import eu.starsong.ghidra.dto.FunctionSummaryDto;
 import eu.starsong.ghidra.dto.StringUsageDto;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -13,9 +14,10 @@ import java.util.Set;
  * Resolves one matched string's direct users and a bounded BFS walk up the reverse
  * call graph over a {@link CallGraph}. Pure: no Ghidra types, no I/O.
  *
- * <p>The {@code fnBudget}, {@code globalVisited}, {@code unresolvedRefs}, and
- * {@code truncated} accumulators are shared across all strings in one response page,
+ * <p>A {@link WalkState} carries the shared accumulators (budget, visited set,
+ * unresolved count, truncation flag) across all strings in one response page,
  * so the function budget and visited set are global and the counters aggregate.
+ * Construct one {@code WalkState} per page and pass it to every {@link #resolve} call.
  */
 public final class StringUsageWalker {
 
@@ -25,13 +27,30 @@ public final class StringUsageWalker {
         this.graph = graph;
     }
 
-    public StringUsageDto resolve(StringUsageDto.StringRef ref, int callerDepth,
-                                  int[] fnBudget, Set<String> globalVisited,
-                                  int[] unresolvedRefs, boolean[] truncated) {
+    /**
+     * Shared mutable state for one page's worth of string-usage resolution.
+     * All fields are package-visible for access by {@link StringUsageWalker#resolve}.
+     */
+    public static final class WalkState {
+        int fnBudget;
+        final Set<String> globalVisited = new HashSet<>();
+        int unresolvedRefs;
+        boolean truncated;
+
+        public WalkState(int fnBudget) {
+            if (fnBudget < 0) throw new IllegalArgumentException("fnBudget must be >= 0, got " + fnBudget);
+            this.fnBudget = fnBudget;
+        }
+
+        public int unresolvedRefs() { return unresolvedRefs; }
+        public boolean truncated() { return truncated; }
+    }
+
+    public StringUsageDto resolve(StringUsageDto.StringRef ref, int callerDepth, WalkState state) {
         List<FunctionSummaryDto> directUsers = new ArrayList<>();
         Set<String> directAddrs = new LinkedHashSet<>();
         for (String userEntry : graph.referrersOf(ref.address())) {
-            if (userEntry == null) { unresolvedRefs[0]++; continue; }
+            if (userEntry == null) { state.unresolvedRefs++; continue; }
             if (directAddrs.add(userEntry)) {
                 directUsers.add(graph.summaryOf(userEntry));
             }
@@ -45,18 +64,21 @@ public final class StringUsageWalker {
                 Set<String> nextLevel = new LinkedHashSet<>();
                 for (String fnEntry : currentLevel) {
                     for (String callerEntry : graph.callersOf(fnEntry)) {
-                        if (callerEntry == null) { unresolvedRefs[0]++; continue; }
-                        if (directAddrs.contains(callerEntry) || globalVisited.contains(callerEntry)) continue;
-                        if (fnBudget[0] <= 0) {
-                            truncated[0] = true;
-                            return new StringUsageDto(ref, directUsers, callers);
+                        if (callerEntry == null) { state.unresolvedRefs++; continue; }
+                        if (directAddrs.contains(callerEntry) || state.globalVisited.contains(callerEntry)) continue;
+                        // Add to globalVisited BEFORE budget check so that even if we truncate,
+                        // this entry won't re-trigger truncation for the next string on the page.
+                        state.globalVisited.add(callerEntry);
+                        if (state.fnBudget <= 0) {
+                            state.truncated = true;
+                            continue; // don't add to callers or nextLevel — budget exhausted
                         }
-                        globalVisited.add(callerEntry);
                         callers.add(new CallerRefDto(graph.summaryOf(callerEntry), depth));
-                        fnBudget[0]--;
+                        state.fnBudget--;
                         nextLevel.add(callerEntry);
                     }
                 }
+                if (state.truncated) break; // don't expand further BFS levels
                 currentLevel = nextLevel;
                 depth++;
             }

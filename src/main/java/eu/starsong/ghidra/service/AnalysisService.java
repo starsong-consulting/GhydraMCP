@@ -236,12 +236,10 @@ public class AnalysisService {
 
             CallGraph graph = new GhidraCallGraph(program, functionService, xrefService);
             StringUsageWalker walker = new StringUsageWalker(graph);
-            int[] fnBudget = {maxFunctions};
-            int[] unresolvedRefs = {0};
-            Set<String> globalVisited = new HashSet<>();
+            StringUsageWalker.WalkState state = new StringUsageWalker.WalkState(maxFunctions);
             List<StringUsageDto> matches = new ArrayList<>();
             for (StringUsageDto.StringRef ref : page) {
-                matches.add(walker.resolve(ref, callerDepth, fnBudget, globalVisited, unresolvedRefs, truncated));
+                matches.add(walker.resolve(ref, callerDepth, state));
             }
 
             Map<String, Object> data = new LinkedHashMap<>();
@@ -251,8 +249,8 @@ public class AnalysisService {
             data.put("size", total);
             data.put("offset", offset);
             data.put("limit", limit);
-            data.put("truncated", truncated[0]);
-            data.put("unresolved_refs", unresolvedRefs[0]);
+            data.put("truncated", truncated[0] || state.truncated());
+            data.put("unresolved_refs", state.unresolvedRefs());
             data.put("matches", matches);
             return data;
         });
