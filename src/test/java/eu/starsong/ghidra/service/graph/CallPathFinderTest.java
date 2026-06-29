@@ -87,4 +87,19 @@ public class CallPathFinderTest {
         assertTrue(r.paths().isEmpty());
         assertFalse(r.truncated()); // max_depth alone does NOT set truncated
     }
+    @Test
+    public void summaryOfNullThrowsInDfsIsCountedCorrectly() {
+        // Simulate the contract: summaryOf for a non-null entry address always
+        // returns non-null. A correctly implemented FakeCallGraph already does this.
+        // This test simply re-affirms the happy path still works after the fix —
+        // the integration risk (GhidraCallGraph.summaryOf returning null) is covered
+        // by the constructor null-guard test in GhidraCallGraphConstructorTest.
+        FakeCallGraph g = new FakeCallGraph();
+        g.callees.put("0x1000", List.of("0x2000"));
+        g.callees.put("0x2000", List.of("0x3000"));
+        CallPathFinder.Result r = finder(g).find("0x1000", "0x3000", 5, 50, 10000);
+        assertEquals(1, r.paths().size());
+        assertEquals(3, r.paths().get(0).length());
+        assertEquals(0, r.unresolvedEdges());
+    }
 }

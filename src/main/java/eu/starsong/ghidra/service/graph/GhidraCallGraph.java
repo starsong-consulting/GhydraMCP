@@ -8,7 +8,9 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.Program;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Production {@link CallGraph} backed by a live {@link Program} and the existing services.
@@ -26,14 +28,19 @@ public final class GhidraCallGraph implements CallGraph {
     private final XrefService xrefService;
 
     public GhidraCallGraph(Program program, FunctionService functionService, XrefService xrefService) {
-        this.program = program;
-        this.functionService = functionService;
-        this.xrefService = xrefService;
+        this.program = Objects.requireNonNull(program, "program");
+        this.functionService = Objects.requireNonNull(functionService, "functionService");
+        this.xrefService = Objects.requireNonNull(xrefService, "xrefService");
     }
 
     @Override
     public List<String> calleesOf(String fnEntry) {
         Function fn = functionService.findByAddress(program, fnEntry);
+        if (fn == null) {
+            // Source address is not a defined function entry; signal one unresolved edge
+            // so the DFS counts it rather than silently pruning the entire subtree.
+            return Collections.singletonList(null);
+        }
         List<String> out = new ArrayList<>();
         for (XrefDto xref : xrefService.getCallsFromFunction(program, fn)) {
             String calleeAddr = xref.toFunctionAddress();
@@ -66,6 +73,10 @@ public final class GhidraCallGraph implements CallGraph {
 
     @Override
     public FunctionSummaryDto summaryOf(String fnEntry) {
-        return FunctionSummaryDto.from(functionService.findByAddress(program, fnEntry));
+        Function fn = functionService.findByAddress(program, fnEntry);
+        if (fn == null) {
+            throw new IllegalArgumentException("No function at entry address: " + fnEntry);
+        }
+        return FunctionSummaryDto.from(fn);
     }
 }
