@@ -27,3 +27,99 @@ def test_find_call_paths_missing_to_is_rejected():
 def test_trace_string_usage_missing_value_is_rejected():
     out = b.analysis_trace_string_usage("")
     assert "value is required" in out
+
+
+def _call_paths_response(paths=None, truncated=False, unresolved=0):
+    return {
+        "success": True,
+        "result": {
+            "from": "main",
+            "to": "target",
+            "max_depth": 5,
+            "max_paths": 50,
+            "truncated": truncated,
+            "unresolved_edges": unresolved,
+            "paths": paths or [],
+        },
+    }
+
+
+def _string_usage_response(matches=None, truncated=False, unresolved=0):
+    return {
+        "success": True,
+        "result": {
+            "value": "CreateFileW",
+            "match": "substring",
+            "caller_depth": 1,
+            "size": 1,
+            "offset": 0,
+            "limit": 50,
+            "truncated": truncated,
+            "unresolved_refs": unresolved,
+            "matches": matches or [],
+        },
+    }
+
+
+def test_format_call_paths_no_paths_clean():
+    out = b.format_call_paths(_call_paths_response())
+    assert "No paths found" in out
+    assert "main" in out and "target" in out
+
+
+def test_format_call_paths_no_paths_with_unresolved_hints():
+    out = b.format_call_paths(_call_paths_response(unresolved=3))
+    assert "unresolved" in out.lower()
+
+
+def test_format_call_paths_renders_path_chain():
+    paths = [{"length": 2, "functions": [
+        {"name": "main", "address": "0x1000"},
+        {"name": "target", "address": "0x2000"},
+    ]}]
+    out = b.format_call_paths(_call_paths_response(paths=paths))
+    assert "main" in out and "target" in out
+    assert "Path 1" in out
+
+
+def test_format_call_paths_truncated_flag_shown():
+    paths = [{"length": 1, "functions": [{"name": "main", "address": "0x1000"}]}]
+    out = b.format_call_paths(_call_paths_response(paths=paths, truncated=True))
+    assert "truncated" in out.lower()
+
+
+def test_format_string_usage_no_matches():
+    out = b.format_string_usage(_string_usage_response())
+    assert "No strings" in out
+
+
+def test_format_string_usage_renders_direct_users():
+    matches = [{
+        "string": {"address": "0x8000", "value": "CreateFileW"},
+        "directUsers": [{"name": "open_file", "address": "0x1000"}],
+        "callers": [],
+    }]
+    out = b.format_string_usage(_string_usage_response(matches=matches))
+    assert "0x8000" in out
+    assert "open_file" in out
+
+
+def test_format_string_usage_renders_callers_with_depth():
+    matches = [{
+        "string": {"address": "0x8000", "value": "CreateFileW"},
+        "directUsers": [{"name": "open_file", "address": "0x1000"}],
+        "callers": [{"function": {"name": "do_thing", "address": "0x2000"}, "depth": 1}],
+    }]
+    out = b.format_string_usage(_string_usage_response(matches=matches))
+    assert "do_thing" in out
+    assert "depth 1" in out
+
+
+def test_find_call_paths_rejects_max_depth_zero():
+    out = b.analysis_find_call_paths("source", "target", max_depth=0)
+    assert "max_depth" in out
+
+
+def test_find_call_paths_rejects_max_paths_zero():
+    out = b.analysis_find_call_paths("source", "target", max_paths=0)
+    assert "max_paths" in out
